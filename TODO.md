@@ -54,6 +54,14 @@ Each item maps to a GitHub issue.
   `POST /check-lossless`. Add a configurable interval and/or filesystem watch that
   runs `checkAndClean` automatically.
 
+- [ ] **#15 Storage locations from Roon + full-album lossless detection.** Read the
+  music storage location(s) from Roon's settings (depends on #1) instead of a manual
+  path, with an option to exclude a location. Change the removal rule: only remove an
+  album when the **whole album** is lossless; if it's present only in a lossy format,
+  **keep** it. Surface per-album status (not found / found lossy → kept / found
+  lossless → removed) in the native UI. Today `checkAndClean` removes on *any* lossless
+  file in the folder — tighten this.
+
 - [ ] **#11 Tag wishlist albums & tracks in Roon (kept in sync).** Tag both albums
   and tracks on the wishlist in Roon (default tag `Wishlist`). Tags must be
   maintained the same way as the wishlist: add tag on add, remove tag on removal /
