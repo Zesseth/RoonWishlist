@@ -21,6 +21,9 @@
   "author": "Jesse Lahtela (@Zesseth)",
   "license": "AGPL-3.0-or-later",
   "type": "commonjs",
+  "engines": {
+    "node": ">=20.18.1"
+  },
   "bugs": {
     "url": "https://github.com/Zesseth/RoonWishlist/issues"
   },
@@ -28,8 +31,8 @@
   "dependencies": {
     "axios": "^1.16.1",
     "cheerio": "^1.2.0",
-    "node-roon-api": "github:RoonLabs/node-roon-api",
-    "node-roon-api-settings": "github:RoonLabs/node-roon-api-settings",
-    "node-roon-api-status": "github:RoonLabs/node-roon-api-status"
+    "node-roon-api": "git+https://github.com/RoonLabs/node-roon-api.git",
+    "node-roon-api-settings": "git+https://github.com/RoonLabs/node-roon-api-settings.git",
+    "node-roon-api-status": "git+https://github.com/RoonLabs/node-roon-api-status.git"
   }
 }

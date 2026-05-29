@@ -3,7 +3,10 @@
 const fs = require("fs");
 const path = require("path");
 
-const DATA_FILE = path.join(__dirname, "..", "data", "wishlist.json");
+// Data dir is configurable so it can live outside the install dir on a server
+// (e.g. ROON_WISHLIST_DATA_DIR=/var/lib/roon-wishlist).
+const DATA_DIR = process.env.ROON_WISHLIST_DATA_DIR || path.join(__dirname, "..", "data");
+const DATA_FILE = path.join(DATA_DIR, "wishlist.json");
 
 function load() {
   if (!fs.existsSync(DATA_FILE)) return [];

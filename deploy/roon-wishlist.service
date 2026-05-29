@@ -1,0 +1,33 @@
+# systemd unit template for RoonWishlist.
+#
+# `install.sh` generates this file automatically with the right paths/user. Use this
+# template only if you are installing manually. Replace the placeholders and copy it
+# to /etc/systemd/system/roon-wishlist.service, then:
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now roon-wishlist
+#
+# Placeholders:
+#   <SERVICE_USER>  e.g. roon
+#   <INSTALL_DIR>   e.g. /opt/roon-wishlist
+#   <DATA_DIR>      e.g. /var/lib/roon-wishlist
+#   <NODE_BIN>      output of: command -v node   (e.g. /usr/bin/node)
+
+[Unit]
+Description=RoonWishlist - Roon extension for a lossless album wishlist
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=<SERVICE_USER>
+WorkingDirectory=<INSTALL_DIR>
+Environment=NODE_ENV=production
+Environment=ROON_WISHLIST_DATA_DIR=<DATA_DIR>
+Environment=ROON_WISHLIST_HTTP_HOST=127.0.0.1
+Environment=ROON_WISHLIST_HTTP_PORT=3141
+ExecStart=<NODE_BIN> <INSTALL_DIR>/index.js
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
