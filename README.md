@@ -45,3 +45,17 @@ src/
 data/
   wishlist.json       ← (luodaan automaattisesti, ei commitoida)
 ```
+
+## Lisenssi
+
+Lisensoitu **GNU Affero General Public License v3.0 tai myöhempi**
+(`AGPL-3.0-or-later`) — ks. [`LICENSE`](./LICENSE).
+
+AGPL on vahva copyleft: jos ajat muokattua versiota ja tarjoat sen käyttäjille
+verkon yli, sinun on julkaistava muokatun version täydellinen lähdekoodi näille
+käyttäjille (AGPL-3.0 §13). Tarkoitus on, että lähdekoodi pysyy aina avoimena.
+
+**Erityislupa Roon Labsille:** Roon Labs saa ottaa tämän käyttöön osana Roonia
+antamalla asianmukaiset creditit tekijälle ja projektille. Ks. tarkat ehdot:
+[`ADDITIONAL-GRANTS.md`](./ADDITIONAL-GRANTS.md).
+

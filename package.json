@@ -10,9 +10,16 @@
     "type": "git",
     "url": "git+https://github.com/Zesseth/RoonWishlist.git"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "keywords": [
+    "roon",
+    "roon-extension",
+    "wishlist",
+    "bandcamp",
+    "qobuz",
+    "lossless"
+  ],
+  "author": "Jesse Lahtela (@Zesseth)",
+  "license": "AGPL-3.0-or-later",
   "type": "commonjs",
   "bugs": {
     "url": "https://github.com/Zesseth/RoonWishlist/issues"
