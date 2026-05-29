@@ -4,10 +4,17 @@ A Roon Extension — a wishlist for albums you don't yet own in lossless quality
 
 ## Features
 
-- **Wishlist**: Add albums to a buy-list from Roon
+- **Wishlist**: Add albums to a buy-list
+- **Web UI**: A simple browser interface to view, add, remove and search albums
 - **Search**: Looks up the album on Bandcamp and Qobuz
 - **Auto-clean**: When lossless files appear in your local library, the album is
   automatically removed from the wishlist
+
+> **Where is the UI in Roon?** Roon's public extension API only lets an extension draw
+> a UI on its **Settings** screen — it does **not** allow extensions to add their own
+> entry to Roon's **Browse** sidebar (Home, Genres, Qobuz, …). So inside Roon you'll
+> find this under **Settings → Extensions → Wishlist → Settings**. For a fuller
+> interface, use the **web UI** (see [Open the Wishlist web UI](#open-the-wishlist-web-ui)).
 
 ## Getting started
 
@@ -115,6 +122,29 @@ After either option, on any device with Roon open:
 3. Use the **Action** menu to add/remove albums or run *Refresh & clean*. The menu is
    drawn by Roon itself — pick an action, fill the fields if they appear, press
    **Save**.
+
+### Open the Wishlist web UI
+
+The extension also serves a small **web interface** — this is the easiest way to manage
+the wishlist. From the browser you can view the list, add/remove albums, **search
+Bandcamp/Qobuz and add straight from the results**, set the **music library path**, run a
+**library scan & clean**, and see whether the extension is **paired** with your Roon Core.
+
+- **From the server itself**, open: <http://127.0.0.1:3141>
+- **From another computer on your network** (e.g. the desktop where you run the Roon
+  app), the web UI is **off by default** for safety (it binds to localhost only). To
+  reach it from other machines, install (or re-run) with `HTTP_HOST=0.0.0.0`:
+
+  ```bash
+  curl -fsSL https://raw.githubusercontent.com/Zesseth/RoonWishlist/main/bootstrap.sh \
+    | sudo HTTP_HOST=0.0.0.0 bash
+  ```
+
+  Then open `http://<server-ip>:3141` (e.g. `http://192.168.1.50:3141`) in any browser.
+
+  > **⚠️ Security note:** `0.0.0.0` makes the UI/API reachable by **any** device on your
+  > network with no authentication. That's usually fine on a trusted home LAN, but don't
+  > expose port `3141` to the public internet.
 
 ### Updating later
 

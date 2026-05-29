@@ -8,6 +8,7 @@ const { searchAll } = require("./src/search");
 const lossless = require("./src/lossless_checker");
 
 let roon, mysettings, svc_status;
+let pairedCore = null;
 
 const roonApp = new RoonApi({
   extension_id: "com.zesseth.roon-wishlist",
@@ -18,11 +19,13 @@ const roonApp = new RoonApi({
   website: "https://github.com/Zesseth/RoonWishlist",
 
   core_paired(core) {
+    pairedCore = core;
     console.log("Paired with Roon core:", core.display_name);
     svc_status.set_status("Paired", false);
   },
 
   core_unpaired(core) {
+    pairedCore = null;
     console.log("Unpaired from Roon core:", core.display_name);
     svc_status.set_status("Not paired", false);
   },
@@ -162,9 +165,54 @@ roonApp.start_discovery();
 // so we expose a lightweight local HTTP API on port 3141 for CLI/browser use.
 
 const http = require("http");
+const fs = require("fs");
+const path = require("path");
+
+// Static web UI lives in ./public. This is the extension's full-featured surface:
+// Roon's public API does not allow extensions to add items to the Browse menu, so
+// the web UI (served here) is where users manage the wishlist with a real interface.
+const PUBLIC_DIR = path.join(__dirname, "public");
+const STATIC_TYPES = {
+  ".html": "text/html; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".js": "application/javascript; charset=utf-8",
+  ".svg": "image/svg+xml",
+  ".png": "image/png",
+  ".ico": "image/x-icon",
+};
+
+function serveStatic(res, pathname) {
+  const rel = pathname === "/" ? "index.html" : pathname.replace(/^\/+/, "");
+  // Resolve within PUBLIC_DIR and reject any path traversal.
+  const filePath = path.join(PUBLIC_DIR, rel);
+  if (!filePath.startsWith(PUBLIC_DIR + path.sep) && filePath !== path.join(PUBLIC_DIR, "index.html")) {
+    res.statusCode = 403;
+    res.setHeader("Content-Type", "application/json");
+    res.end(JSON.stringify({ error: "Forbidden" }));
+    return;
+  }
+  fs.readFile(filePath, (err, data) => {
+    if (err) {
+      res.statusCode = 404;
+      res.setHeader("Content-Type", "application/json");
+      res.end(JSON.stringify({ error: "Not found" }));
+      return;
+    }
+    res.setHeader("Content-Type", STATIC_TYPES[path.extname(filePath)] || "application/octet-stream");
+    res.end(data);
+  });
+}
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://localhost`);
+
+  // Serve the web UI (GET, non-API paths) before defaulting to JSON responses.
+  const apiPaths = ["/wishlist", "/wishlist/add", "/wishlist/remove", "/search", "/check-lossless", "/settings", "/status"];
+  if (req.method === "GET" && !apiPaths.includes(url.pathname)) {
+    serveStatic(res, url.pathname);
+    return;
+  }
+
   res.setHeader("Content-Type", "application/json");
 
   if (req.method === "GET" && url.pathname === "/wishlist") {
@@ -222,11 +270,51 @@ const server = http.createServer(async (req, res) => {
     const libraryPath = mysettings.music_library_path;
     if (!libraryPath) {
       res.statusCode = 400;
-      res.end(JSON.stringify({ error: "music_library_path not configured in Roon settings" }));
+      res.end(JSON.stringify({ error: "Music library path is not set. Set it in the Library section first." }));
       return;
     }
     const removed = lossless.checkAndClean(libraryPath, wishlist);
     res.end(JSON.stringify({ removedFromWishlist: removed }));
+    return;
+  }
+
+  // Connection + summary status for the web UI header.
+  if (req.method === "GET" && url.pathname === "/status") {
+    res.end(JSON.stringify({
+      paired: !!pairedCore,
+      core: pairedCore ? pairedCore.display_name : null,
+      libraryPath: mysettings.music_library_path || "",
+      count: wishlist.getAll().length,
+      version: "0.1.0",
+    }));
+    return;
+  }
+
+  // Read the durable settings (currently just the music library path).
+  if (req.method === "GET" && url.pathname === "/settings") {
+    res.end(JSON.stringify({ music_library_path: mysettings.music_library_path || "" }));
+    return;
+  }
+
+  // Update the music library path from the web UI and persist it (same store the
+  // Roon settings screen uses), then push a refreshed layout if that screen is open.
+  if (req.method === "POST" && url.pathname === "/settings") {
+    let body = "";
+    req.on("data", (c) => (body += c));
+    req.on("end", () => {
+      try {
+        const data = JSON.parse(body);
+        const p = typeof data.music_library_path === "string" ? data.music_library_path.trim() : "";
+        mysettings = Object.assign({}, mysettings, { music_library_path: p });
+        roonApp.save_config("settings", mysettings);
+        const cleared = Object.assign({}, mysettings, { action: "none", artist: "", title: "" });
+        try { svc_settings.update_settings(make_layout(cleared)); } catch {}
+        res.end(JSON.stringify({ music_library_path: mysettings.music_library_path }));
+      } catch {
+        res.statusCode = 400;
+        res.end(JSON.stringify({ error: "Invalid JSON" }));
+      }
+    });
     return;
   }
 
@@ -240,6 +328,6 @@ const HTTP_PORT = parseInt(process.env.ROON_WISHLIST_HTTP_PORT || "3141", 10);
 const HTTP_HOST = process.env.ROON_WISHLIST_HTTP_HOST || "127.0.0.1";
 
 server.listen(HTTP_PORT, HTTP_HOST, () => {
-  console.log(`Wishlist HTTP API listening on http://${HTTP_HOST}:${HTTP_PORT}`);
-  svc_status.set_status(`Running — API on ${HTTP_HOST}:${HTTP_PORT}`, false);
+  console.log(`Wishlist web UI + API listening on http://${HTTP_HOST}:${HTTP_PORT}`);
+  svc_status.set_status(`Running — web UI on http://${HTTP_HOST}:${HTTP_PORT}`, false);
 });
