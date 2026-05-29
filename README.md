@@ -9,79 +9,200 @@ A Roon Extension — a wishlist for albums you don't yet own in lossless quality
 - **Auto-clean**: When lossless files appear in your local library, the album is
   automatically removed from the wishlist
 
-## Install
+## Getting started
 
-Install dependencies with `npm ci` (**not** `npm install`):
+There are two ways to run this. Pick the one that fits you:
+
+- **A. Install on a Linux server** (recommended) — runs 24/7 next to your Roon Core.
+  Best if you want it always available. See [Install on a Linux server](#install-on-a-linux-server).
+- **B. Try it on your own computer** (Windows / macOS / Linux) — quick way to test
+  before committing to a server. See [Try it on your computer](#try-it-on-your-computer).
+
+You do **not** need to be a developer to follow either path — every step is spelled out.
+
+---
+
+## Install on a Linux server
+
+This extension is a small background program. It can run on the **same Linux machine
+as your Roon Server**, or on **any always-on Linux box on the same network** (a
+Raspberry Pi, a NAS, a mini-PC, a small VM, …).
+
+> **⚠️ ROCK and Nucleus are NOT supported as the install target.** Roon OS appliances
+> (ROCK, Nucleus) are locked down — you cannot install programs on them. If your Roon
+> Core runs on ROCK/Nucleus, install this on **another** always-on Linux machine on the
+> same network. It will automatically find and connect to your Roon Core over the LAN.
+
+**Tested target: Debian 12 "Bookworm" (amd64 / arm64).** Other modern Linux distros
+(Ubuntu, Fedora, Arch, openSUSE) are supported by the installer too. NodeSource only
+ships Node.js for `amd64`/`arm64`, so 32-bit ARM (e.g. an older Raspberry Pi OS) needs a
+64-bit OS or a manual Node.js install. Requires **Node.js ≥ 20.18.1** (the installer
+sets this up for you).
+
+### Option A — fully automatic (recommended): `bootstrap.sh`
+
+**Use this if you just want it running and don't want to install anything yourself.**
+Log into your Linux machine (or open its terminal) and paste this **single line**:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Zesseth/RoonWishlist/main/bootstrap.sh | sudo bash
+```
+
+That's it. `bootstrap.sh` does **everything** for you, automatically:
+
+1. installs **git** if it's missing,
+2. downloads (clones) this project to `/usr/local/src/RoonWishlist`,
+3. installs **Node.js** (≥ 20.18.1, via NodeSource) if it's missing or too old,
+4. installs the app to `/opt/roon-wishlist` and its dependencies,
+5. creates a **systemd service** (`roon-wishlist`) that starts on boot and restarts if
+   it crashes, and
+6. starts it.
+
+When it finishes it prints the service status and what to do next in Roon.
+
+> **On a minimal Debian 12 install** `curl` may not be present yet. If the one-liner
+> says `curl: command not found`, install it first:
+>
+> ```bash
+> sudo apt-get update && sudo apt-get install -y ca-certificates curl
+> ```
+
+> Prefer to read the script before running it? (A good habit for anything piped into
+> `sudo bash`.)
+>
+> ```bash
+> curl -fsSL https://raw.githubusercontent.com/Zesseth/RoonWishlist/main/bootstrap.sh -o bootstrap.sh
+> less bootstrap.sh        # read it, press q to quit
+> sudo bash bootstrap.sh
+> ```
+
+### Option B — I'll clone it myself: `install.sh`
+
+**Use this if you'd rather download the project yourself** (e.g. you already use git, or
+you want the source in a specific place). You only clone it — `install.sh` still
+installs Node.js for you if it's missing or too old.
+
+```bash
+# 1. Get git if you don't have it (Debian/Ubuntu shown; use your distro's tool otherwise)
+sudo apt-get update && sudo apt-get install -y git
+
+# 2. Download this project wherever you like
+git clone https://github.com/Zesseth/RoonWishlist.git
+cd RoonWishlist
+
+# 3. Run the installer
+sudo ./install.sh
+```
+
+`install.sh` installs the app to `/opt/roon-wishlist`, installs dependencies with
+`npm ci` (over **https** — no SSH keys needed), creates the `roon-wishlist` systemd
+service, and starts it. If Node.js (≥ 20.18.1) or git are missing — or Node is too old
+— it installs/upgrades them for you (supports apt / dnf / yum / pacman / zypper); on
+other systems it prints exact instructions. Re-running it later safely updates an
+existing install and restarts the service.
+
+> **In short:** `bootstrap.sh` = "install everything for me, including cloning."
+> `install.sh` = "I already cloned it, just install and run it." Both end with the same
+> running systemd service.
+
+### Finish in Roon
+
+After either option, on any device with Roon open:
+
+1. Go to **Settings → Extensions**. You should see **Wishlist** listed and paired.
+2. Click its **Settings**. Set the **Music library path** (the folder where your
+   lossless files live on that machine, e.g. `/mnt/music`).
+3. Use the **Action** menu to add/remove albums or run *Refresh & clean*. The menu is
+   drawn by Roon itself — pick an action, fill the fields if they appear, press
+   **Save**.
+
+### Updating later
+
+```bash
+# If you used Option A (bootstrap), just re-run it — it pulls the latest and reinstalls:
+curl -fsSL https://raw.githubusercontent.com/Zesseth/RoonWishlist/main/bootstrap.sh | sudo bash
+
+# Or manually, from your clone:
+cd /usr/local/src/RoonWishlist && git pull && sudo ./install.sh
+```
+
+### Managing the service
+
+```bash
+systemctl status roon-wishlist        # is it running?
+journalctl -u roon-wishlist -f        # live logs (Ctrl+C to stop watching)
+systemctl restart roon-wishlist       # restart it
+sudo systemctl disable --now roon-wishlist   # stop and disable autostart
+```
+
+---
+
+## Try it on your computer
+
+Want to test before installing on a server? You can run it on **Windows, macOS or
+Linux**. It will find your Roon Core over the network as long as the computer is on the
+same LAN.
+
+### 1. Install the prerequisites
+
+- **Node.js LTS** (≥ 20.18.1) — download the installer from <https://nodejs.org/> and
+  run it (accept the defaults). This also gives you `npm`.
+- **git** — download from <https://git-scm.com/downloads> and install it (defaults are
+  fine).
+
+To confirm they're installed, open a terminal (on Windows: **PowerShell**) and run:
+
+```bash
+node --version
+git --version
+```
+
+Both should print a version number.
+
+### 2. Download the project
+
+```bash
+git clone https://github.com/Zesseth/RoonWishlist.git
+cd RoonWishlist
+```
+
+### 3. Install dependencies
+
+Use `npm ci` (**not** `npm install`):
 
 ```bash
 npm ci
 ```
 
 > **Why `npm ci` and not `npm install`?** The Roon API packages are pulled from
-> GitHub. `npm install` rewrites the lockfile's `resolved` URLs to `git+ssh://`,
-> which fails on any machine without GitHub SSH keys (e.g. a headless Linux server).
-> `npm ci` installs exactly what the committed lockfile specifies — `git+https://`
-> URLs that work everywhere with no SSH setup. Use `npm ci` on every machine.
-> If you must add a dependency, run `npm install <pkg>`, then re-assert `git+https://`
-> in `package-lock.json`'s `resolved` fields before committing.
+> GitHub. `npm install` rewrites the lockfile's `resolved` URLs to `git+ssh://`, which
+> fails on any machine without GitHub SSH keys. `npm ci` installs exactly what the
+> committed lockfile specifies — `git+https://` URLs that work everywhere with no SSH
+> setup. (Only if you deliberately add a new dependency with `npm install <pkg>`,
+> re-assert `git+https://` in `package-lock.json`'s `resolved` fields before
+> committing.)
 
-## Run
+### 4. Run it
 
 ```bash
 node index.js
 ```
 
-After starting:
-1. Open Roon → Settings → Extensions → **Wishlist** → Enable
-2. Open its settings and set the `Music library path` (e.g. `D:\Music` on Windows,
-   `/mnt/music` on Linux)
-3. Use the **Actions** menu in the same settings screen to add/remove albums or run a
-   manual *Refresh & clean*. The menu is rendered natively by Roon — pick an action,
-   fill the fields if shown, then press **Save**.
+Leave this window open — the extension runs as long as this command runs. Press
+**Ctrl+C** to stop it.
 
-## Run on a Roon server (Linux)
+### 5. Finish in Roon
 
-This extension is a small Node.js process. It can run **on the same Linux machine as
-your Roon Server**, or on any always-on Linux box on the same network.
+1. Open Roon → **Settings → Extensions → Wishlist** (it should appear and pair
+   automatically).
+2. Open its **Settings**, set the **Music library path** (e.g. `D:\Music` on Windows,
+   `/Users/you/Music` on macOS).
+3. Use the **Action** menu to add/remove albums or run *Refresh & clean* — pick an
+   action, fill the fields if shown, press **Save**.
 
-> **⚠️ ROCK and Nucleus are not supported as the install target.** Roon OS appliances
-> (ROCK, Nucleus) are locked down — you cannot install Node.js or systemd services on
-> them. If your Roon Core runs on ROCK/Nucleus, run this extension on **another**
-> always-on Linux machine on the same LAN (Raspberry Pi, NAS, mini-PC, VM, …). It will
-> discover and pair with the core over the network.
+---
 
-### Quick install (systemd service)
-
-On a generic Linux host running (or near) Roon Server:
-
-```bash
-git clone https://github.com/Zesseth/RoonWishlist.git
-cd RoonWishlist
-sudo ./install.sh
-```
-
-`install.sh` installs the app to `/opt/roon-wishlist`, installs dependencies with
-`npm ci` (over **https**, no SSH keys needed), creates a `roon-wishlist` systemd
-service that restarts automatically, and starts it. Requires Node.js LTS and `git` to
-be installed first (the script prints instructions if Node is missing).
-
-Override defaults with environment variables:
-
-```bash
-INSTALL_DIR=/opt/roon-wishlist DATA_DIR=/var/lib/roon-wishlist \
-SERVICE_USER=roon HTTP_HOST=127.0.0.1 HTTP_PORT=3141 \
-sudo -E ./install.sh
-```
-
-Manage the service:
-
-```bash
-systemctl status roon-wishlist
-journalctl -u roon-wishlist -f      # live logs
-systemctl restart roon-wishlist
-```
-
-A manual systemd unit template is in [`deploy/roon-wishlist.service`](./deploy/roon-wishlist.service).
+## Configuration (optional)
 
 ### Environment variables
 
@@ -94,6 +215,25 @@ A manual systemd unit template is in [`deploy/roon-wishlist.service`](./deploy/r
 > Note: the Roon pairing token is stored in `config.json` in the service's working
 > directory, so the service user must own the install directory (the script handles
 > this).
+
+You can override the install location and these settings by passing them to either
+script:
+
+```bash
+# with bootstrap.sh
+curl -fsSL https://raw.githubusercontent.com/Zesseth/RoonWishlist/main/bootstrap.sh \
+  | sudo INSTALL_DIR=/opt/roon-wishlist DATA_DIR=/var/lib/roon-wishlist \
+         SERVICE_USER=roon HTTP_HOST=127.0.0.1 HTTP_PORT=3141 bash
+
+# with install.sh (from your clone)
+INSTALL_DIR=/opt/roon-wishlist DATA_DIR=/var/lib/roon-wishlist \
+SERVICE_USER=roon HTTP_HOST=127.0.0.1 HTTP_PORT=3141 \
+sudo -E ./install.sh
+```
+
+The manual systemd unit template is in
+[`deploy/roon-wishlist.service`](./deploy/roon-wishlist.service) if you'd rather wire it
+up by hand.
 
 ## HTTP API (port 3141)
 
@@ -118,6 +258,7 @@ src/
   lossless_checker.js ← Library check, auto-remove
 deploy/
   roon-wishlist.service ← systemd unit template (manual installs)
+bootstrap.sh          ← one-command Linux installer (installs git/Node, clones, runs install.sh)
 install.sh            ← Linux install script (systemd service)
 data/
   wishlist.json       ← (created automatically, not committed)

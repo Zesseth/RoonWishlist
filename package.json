@@ -21,6 +21,9 @@
   "author": "Jesse Lahtela (@Zesseth)",
   "license": "AGPL-3.0-or-later",
   "type": "commonjs",
+  "engines": {
+    "node": ">=20.18.1"
+  },
   "bugs": {
     "url": "https://github.com/Zesseth/RoonWishlist/issues"
   },

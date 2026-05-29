@@ -37,21 +37,94 @@ info() { echo ">>> $*"; }
 [ "$(id -u)" -eq 0 ] || err "Please run as root (e.g. 'sudo ./install.sh')."
 
 # --- Prerequisites -----------------------------------------------------------
-command -v git >/dev/null 2>&1 || err "git is required (npm fetches the Roon API packages from GitHub over https). Install it, e.g. 'apt-get install -y git'."
+# Detect the system package manager (best-effort; used to auto-install git/node).
+PKG=""
+if command -v apt-get >/dev/null 2>&1; then PKG="apt"
+elif command -v dnf >/dev/null 2>&1; then PKG="dnf"
+elif command -v yum >/dev/null 2>&1; then PKG="yum"
+elif command -v pacman >/dev/null 2>&1; then PKG="pacman"
+elif command -v zypper >/dev/null 2>&1; then PKG="zypper"
+fi
+
+pkg_install() {
+  # pkg_install <pkg-name>
+  case "$PKG" in
+    apt)    apt-get update -y && apt-get install -y "$1" ;;
+    dnf)    dnf install -y "$1" ;;
+    yum)    yum install -y "$1" ;;
+    pacman) pacman -Sy --noconfirm "$1" ;;
+    zypper) zypper --non-interactive install -y "$1" ;;
+    *)      return 1 ;;
+  esac
+}
+
+# git is required (npm fetches the Roon API packages from GitHub over https).
+if ! command -v git >/dev/null 2>&1; then
+  info "git not found — attempting to install it"
+  if ! pkg_install git; then
+    err "Could not auto-install git (unknown package manager). Install git manually, then re-run."
+  fi
+fi
+
+# Node.js + npm. Auto-install (or upgrade) Node LTS if missing or too old.
+# cheerio/undici in the lockfile require Node >= 20.18.1; Debian 12's distro nodejs is
+# often 18.x, so an "exists" check is not enough — we check the version too.
+REQUIRED_NODE="20.18.1"
+ver_ge() { [ "$(printf '%s\n%s\n' "$2" "$1" | sort -V | head -n1)" = "$2" ]; } # $1 >= $2 ?
+node_ok() {
+  local b="$1" v
+  [ -n "$b" ] || return 1
+  v="$("$b" --version 2>/dev/null | sed 's/^v//')"
+  [ -n "$v" ] || return 1
+  ver_ge "$v" "$REQUIRED_NODE"
+}
 
 NODE_BIN="$(command -v node || true)"
 NPM_BIN="$(command -v npm || true)"
-if [ -z "$NODE_BIN" ] || [ -z "$NPM_BIN" ]; then
-  cat >&2 <<'EOF'
-ERROR: Node.js (with npm) was not found.
+if [ -z "$NPM_BIN" ] || ! node_ok "$NODE_BIN"; then
+  if [ -n "$NODE_BIN" ]; then
+    info "Node $("$NODE_BIN" --version 2>/dev/null) is missing or older than v${REQUIRED_NODE} — installing Node.js LTS via NodeSource"
+  else
+    info "Node.js/npm not found — attempting to install Node.js LTS"
+  fi
+  case "$PKG" in
+    apt)
+      # Debian/Ubuntu: NodeSource needs curl, ca-certificates and gnupg present first
+      # (a minimal Debian 12 'bookworm' install ships none of them).
+      export DEBIAN_FRONTEND=noninteractive
+      apt-get update -y
+      apt-get install -y ca-certificates curl gnupg
+      curl -fsSL https://deb.nodesource.com/setup_lts.x | bash -
+      apt-get install -y nodejs
+      ;;
+    dnf|yum)
+      command -v curl >/dev/null 2>&1 || pkg_install curl || true
+      curl -fsSL https://rpm.nodesource.com/setup_lts.x | bash -
+      pkg_install nodejs
+      ;;
+    pacman)
+      pacman -Sy --noconfirm nodejs npm
+      ;;
+    zypper)
+      zypper --non-interactive install -y nodejs npm
+      ;;
+    *)
+      cat >&2 <<EOF
+ERROR: Node.js >= v${REQUIRED_NODE} (with npm) was not found and could not be auto-installed.
 
-Install Node.js LTS first, for example on Debian/Ubuntu:
+Install Node.js LTS manually, for example on Debian/Ubuntu:
   curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -
   sudo apt-get install -y nodejs
 
 Then re-run this script.
 EOF
-  exit 1
+      exit 1
+      ;;
+  esac
+  NODE_BIN="$(command -v node || true)"
+  NPM_BIN="$(command -v npm || true)"
+  [ -n "$NODE_BIN" ] && [ -n "$NPM_BIN" ] || err "Node.js install appears to have failed. Install it manually and re-run."
+  node_ok "$NODE_BIN" || err "Installed Node $("$NODE_BIN" --version) is still older than v${REQUIRED_NODE}. Your CPU architecture may be unsupported by NodeSource (only amd64/arm64); install a newer Node manually."
 fi
 info "Using node: $NODE_BIN ($("$NODE_BIN" --version))"
 
@@ -110,10 +183,13 @@ RestartSec=5
 WantedBy=multi-user.target
 EOF
 
-# --- Enable & start -----------------------------------------------------------
-info "Enabling and starting ${SERVICE_NAME}"
+# --- Enable & (re)start -------------------------------------------------------
+# 'enable --now' won't restart an already-running service, so on a re-run (update)
+# the new code/deps/unit wouldn't take effect. Enable, then explicitly restart.
+info "Enabling and (re)starting ${SERVICE_NAME}"
 systemctl daemon-reload
-systemctl enable --now "${SERVICE_NAME}.service"
+systemctl enable "${SERVICE_NAME}.service"
+systemctl restart "${SERVICE_NAME}.service"
 
 sleep 2
 systemctl --no-pager --full status "${SERVICE_NAME}.service" || true
