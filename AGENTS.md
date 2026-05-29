@@ -68,7 +68,12 @@ copyleft without the author's explicit permission.
 ## Development environment
 
 - Windows 11 + PowerShell 7+, Node.js (CommonJS). Use native PowerShell commands.
-- Dependencies: `npm install`. Run: `node index.js` (HTTP API on port 3141).
+- Dependencies: **`npm ci`** (never `npm install`). The Roon API deps come from
+  GitHub; `npm install` rewrites the lockfile `resolved` URLs to `git+ssh://`, which
+  breaks installs on machines without SSH keys (e.g. headless Linux servers). The
+  lockfile is pinned to `git+https://` so `npm ci` works everywhere. If you add a
+  dependency, re-assert `git+https://` in `package-lock.json` before committing.
+  Run: `node index.js` (HTTP API on port 3141).
 - There are **no tests yet** — the TODO includes adding tests and CI.
 
 ## Issue / project conventions

@@ -11,9 +11,19 @@ A Roon Extension — a wishlist for albums you don't yet own in lossless quality
 
 ## Install
 
+Install dependencies with `npm ci` (**not** `npm install`):
+
 ```bash
-npm install
+npm ci
 ```
+
+> **Why `npm ci` and not `npm install`?** The Roon API packages are pulled from
+> GitHub. `npm install` rewrites the lockfile's `resolved` URLs to `git+ssh://`,
+> which fails on any machine without GitHub SSH keys (e.g. a headless Linux server).
+> `npm ci` installs exactly what the committed lockfile specifies — `git+https://`
+> URLs that work everywhere with no SSH setup. Use `npm ci` on every machine.
+> If you must add a dependency, run `npm install <pkg>`, then re-assert `git+https://`
+> in `package-lock.json`'s `resolved` fields before committing.
 
 ## Run
 
