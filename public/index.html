@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Roon Wishlist</title>
+  <style>
+    :root {
+      --bg: #1b1c1e;
+      --panel: #242629;
+      --panel-2: #2c2f33;
+      --border: #3a3d42;
+      --text: #e9eaec;
+      --muted: #9aa0a6;
+      --accent: #7a7cff;
+      --accent-2: #5d5fef;
+      --danger: #c0494b;
+      --ok: #3f9b54;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.45;
+    }
+    header {
+      padding: 22px 24px 16px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    header h1 { margin: 0; font-size: 24px; font-weight: 600; letter-spacing: 0.2px; }
+    header .sub { color: var(--muted); font-size: 13px; flex: 1 1 auto; }
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      font-size: 13px;
+      padding: 5px 12px;
+      border-radius: 999px;
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+      color: var(--muted);
+      white-space: nowrap;
+    }
+    .chip .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); }
+    .chip.paired { color: var(--text); }
+    .chip.paired .dot { background: var(--ok); box-shadow: 0 0 6px var(--ok); }
+    .chip.unpaired .dot { background: var(--danger); }
+    main { max-width: 820px; margin: 0 auto; padding: 24px; }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 18px 20px;
+      margin-bottom: 20px;
+    }
+    .card h2 { margin: 0 0 14px; font-size: 15px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.6px; }
+    .row { display: flex; gap: 10px; flex-wrap: wrap; }
+    input[type="text"] {
+      flex: 1 1 180px;
+      min-width: 0;
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 10px 12px;
+      border-radius: 8px;
+      font-size: 14px;
+    }
+    input[type="text"]:focus { outline: none; border-color: var(--accent); }
+    button {
+      background: var(--accent-2);
+      color: #fff;
+      border: none;
+      padding: 10px 16px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    button:hover { background: var(--accent); }
+    button:disabled { opacity: 0.5; cursor: default; }
+    button.secondary { background: var(--panel-2); border: 1px solid var(--border); color: var(--text); }
+    button.secondary:hover { background: #34373c; }
+    button.danger { background: transparent; color: var(--danger); border: 1px solid var(--danger); padding: 6px 12px; font-size: 13px; }
+    button.danger:hover { background: rgba(192,73,75,0.12); }
+    button.small { padding: 6px 12px; font-size: 13px; }
+    ul.list { list-style: none; margin: 0; padding: 0; }
+    ul.list li {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px 4px;
+      border-bottom: 1px solid var(--border);
+    }
+    ul.list li:last-child { border-bottom: none; }
+    .album-main { min-width: 0; }
+    .album-artist { font-weight: 600; }
+    .album-title { color: var(--muted); }
+    .album-meta { font-size: 12px; color: var(--muted); margin-top: 2px; }
+    .album-actions { display: flex; gap: 8px; flex-shrink: 0; }
+    .empty { color: var(--muted); padding: 8px 4px; }
+    .hint { font-size: 12px; color: var(--muted); margin: 0 0 10px; }
+    .results { margin-top: 12px; }
+    .results .store {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 1px 7px;
+      border-radius: 4px;
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+      margin-right: 8px;
+      color: var(--muted);
+    }
+    .results a { color: var(--accent); text-decoration: none; word-break: break-all; }
+    .results a:hover { text-decoration: underline; }
+    .results li { padding: 8px 4px; border-bottom: 1px solid var(--border); }
+    .results li:last-child { border-bottom: none; }
+    .toolbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .count { font-size: 13px; color: var(--muted); }
+    footer { text-align: center; color: var(--muted); font-size: 12px; padding: 8px 0 28px; }
+    footer a { color: var(--muted); }
+    /* Toasts */
+    #toasts { position: fixed; right: 16px; bottom: 16px; display: flex; flex-direction: column; gap: 8px; z-index: 50; }
+    .toast {
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--accent);
+      color: var(--text);
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-size: 13px;
+      max-width: 340px;
+      box-shadow: 0 6px 20px rgba(0,0,0,0.35);
+      animation: slidein 0.18s ease-out;
+    }
+    .toast.ok { border-left-color: var(--ok); }
+    .toast.err { border-left-color: var(--danger); }
+    @keyframes slidein { from { transform: translateY(8px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+    @media (max-width: 560px) {
+      .album-actions { flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Wishlist</h1>
+    <span class="sub">Roon extension &mdash; lossless album wishlist</span>
+    <span class="chip" id="status-chip"><span class="dot"></span><span id="status-text">Connecting…</span></span>
+  </header>
+
+  <main>
+    <section class="card">
+      <h2>Add an album</h2>
+      <p class="hint">Type an artist and album, then <strong>Add</strong> it directly, or <strong>Search stores</strong> to find it on Bandcamp/Qobuz first.</p>
+      <form id="add-form" class="row" autocomplete="off">
+        <input type="text" id="add-artist" placeholder="Artist" required />
+        <input type="text" id="add-title" placeholder="Album title" required />
+        <button type="submit">Add</button>
+        <button type="button" class="secondary" id="search-btn">Search stores</button>
+      </form>
+      <div class="results" id="search-results"></div>
+    </section>
+
+    <section class="card">
+      <h2>Library</h2>
+      <p class="hint">Local folder where your lossless files live (on the machine running this extension). Used by <em>Scan &amp; clean</em> to auto-remove albums you already own losslessly.</p>
+      <form id="lib-form" class="row" autocomplete="off">
+        <input type="text" id="lib-path" placeholder="/mnt/music" />
+        <button type="submit">Save path</button>
+        <button type="button" class="secondary" id="clean-btn">Scan &amp; clean now</button>
+      </form>
+    </section>
+
+    <section class="card">
+      <div class="toolbar">
+        <h2 style="margin:0;">Current wishlist</h2>
+        <div class="row" style="gap:8px;">
+          <span class="count" id="count"></span>
+          <button class="secondary small" id="refresh-btn">Reload</button>
+        </div>
+      </div>
+      <ul class="list" id="wishlist"></ul>
+    </section>
+  </main>
+
+  <footer>
+    <a href="https://github.com/Zesseth/RoonWishlist" target="_blank" rel="noopener">RoonWishlist on GitHub</a>
+  </footer>
+
+  <div id="toasts"></div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+
+    function toast(msg, kind) {
+      const el = document.createElement("div");
+      el.className = "toast" + (kind ? " " + kind : "");
+      el.textContent = msg;
+      $("toasts").appendChild(el);
+      setTimeout(() => {
+        el.style.transition = "opacity 0.3s";
+        el.style.opacity = "0";
+        setTimeout(() => el.remove(), 300);
+      }, 3200);
+    }
+
+    async function api(path, opts) {
+      const res = await fetch(path, opts);
+      const text = await res.text();
+      let data = null;
+      try { data = text ? JSON.parse(text) : null; } catch { data = null; }
+      if (!res.ok) {
+        const err = (data && data.error) || ("HTTP " + res.status);
+        throw new Error(err);
+      }
+      return data;
+    }
+
+    function esc(s) {
+      return String(s == null ? "" : s)
+        .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    }
+
+    async function loadStatus() {
+      try {
+        const s = await api("/status");
+        const chip = $("status-chip");
+        if (s.paired) {
+          chip.className = "chip paired";
+          $("status-text").textContent = "Paired with " + (s.core || "Roon");
+        } else {
+          chip.className = "chip unpaired";
+          $("status-text").textContent = "Not paired with Roon";
+        }
+      } catch {
+        $("status-chip").className = "chip unpaired";
+        $("status-text").textContent = "Extension offline";
+      }
+    }
+
+    async function loadSettings() {
+      try {
+        const s = await api("/settings");
+        if (document.activeElement !== $("lib-path")) {
+          $("lib-path").value = s.music_library_path || "";
+        }
+      } catch { /* ignore */ }
+    }
+
+    async function loadWishlist() {
+      try {
+        const items = await api("/wishlist");
+        renderWishlist(items || []);
+      } catch (e) {
+        toast("Failed to load wishlist: " + e.message, "err");
+      }
+    }
+
+    function renderWishlist(items) {
+      const ul = $("wishlist");
+      ul.innerHTML = "";
+      $("count").textContent = items.length + (items.length === 1 ? " album" : " albums");
+      if (!items.length) {
+        ul.innerHTML = '<li class="empty">Wishlist is empty. Add an album above.</li>';
+        return;
+      }
+      // Newest first.
+      const sorted = items.slice().sort((a, b) => String(b.addedAt || "").localeCompare(String(a.addedAt || "")));
+      for (const a of sorted) {
+        const li = document.createElement("li");
+        const added = a.addedAt ? new Date(a.addedAt).toLocaleDateString() : "";
+        li.innerHTML =
+          '<div class="album-main">' +
+            '<div><span class="album-artist">' + esc(a.artist) + '</span> ' +
+            '<span class="album-title">&mdash; ' + esc(a.title) + '</span></div>' +
+            (added ? '<div class="album-meta">added ' + esc(added) + '</div>' : '') +
+            '<div class="results" data-results></div>' +
+          '</div>' +
+          '<div class="album-actions">' +
+            '<button class="secondary small" data-search>Find in stores</button>' +
+            '<button class="danger" data-remove>Remove</button>' +
+          '</div>';
+        li.querySelector("[data-remove]").addEventListener("click", () => removeAlbum(a, li));
+        li.querySelector("[data-search]").addEventListener("click", (ev) => searchInto(li.querySelector("[data-results]"), a.artist, a.title, ev.target));
+        ul.appendChild(li);
+      }
+    }
+
+    async function addAlbum(artist, title) {
+      const r = await api("/wishlist/add", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ artist, title }),
+      });
+      if (r && r.added) {
+        toast("Added: " + artist + " — " + title, "ok");
+      } else {
+        toast("Already on the wishlist.", "");
+      }
+      await loadWishlist();
+    }
+
+    async function removeAlbum(a, li) {
+      const btn = li.querySelector("[data-remove]");
+      btn.disabled = true;
+      try {
+        await api("/wishlist/remove", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ artist: a.artist, title: a.title }),
+        });
+        toast("Removed: " + a.artist + " — " + a.title, "ok");
+        await loadWishlist();
+      } catch (e) {
+        btn.disabled = false;
+        toast("Remove failed: " + e.message, "err");
+      }
+    }
+
+    // Search the stores and render results into `box`. If addable is true, each
+    // result gets an "Add" button (used by the top search box).
+    async function searchInto(box, artist, title, btn, addable) {
+      if (btn) btn.disabled = true;
+      box.innerHTML = '<div class="album-meta">Searching Bandcamp &amp; Qobuz…</div>';
+      try {
+        const params = new URLSearchParams({ artist: artist || "", title: title || "" });
+        const results = await api("/search?" + params.toString());
+        if (!results || !results.length) {
+          box.innerHTML = '<div class="album-meta">No store results found.</div>';
+        } else {
+          const list = document.createElement("ul");
+          list.className = "list";
+          for (const r of results) {
+            const item = document.createElement("li");
+            const left = document.createElement("div");
+            left.style.minWidth = "0";
+            left.innerHTML =
+              '<span class="store">' + esc(r.store) + '</span>' +
+              '<a href="' + esc(r.url) + '" target="_blank" rel="noopener">' +
+              esc(r.artist || artist) + ' &mdash; ' + esc(r.title || title) + '</a>';
+            item.appendChild(left);
+            if (addable) {
+              const add = document.createElement("button");
+              add.className = "secondary small";
+              add.textContent = "Add";
+              add.addEventListener("click", async () => {
+                add.disabled = true;
+                try { await addAlbum(r.artist || artist, r.title || title); }
+                catch (e) { add.disabled = false; toast("Add failed: " + e.message, "err"); }
+              });
+              item.appendChild(add);
+            }
+            list.appendChild(item);
+          }
+          box.innerHTML = "";
+          box.appendChild(list);
+        }
+      } catch (e) {
+        box.innerHTML = '<div class="album-meta" style="color:var(--danger)">Search failed: ' + esc(e.message) + '</div>';
+      } finally {
+        if (btn) btn.disabled = false;
+      }
+    }
+
+    $("add-form").addEventListener("submit", async (ev) => {
+      ev.preventDefault();
+      const artist = $("add-artist").value.trim();
+      const title = $("add-title").value.trim();
+      if (!artist || !title) return;
+      try {
+        await addAlbum(artist, title);
+        $("add-artist").value = "";
+        $("add-title").value = "";
+        $("search-results").innerHTML = "";
+        $("add-artist").focus();
+      } catch (e) {
+        toast("Add failed: " + e.message, "err");
+      }
+    });
+
+    $("search-btn").addEventListener("click", () => {
+      const artist = $("add-artist").value.trim();
+      const title = $("add-title").value.trim();
+      if (!artist && !title) { toast("Type an artist and/or album to search.", ""); return; }
+      searchInto($("search-results"), artist, title, $("search-btn"), true);
+    });
+
+    $("lib-form").addEventListener("submit", async (ev) => {
+      ev.preventDefault();
+      const p = $("lib-path").value.trim();
+      try {
+        const r = await api("/settings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ music_library_path: p }),
+        });
+        $("lib-path").value = r.music_library_path || "";
+        toast("Library path saved.", "ok");
+      } catch (e) {
+        toast("Save failed: " + e.message, "err");
+      }
+    });
+
+    $("refresh-btn").addEventListener("click", () => { loadWishlist(); loadStatus(); });
+
+    $("clean-btn").addEventListener("click", async () => {
+      const btn = $("clean-btn");
+      btn.disabled = true;
+      try {
+        const r = await api("/check-lossless", { method: "POST" });
+        const removed = (r && r.removedFromWishlist) || [];
+        if (removed.length) {
+          toast("Removed " + removed.length + " album(s) found locally.", "ok");
+        } else {
+          toast("No matching lossless albums found locally.", "");
+        }
+        await loadWishlist();
+      } catch (e) {
+        toast("Scan failed: " + e.message, "err");
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
+    // Initial load + light polling so the status chip stays current.
+    loadStatus();
+    loadSettings();
+    loadWishlist();
+    setInterval(loadStatus, 10000);
+  </script>
+</body>
+</html>

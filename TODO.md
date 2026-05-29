@@ -37,6 +37,13 @@ Last updated: 2026-05-29
 - [x] **https-only dependency install** — switched Roon deps + lockfile `resolved`
   URLs from `git+ssh` to `git+https`. Verified `npm ci` succeeds with SSH disabled
   (mimics a headless Linux server). The install script uses `npm ci`.
+- [x] **#5 Web UI for wishlist management** — `public/index.html` (vanilla, no external
+  CDNs) served by the existing HTTP server at `http://<host>:3141`: list (newest first),
+  add, remove, search-and-add from Bandcamp/Qobuz results, set the music library path,
+  run scan & clean, and a live "paired with Roon core" status chip. New endpoints:
+  `GET /status`, `GET /settings`, `POST /settings`. Toast notifications; path traversal
+  guarded. Documents the Roon Browse-API limitation (extensions can't add to the Browse
+  sidebar; only the Settings screen + this web UI are available).
 
 ---
 
@@ -76,10 +83,10 @@ Each item maps to a GitHub issue.
 - [ ] **#4 Harden the data layer.** `data/wishlist.json`: atomic writes, stable
   schema with item IDs, dedup edge cases, migration/versioning.
 
-- [ ] **#5 Web UI for wishlist management.** *Optional / deprioritized* — the user
-  prefers Roon's native UI (#13). Keep only as a nice-to-have. Roon's settings UI is
-  limited → a small web frontend on top of the HTTP API (list, add, remove, search,
-  manual check) if ever wanted.
+- [ ] **#5 Web UI for wishlist management.** *Done — see Done section.* A vanilla web
+  frontend (`public/index.html`) is served on the HTTP API: list, add, remove, search,
+  manual library scan. Future polish (auth, responsive tweaks, library picker) can build
+  on it; richer Roon-side album picking still depends on #1.
 
 - [ ] **#6 Unit tests.** `wishlist` (CRUD/dedup), `lossless_checker` (matching +
   auto-remove, mocked fs), `search` (mocked HTTP). Pick a lightweight runner

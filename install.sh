@@ -201,6 +201,9 @@ Done. RoonWishlist is installed and running.
 Next steps:
   1. Open Roon -> Settings -> Extensions and confirm "Wishlist" is enabled/paired.
   2. Open its settings to set the "Music library path" and use the Actions menu.
+  3. Open the web UI in a browser: http://${HTTP_HOST}:${HTTP_PORT}
+     (to reach it from another computer, re-run with HTTP_HOST=0.0.0.0 and use
+      http://<this-server-ip>:${HTTP_PORT} — see the README security note.)
 
 Useful commands:
   systemctl status ${SERVICE_NAME}        # service state
@@ -209,5 +212,5 @@ Useful commands:
 
 Install dir:  ${INSTALL_DIR}
 Data dir:     ${DATA_DIR}
-HTTP API:     http://${HTTP_HOST}:${HTTP_PORT}  (local control API)
+Web UI / API: http://${HTTP_HOST}:${HTTP_PORT}
 EOF
