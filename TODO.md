@@ -1,80 +1,83 @@
-# TODO — RoonWishlist (agentin työlista)
+# TODO — RoonWishlist (agent working list)
 
-> Tämä on **agentin oma työmuisti**. Ylläpidä jatkuvasti (ks. `AGENTS.md`).
-> Päivitä tilat heti kun status muuttuu, ja kirjaa esteet + seuraava askel.
+> This is the **agent's working memory**. Keep it up to date continuously (see `AGENTS.md`).
+> Update statuses as soon as they change, and record blockers + the next step.
 
-**Tilamerkinnät:** `[ ]` tekemättä · `[~]` kesken · `[x]` valmis · `[!]` estynyt
+**Status markers:** `[ ]` not started · `[~]` in progress · `[x]` done · `[!]` blocked
 
-Viimeksi päivitetty: 2026-05-29
-
----
-
-## Valmis (done)
-
-- [x] **Initial commit & push** — koodi viety `Zesseth/RoonWishlist` (main).
-- [x] **Lisensointi** — `AGPL-3.0-or-later` (`LICENSE`) + Roon-erityislupa
-  credittejä vastaan (`ADDITIONAL-GRANTS.md`). `package.json` `license`-kenttä
-  päivitetty. README + AGENTS.md viittaavat.
-- [x] **Repo julkiseksi** — `Zesseth/RoonWishlist` asetettu publiciksi.
-- [x] **`main`-branch suojattu** — suorat pushit estetty, muutokset PR:ien kautta;
-  omistaja säilyttää kontrollin.
-- [x] **AGENTS.md** — projektikohtainen ohjeistus (henkilökohtainen projekti,
-  TODO.md:n ylläpitovelvoite, työnkulkusäännöt).
+Last updated: 2026-05-29
 
 ---
 
-## Backlog — varsinainen kesken jäänyt toteutus
+## Done
 
-Kukin kohta vastaa GitHub-issueta (numerot lisätään kun issuet on luotu).
-
-- [ ] **#? Roon-kirjastointegraatio (CORE).** Tällä hetkellä extension tarjoaa
-  vain settings + HTTP API:n; ei oikeaa Roon-integraatiota. Lisää
-  `node-roon-api-browse` (ja tarvittaessa `-transport`), jotta:
-  - käyttäjä voi lisätä albumin wishlistiin suoraan Roonista, ja
-  - kirjaston luku tapahtuu Roonin kautta, ei pelkän lokaalin polun perusteella.
-  Tämä on pahiten kesken oleva osa.
-
-- [ ] **#? Automaattinen ajastettu lossless-tarkistus.** Nyt vain manuaalinen
-  `POST /check-lossless`. Lisää ajastin (esim. konfiguroitava intervalli) ja/tai
-  tiedostojärjestelmän watch, joka ajaa `checkAndClean`-funktion automaattisesti.
-
-- [ ] **#? Hakuproviderien vakautus (Bandcamp/Qobuz).** `src/search.js` perustuu
-  HTML-scrapeen; Qobuz-selektorit ovat arvauksia ja hauras. Selvitä
-  vakaammat rajapinnat/strategiat, lisää retry/timeout/caching ja virheenkäsittely.
-
-- [ ] **#? Datakerroksen kovennus.** `data/wishlist.json`: atominen kirjoitus,
-  vakaa skeema + item-id:t, dedup-reunatapaukset, mahdollinen migraatio.
-
-- [ ] **#? Web-käyttöliittymä wishlistin hallintaan.** Roonin settings-UI on
-  rajallinen → tarjoa pieni frontti HTTP-API:n päälle (listaus, lisäys, poisto,
-  haku, manuaalinen check).
-
-- [ ] **#? Testit.** Yksikkötestit: `wishlist` (CRUD/dedup), `lossless_checker`
-  (matchaus + auto-remove, mockattu fs), `search` (mockattu HTTP). Valitse kevyt
-  testirunner (esim. node:test) ja lisää `npm test`.
-
-- [ ] **#? CI (GitHub Actions).** Workflow: asennus + lint + testit PR:issä ja
-  mainiin mergeissä. Vaatii `workflow`-scopen (on jo tokenilla).
-
-- [ ] **#? Konfigurointi & lokitus.** Konfiguroitava portti, log-tasot,
-  ympäristömuuttuja-/asetustuki, siisti virhelokitus.
-
-- [ ] **#? Jakelu & dokumentaatio.** Ohjeet asennukseen Roon-extensioksi,
-  versiointi/release-prosessi, mahdollinen extension-manager-merkintä.
+- [x] **Initial commit & push** — code pushed to `Zesseth/RoonWishlist` (main).
+- [x] **Licensing** — `AGPL-3.0-or-later` (`LICENSE`) + Roon special grant in
+  exchange for attribution (`ADDITIONAL-GRANTS.md`). `package.json` `license` field
+  updated. README + AGENTS.md reference it.
+- [x] **Repo made public** — `Zesseth/RoonWishlist` set to public.
+- [x] **`main` branch protected** — direct pushes blocked (PRs required), no force
+  pushes / deletions, conversation resolution required; `enforce_admins` left off so
+  the owner keeps control.
+- [x] **AGENTS.md** — project-specific guidance (public repo → English, personal
+  project, TODO.md maintenance policy, workflow rules).
+- [x] **English-only repo content** — README, AGENTS.md, TODO.md translated to English.
+- [x] **GitHub plan created** — milestone "v1.0 - Complete Roon extension", labels,
+  issues #1–#9, and epic/tracking issue #10 (project plan).
 
 ---
 
-## Esteet & huomiot (blockers / notes)
+## Backlog — the actual unfinished implementation
 
-- **GitHub Projects (v2) -board:** nykyiseltä `gh`-tokenilta puuttuu `project`-scope
-  (scopet: gist, read:org, repo, workflow). Boardin luonti vaatii käyttäjältä:
-  `gh auth refresh -s project -s read:project`. Siihen asti suunnitelma elää
-  epic-/tracking-issuena + milestonena.
+Each item maps to a GitHub issue.
+
+- [ ] **#1 Roon library & browse integration (CORE).** The extension currently only
+  exposes settings + an HTTP API; there is no real Roon integration. Add
+  `node-roon-api-browse` (and `-transport` if needed) so the user can add albums to
+  the wishlist directly from Roon, and library lookups can use the Roon library
+  rather than only a raw local path. **Most significant unfinished piece.**
+
+- [ ] **#2 Automatic scheduled lossless check.** Currently only a manual
+  `POST /check-lossless`. Add a configurable interval and/or filesystem watch that
+  runs `checkAndClean` automatically.
+
+- [ ] **#3 Harden Bandcamp/Qobuz search providers.** `src/search.js` relies on HTML
+  scraping; Qobuz selectors are guesses and fragile. Investigate more stable APIs,
+  add retry/timeout/caching and error handling.
+
+- [ ] **#4 Harden the data layer.** `data/wishlist.json`: atomic writes, stable
+  schema with item IDs, dedup edge cases, migration/versioning.
+
+- [ ] **#5 Web UI for wishlist management.** Roon's settings UI is limited → serve a
+  small frontend on top of the HTTP API (list, add, remove, search, manual check).
+
+- [ ] **#6 Unit tests.** `wishlist` (CRUD/dedup), `lossless_checker` (matching +
+  auto-remove, mocked fs), `search` (mocked HTTP). Pick a lightweight runner
+  (e.g. node:test) and wire up `npm test`.
+
+- [ ] **#7 CI (GitHub Actions).** Workflow: install + lint + tests on PRs and merges
+  to main. Requires the `workflow` scope (already present on the token).
+
+- [ ] **#8 Configuration & logging.** Configurable port, log levels, environment
+  variable / settings support, clean error logging.
+
+- [ ] **#9 Distribution & documentation.** Install instructions as a Roon extension,
+  versioning/release process, optional extension-manager entry.
 
 ---
 
-## Työohje agentille
+## Blockers & notes
 
-1. Tee työ feature-branchissa, avaa PR mainiin (main on suojattu).
-2. Älä committaa/pushaa ilman käyttäjän lupaa; ei AI-tekijyysmerkintöjä.
-3. Päivitä tämä tiedosto + vastaava GitHub-issue jokaisen edistysaskeleen jälkeen.
+- **GitHub Projects (v2) board:** the current `gh` token lacks the `project` scope
+  (scopes: gist, read:org, repo, workflow). Creating a board requires the user to run:
+  `gh auth refresh -s project -s read:project`. Until then the plan lives as the
+  epic/tracking issue #10 + the milestone.
+
+---
+
+## Agent working instructions
+
+1. Do work on a feature branch and open a PR to main (main is protected).
+2. Don't commit/push without the user's permission; no AI-authorship markers.
+3. Everything committed is in English (public repo).
+4. Update this file + the matching GitHub issue after every step of progress.

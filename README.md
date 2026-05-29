@@ -1,61 +1,62 @@
 # RoonWishlist
 
-Roon Extension — ostoslista albumeille joita ei vielä omista häviöttömänä.
+A Roon Extension — a wishlist for albums you don't yet own in lossless quality.
 
-## Toiminta
+## Features
 
-- **Wishlist**: Lisää albumeja ostoslistaan Roonista
-- **Haku**: Etsii albumin Bandcampilta ja Qobuzilta
-- **Auto-clean**: Kun lossless-tiedostot löytyvät lokaalikirjastosta, albumi poistuu automaattisesti ostoslistasta
+- **Wishlist**: Add albums to a buy-list from Roon
+- **Search**: Looks up the album on Bandcamp and Qobuz
+- **Auto-clean**: When lossless files appear in your local library, the album is
+  automatically removed from the wishlist
 
-## Asennus
+## Install
 
 ```bash
 npm install
 ```
 
-## Käynnistys
+## Run
 
 ```bash
 node index.js
 ```
 
-Käynnistyksen jälkeen:
-1. Avaa Roon → Settings → Extensions → **Wishlist** → Enable
-2. Aseta Settings-kohdasta `Music library path` (esim. `D:\Music`)
+After starting:
+1. Open Roon → Settings → Extensions → **Wishlist** → Enable
+2. Set the `Music library path` in Settings (e.g. `D:\Music`)
 
 ## HTTP API (port 3141)
 
-| Metodi | Polku | Kuvaus |
-|--------|-------|--------|
-| GET | `/wishlist` | Hae kaikki wishlist-albumit |
-| POST | `/wishlist/add` | Lisää albumi `{"artist":"...","title":"..."}` |
-| POST | `/wishlist/remove` | Poista albumi `{"artist":"...","title":"..."}` |
-| GET | `/search?artist=&title=` | Hae ostoslinkit Bandcampilta/Qobuzilta |
-| POST | `/check-lossless` | Tarkista kirjasto ja siivoa wishlist |
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/wishlist` | Get all wishlist albums |
+| POST | `/wishlist/add` | Add an album `{"artist":"...","title":"..."}` |
+| POST | `/wishlist/remove` | Remove an album `{"artist":"...","title":"..."}` |
+| GET | `/search?artist=&title=` | Get buy links from Bandcamp/Qobuz |
+| POST | `/check-lossless` | Check the library and clean up the wishlist |
 
-## Projektirakenne
+## Project structure
 
 ```
 index.js              ← Roon extension + HTTP API
 src/
   wishlist.js         ← Wishlist CRUD (data/wishlist.json)
-  search.js           ← Bandcamp & Qobuz -haku
-  lossless_checker.js ← Kirjaston tarkistus, auto-remove
+  search.js           ← Bandcamp & Qobuz search
+  lossless_checker.js ← Library check, auto-remove
 data/
-  wishlist.json       ← (luodaan automaattisesti, ei commitoida)
+  wishlist.json       ← (created automatically, not committed)
 ```
 
-## Lisenssi
+## License
 
-Lisensoitu **GNU Affero General Public License v3.0 tai myöhempi**
-(`AGPL-3.0-or-later`) — ks. [`LICENSE`](./LICENSE).
+Licensed under the **GNU Affero General Public License v3.0 or later**
+(`AGPL-3.0-or-later`) — see [`LICENSE`](./LICENSE).
 
-AGPL on vahva copyleft: jos ajat muokattua versiota ja tarjoat sen käyttäjille
-verkon yli, sinun on julkaistava muokatun version täydellinen lähdekoodi näille
-käyttäjille (AGPL-3.0 §13). Tarkoitus on, että lähdekoodi pysyy aina avoimena.
+The AGPL is a strong copyleft license: if you run a modified version and offer it to
+users over a network, you must make the complete source code of your modified version
+available to those users (AGPL-3.0 §13). The intent is that the source always stays
+open.
 
-**Erityislupa Roon Labsille:** Roon Labs saa ottaa tämän käyttöön osana Roonia
-antamalla asianmukaiset creditit tekijälle ja projektille. Ks. tarkat ehdot:
+**Special grant for Roon Labs:** Roon Labs may adopt this as part of Roon by giving
+appropriate credit to the author and the project. See the exact terms in
 [`ADDITIONAL-GRANTS.md`](./ADDITIONAL-GRANTS.md).
-

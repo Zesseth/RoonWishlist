@@ -1,71 +1,81 @@
 # AGENTS.md — RoonWishlist
 
-Tämä tiedosto ohjaa Copilot CLI:tä / AI-agenttia tässä repossa. Se **täydentää**
-globaalia `~/AGENTS.md`-ohjeistusta eikä korvaa sen turvallisuussääntöjä.
+This file guides Copilot CLI / AI agents working in this repo. It **complements** the
+global `~/AGENTS.md` instructions and does not override their safety rules.
 
-## Projektin luonne — HENKILÖKOHTAINEN
+## Public repository — work in English
 
-> **Tämä on henkilökohtainen projekti, EI Zuren työprojekti.**
-> Repo sijaitsee polussa `C:\Repos\Omat\RoonWishlist`. Globaalin ohjeistuksen
-> mukaisesti `C:\Repos\Omat`-polun projekteihin **ei sovelleta** Zuren
-> default-ohjeita (Zure-wiki AI-defaultit, Zure-group-organisaatio,
-> NDA-oletukset asiakasdatasta jne.).
+> **This is a PUBLIC repository (`github.com/Zesseth/RoonWishlist`).**
+> Therefore **all repository content is written in English**: code, comments,
+> commit messages, branch names, issues, pull requests, docs (`README.md`,
+> `TODO.md`, this file), and any other committed artifact. Do not commit
+> Finnish-language content. (You may still converse with the user in Finnish in
+> chat, but everything that lands in the repo or on GitHub is English.)
+
+## Project nature — PERSONAL
+
+> **This is a personal project, NOT a Zure work project.**
+> The repo lives at `C:\Repos\Omat\RoonWishlist`. Per the global instructions,
+> projects under `C:\Repos\Omat` are **not** subject to Zure defaults (Zure wiki
+> AI defaults, Zure-group organization, NDA assumptions about client data, etc.).
 >
-> - GitHub-omistaja: henkilökohtainen tili **`Zesseth`** (`github.com/Zesseth/RoonWishlist`).
-> - Ei asiakasdataa, ei NDA-materiaalia.
-> - Tekijä / copyright: Jesse Lahtela (@Zesseth).
+> - GitHub owner: personal account **`Zesseth`** (`github.com/Zesseth/RoonWishlist`).
+> - No client data, no NDA material.
+> - Author / copyright: Jesse Lahtela (@Zesseth).
 
-## Mikä tämä on
+## What this is
 
-Roon Extension (Node.js, CommonJS): ostoslista albumeille, joita ei vielä omista
-häviöttömänä. Hakee ostolinkit Bandcampista/Qobuzista ja siivoaa wishlistiä
-automaattisesti, kun lossless-tiedostot löytyvät lokaalikirjastosta.
+A Roon Extension (Node.js, CommonJS): a wishlist for albums not yet owned in lossless
+quality. It fetches buy links from Bandcamp/Qobuz and automatically cleans the
+wishlist when lossless files appear in the local library.
 
-- `index.js` — Roon extension (settings/status) + lokaali HTTP API (portti 3141)
+- `index.js` — Roon extension (settings/status) + local HTTP API (port 3141)
 - `src/wishlist.js` — wishlist CRUD (`data/wishlist.json`)
-- `src/search.js` — Bandcamp & Qobuz -haku (tällä hetkellä HTML-scrape)
-- `src/lossless_checker.js` — kirjaston tarkistus ja auto-remove
+- `src/search.js` — Bandcamp & Qobuz search (currently HTML scraping)
+- `src/lossless_checker.js` — library check and auto-remove
 
-## Lisenssi
+## License
 
-`AGPL-3.0-or-later` (`LICENSE`) + erityislupa Roon Labsille credittejä vastaan
-(`ADDITIONAL-GRANTS.md`). Älä vaihda lisenssiä tai löysennä copyleftiä ilman
-tekijän eksplisiittistä lupaa.
+`AGPL-3.0-or-later` (`LICENSE`) plus a special grant to Roon Labs in exchange for
+attribution (`ADDITIONAL-GRANTS.md`). Do not change the license or weaken the
+copyleft without the author's explicit permission.
 
-## TODO.md:n ylläpito — PAKOLLINEN
+## TODO.md maintenance — REQUIRED
 
-> **`TODO.md` repon juuressa on agentin oma työlista. Sitä PITÄÄ ylläpitää
-> jatkuvasti työn edetessä.**
+> **`TODO.md` in the repo root is the agent's working list. It MUST be kept up to
+> date as work progresses.**
 >
-> - Päivitä tehtävän tila (`[ ]` → `[~]` kesken → `[x]` valmis) heti kun status muuttuu.
-> - Jos ongelma estää etenemisen, **lisää TODO.md:hen merkintä** siitä mikä esti,
->   miksi, ja mikä on seuraava askel / kiertotie — älä jätä tietoa vain sessioon.
-> - Jos suunnitelma muuttuu (uusi tieto, este, scope-muutos), kirjaa muutos
->   TODO.md:hen ennen kuin jatkat toteutusta.
-> - Pidä TODO.md ja GitHub-issuet synkassa: kun issue suljetaan, päivitä TODO.md.
-> - TODO.md on tarkoitettu agentin muistiksi — kirjoita sinne riittävästi
->   kontekstia, että työ voi jatkua myöhemmässä sessiossa ilman uudelleentutkimista.
+> - Update a task's status (`[ ]` → `[~]` in progress → `[x]` done) as soon as it changes.
+> - If a problem blocks progress, **add a note to TODO.md** describing what blocked
+>   it, why, and the next step / workaround — don't leave that information only in
+>   the chat session.
+> - If the plan changes (new info, blocker, scope change), record it in TODO.md
+>   before continuing implementation.
+> - Keep TODO.md and the GitHub issues in sync: when an issue closes, update TODO.md.
+> - TODO.md is the agent's memory — write enough context that work can continue in a
+>   later session without re-investigating.
 
-## Työnkulkusäännöt (globaalit + projektikohtaiset)
+## Workflow rules (global + project-specific)
 
-- **`git add`** automaattisesti ok. **`git commit` ja `git push` vain käyttäjän
-  eksplisiittisellä luvalla** (globaali sääntö pätee). Muistuta tarkastamaan
-  `git diff --staged` ennen commitia.
-- **Ei AI-tekijyysmerkintöjä** commiteihin, PR:iin tai tiedostoihin
-  (ei `Co-authored-by: Copilot`, ei "Generated by AI" tms.). Tekijä on käyttäjä.
-- **`main`-branch on suojattu** — muutokset menevät PR:ien kautta. Älä pushaa
-  suoraan mainiin; tee feature-branch ja avaa PR.
-- Vastaa käyttäjälle **suomeksi**.
+- **`git add`** automatically is fine. **`git commit` and `git push` only with the
+  user's explicit permission** (global rule applies). Remind the user to review
+  `git diff --staged` before committing.
+- **No AI-authorship markers** in commits, PRs or files (no `Co-authored-by: Copilot`,
+  no "Generated by AI", etc.). The author is the user.
+- **The `main` branch is protected** — changes go through pull requests. Don't push
+  directly to main; create a feature branch and open a PR.
 
-## Kehitysympäristö
+## Development environment
 
-- Windows 11 + PowerShell 7+, Node.js (CommonJS). Käytä PowerShell-natiiveja komentoja.
-- Riippuvuudet: `npm install`. Käynnistys: `node index.js` (HTTP API portti 3141).
-- Testejä **ei vielä ole** — TODO sisältää testien ja CI:n lisäämisen.
+- Windows 11 + PowerShell 7+, Node.js (CommonJS). Use native PowerShell commands.
+- Dependencies: `npm install`. Run: `node index.js` (HTTP API on port 3141).
+- There are **no tests yet** — the TODO includes adding tests and CI.
 
-## Issue-/projektikäytäntö
+## Issue / project conventions
 
-- Issuet ja projektisuunnitelma elävät GitHubissa (`Zesseth/RoonWishlist`).
-- Epic / tracking-issue toimii ylätason suunnitelmana; yksittäiset työt omina issueinaan.
-- GitHub Projects (v2) -boardin luonti vaatii `gh auth refresh -s project -s read:project`
-  (nykyiseltä tokenilta puuttuu `project`-scope).
+- Issues and the project plan live on GitHub (`Zesseth/RoonWishlist`).
+- The epic / tracking issue (#10) acts as the high-level project plan; individual
+  pieces of work are their own issues.
+- Creating a GitHub Projects (v2) board requires
+  `gh auth refresh -s project -s read:project` (the current token lacks the
+  `project` scope).
