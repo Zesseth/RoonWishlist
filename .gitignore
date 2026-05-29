@@ -1,0 +1,4 @@
+node_modules/
+data/wishlist.json
+*.log
+.env

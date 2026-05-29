@@ -1,0 +1,28 @@
+{
+  "name": "roon-wishlist",
+  "version": "0.1.0",
+  "description": "Roon extension: wishlist for albums to buy, with Bandcamp/Qobuz search and lossless auto-clean",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Zesseth/RoonWishlist.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/Zesseth/RoonWishlist/issues"
+  },
+  "homepage": "https://github.com/Zesseth/RoonWishlist#readme",
+  "dependencies": {
+    "axios": "^1.16.1",
+    "cheerio": "^1.2.0",
+    "node-roon-api": "github:RoonLabs/node-roon-api",
+    "node-roon-api-settings": "github:RoonLabs/node-roon-api-settings",
+    "node-roon-api-status": "github:RoonLabs/node-roon-api-status"
+  }
+}
