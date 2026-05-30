@@ -5,12 +5,30 @@
 
 **Status markers:** `[ ]` not started · `[~]` in progress · `[x]` done · `[!]` blocked
 
-Last updated: 2026-05-29
+Last updated: 2026-05-30
 
 ---
 
 ## Done
 
+- [x] **Language/tech assessment + runtime optimizations** — confirmed Node.js is the
+  right language (official Roon SDK; I/O-bound, event-driven workload) and documented the
+  decision + performance methods in `AGENTS.md` ("Technology & performance choices").
+  Implemented, keeping current functionality (verified live against Roon core
+  "ParadoxRoon" on a test port):
+  - `src/lossless_checker.js` now async (`fs/promises`), sequential/low-I/O scan — no
+    longer blocks the event loop on large libraries.
+  - `scanInProgress` guard prevents overlapping scans (Roon action + HTTP `/check-lossless`,
+    which now returns `409` if a scan is running); the Roon settings action shows
+    "Scanning library…" and reports the result via status without blocking the callback.
+  - `src/wishlist.js`: mtime-keyed in-memory read cache + atomic writes (temp + rename).
+  - `src/search.js`: dropped the `axios` dependency for Node's global `fetch`
+    (AbortController timeout, `resp.ok` check). Lockfile regenerated; Roon `resolved`
+    URLs re-asserted to `git+https`; `npm ci` verified.
+  - HTTP JSON POST bodies size-capped (64 KB → `413`).
+  - systemd unit (template + `install.sh`): `Nice`/`CPUWeight`/best-effort IO priority,
+    soft `MemoryHigh`, `--max-old-space-size=128`, minimal hardening — quiet neighbour
+    to the music server.
 - [x] **Initial commit & push** — code pushed to `Zesseth/RoonWishlist` (main).
 - [x] **Licensing** — `AGPL-3.0-or-later` (`LICENSE`) + Roon special grant in
   exchange for attribution (`ADDITIONAL-GRANTS.md`). `package.json` `license` field
@@ -77,8 +95,9 @@ Each item maps to a GitHub issue.
   extension API exposes (browse/transport) before implementing.
 
 - [ ] **#3 Harden Bandcamp/Qobuz search providers.** `src/search.js` relies on HTML
-  scraping; Qobuz selectors are guesses and fragile. Investigate more stable APIs,
-  add retry/timeout/caching and error handling.
+  scraping; Qobuz selectors are guesses and fragile. (Done so far: migrated off `axios`
+  to native `fetch` with an AbortController timeout + `resp.ok` check.) Still TODO:
+  investigate more stable APIs, add retry/caching and richer error handling.
 
 - [ ] **#4 Harden the data layer.** `data/wishlist.json`: atomic writes, stable
   schema with item IDs, dedup edge cases, migration/versioning.

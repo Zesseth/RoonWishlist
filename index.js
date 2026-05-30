@@ -9,6 +9,8 @@ const lossless = require("./src/lossless_checker");
 
 let roon, mysettings, svc_status;
 let pairedCore = null;
+// Guards against two library scans running at once (Roon settings action + HTTP API).
+let scanInProgress = false;
 
 const roonApp = new RoonApi({
   extension_id: "com.zesseth.roon-wishlist",
@@ -88,7 +90,7 @@ function make_layout(settings) {
   return l;
 }
 
-function performAction(values) {
+async function performAction(values) {
   const action = values.action || "none";
   const artist = (values.artist || "").trim();
   const title = (values.title || "").trim();
@@ -105,8 +107,14 @@ function performAction(values) {
   }
   if (action === "clean") {
     if (!mysettings.music_library_path) return "Set the music library path first";
-    const removed = lossless.checkAndClean(mysettings.music_library_path, wishlist);
-    return `Refresh & clean done: removed ${removed.length} album(s) found locally`;
+    if (scanInProgress) return "A library scan is already running";
+    scanInProgress = true;
+    try {
+      const removed = await lossless.checkAndClean(mysettings.music_library_path, wishlist);
+      return `Refresh & clean done: removed ${removed.length} album(s) found locally`;
+    } finally {
+      scanInProgress = false;
+    }
   }
   return "Settings saved";
 }
@@ -135,17 +143,22 @@ const svc_settings = new RoonApiSettings(roonApp, {
       });
       roonApp.save_config("settings", mysettings);
 
-      let statusMsg;
-      try {
-        statusMsg = performAction(settings.values);
-      } catch (e) {
-        statusMsg = "Action failed: " + e.message;
-      }
+      // A library scan can take a while; show immediate feedback and run it without
+      // blocking this callback. Errors are reported via status, not send_complete
+      // (which has already been called above).
+      if (action === "clean") svc_status.set_status("Scanning library…", false);
 
-      // Push a refreshed layout with the updated wishlist and cleared transient fields.
-      const cleared = Object.assign({}, mysettings, { action: "none", artist: "", title: "" });
-      svc_settings.update_settings(make_layout(cleared));
-      svc_status.set_status(statusMsg, false);
+      Promise.resolve()
+        .then(() => performAction(settings.values))
+        .then((statusMsg) => {
+          // Push a refreshed layout with the updated wishlist and cleared transient fields.
+          const cleared = Object.assign({}, mysettings, { action: "none", artist: "", title: "" });
+          svc_settings.update_settings(make_layout(cleared));
+          svc_status.set_status(statusMsg, false);
+        })
+        .catch((e) => {
+          svc_status.set_status("Action failed: " + e.message, false);
+        });
     }
   },
 });
@@ -203,6 +216,33 @@ function serveStatic(res, pathname) {
   });
 }
 
+// Read a JSON request body with a hard size cap so a malformed/hostile client can't
+// make the process buffer unbounded data. Calls onJson(parsed) on success.
+const MAX_BODY_BYTES = 64 * 1024;
+function readJsonBody(req, res, onJson) {
+  let body = "";
+  let aborted = false;
+  req.on("data", (c) => {
+    if (aborted) return;
+    body += c;
+    if (body.length > MAX_BODY_BYTES) {
+      aborted = true;
+      res.statusCode = 413;
+      res.end(JSON.stringify({ error: "Payload too large" }));
+      req.destroy();
+    }
+  });
+  req.on("end", () => {
+    if (aborted) return;
+    try {
+      onJson(JSON.parse(body));
+    } catch {
+      res.statusCode = 400;
+      res.end(JSON.stringify({ error: "Invalid JSON" }));
+    }
+  });
+}
+
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://localhost`);
 
@@ -221,33 +261,17 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (req.method === "POST" && url.pathname === "/wishlist/add") {
-    let body = "";
-    req.on("data", (c) => (body += c));
-    req.on("end", () => {
-      try {
-        const album = JSON.parse(body);
-        const added = wishlist.add(album);
-        res.end(JSON.stringify({ added }));
-      } catch {
-        res.statusCode = 400;
-        res.end(JSON.stringify({ error: "Invalid JSON" }));
-      }
+    readJsonBody(req, res, (album) => {
+      const added = wishlist.add(album);
+      res.end(JSON.stringify({ added }));
     });
     return;
   }
 
   if (req.method === "POST" && url.pathname === "/wishlist/remove") {
-    let body = "";
-    req.on("data", (c) => (body += c));
-    req.on("end", () => {
-      try {
-        const album = JSON.parse(body);
-        const removed = wishlist.remove(album);
-        res.end(JSON.stringify({ removed }));
-      } catch {
-        res.statusCode = 400;
-        res.end(JSON.stringify({ error: "Invalid JSON" }));
-      }
+    readJsonBody(req, res, (album) => {
+      const removed = wishlist.remove(album);
+      res.end(JSON.stringify({ removed }));
     });
     return;
   }
@@ -273,8 +297,21 @@ const server = http.createServer(async (req, res) => {
       res.end(JSON.stringify({ error: "Music library path is not set. Set it in the Library section first." }));
       return;
     }
-    const removed = lossless.checkAndClean(libraryPath, wishlist);
-    res.end(JSON.stringify({ removedFromWishlist: removed }));
+    if (scanInProgress) {
+      res.statusCode = 409;
+      res.end(JSON.stringify({ error: "A library scan is already running" }));
+      return;
+    }
+    scanInProgress = true;
+    try {
+      const removed = await lossless.checkAndClean(libraryPath, wishlist);
+      res.end(JSON.stringify({ removedFromWishlist: removed }));
+    } catch (e) {
+      res.statusCode = 500;
+      res.end(JSON.stringify({ error: "Scan failed: " + e.message }));
+    } finally {
+      scanInProgress = false;
+    }
     return;
   }
 
@@ -299,21 +336,13 @@ const server = http.createServer(async (req, res) => {
   // Update the music library path from the web UI and persist it (same store the
   // Roon settings screen uses), then push a refreshed layout if that screen is open.
   if (req.method === "POST" && url.pathname === "/settings") {
-    let body = "";
-    req.on("data", (c) => (body += c));
-    req.on("end", () => {
-      try {
-        const data = JSON.parse(body);
-        const p = typeof data.music_library_path === "string" ? data.music_library_path.trim() : "";
-        mysettings = Object.assign({}, mysettings, { music_library_path: p });
-        roonApp.save_config("settings", mysettings);
-        const cleared = Object.assign({}, mysettings, { action: "none", artist: "", title: "" });
-        try { svc_settings.update_settings(make_layout(cleared)); } catch {}
-        res.end(JSON.stringify({ music_library_path: mysettings.music_library_path }));
-      } catch {
-        res.statusCode = 400;
-        res.end(JSON.stringify({ error: "Invalid JSON" }));
-      }
+    readJsonBody(req, res, (data) => {
+      const p = typeof data.music_library_path === "string" ? data.music_library_path.trim() : "";
+      mysettings = Object.assign({}, mysettings, { music_library_path: p });
+      roonApp.save_config("settings", mysettings);
+      const cleared = Object.assign({}, mysettings, { action: "none", artist: "", title: "" });
+      try { svc_settings.update_settings(make_layout(cleared)); } catch {}
+      res.end(JSON.stringify({ music_library_path: mysettings.music_library_path }));
     });
     return;
   }

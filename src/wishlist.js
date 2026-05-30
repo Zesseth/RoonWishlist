@@ -8,22 +8,50 @@ const path = require("path");
 const DATA_DIR = process.env.ROON_WISHLIST_DATA_DIR || path.join(__dirname, "..", "data");
 const DATA_FILE = path.join(DATA_DIR, "wishlist.json");
 
+// In-memory cache keyed on the file's mtime, so repeated reads (every getAll/status
+// call) don't re-parse the JSON unless the file actually changed. This keeps the hot
+// path syscall-light without risking staleness if the file is edited externally.
+let cache = null;
+let cacheMtimeMs = -1;
+
 function load() {
-  if (!fs.existsSync(DATA_FILE)) return [];
+  let stat;
   try {
-    return JSON.parse(fs.readFileSync(DATA_FILE, "utf8"));
+    stat = fs.statSync(DATA_FILE);
   } catch {
-    return [];
+    // File doesn't exist yet (or is unreadable): empty wishlist.
+    cache = [];
+    cacheMtimeMs = -1;
+    return cache;
+  }
+  if (cache && stat.mtimeMs === cacheMtimeMs) return cache;
+  try {
+    cache = JSON.parse(fs.readFileSync(DATA_FILE, "utf8"));
+    if (!Array.isArray(cache)) cache = [];
+  } catch {
+    cache = [];
+  }
+  cacheMtimeMs = stat.mtimeMs;
+  return cache;
+}
+
+// Atomic write: write to a temp file and rename over the target so a crash mid-write
+// can never leave a truncated/corrupt wishlist.json. Updates the cache in lock-step.
+function save(list) {
+  fs.mkdirSync(path.dirname(DATA_FILE), { recursive: true });
+  const tmp = `${DATA_FILE}.${process.pid}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(list, null, 2), "utf8");
+  fs.renameSync(tmp, DATA_FILE);
+  cache = list;
+  try {
+    cacheMtimeMs = fs.statSync(DATA_FILE).mtimeMs;
+  } catch {
+    cacheMtimeMs = -1;
   }
 }
 
-function save(list) {
-  fs.mkdirSync(path.dirname(DATA_FILE), { recursive: true });
-  fs.writeFileSync(DATA_FILE, JSON.stringify(list, null, 2), "utf8");
-}
-
 function add(album) {
-  const list = load();
+  const list = load().slice();
   const key = albumKey(album);
   if (list.find((a) => albumKey(a) === key)) return false;
   list.push({ ...album, addedAt: new Date().toISOString() });
@@ -41,7 +69,8 @@ function remove(album) {
 }
 
 function getAll() {
-  return load();
+  // Return a copy so callers can't mutate the cached array in place.
+  return load().slice();
 }
 
 function albumKey(album) {

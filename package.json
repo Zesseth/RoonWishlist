@@ -29,7 +29,6 @@
   },
   "homepage": "https://github.com/Zesseth/RoonWishlist#readme",
   "dependencies": {
-    "axios": "^1.16.1",
     "cheerio": "^1.2.0",
     "node-roon-api": "git+https://github.com/RoonLabs/node-roon-api.git",
     "node-roon-api-settings": "git+https://github.com/RoonLabs/node-roon-api-settings.git",
