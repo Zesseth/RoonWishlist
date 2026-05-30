@@ -175,7 +175,17 @@ Environment=NODE_ENV=production
 Environment=ROON_WISHLIST_DATA_DIR=${DATA_DIR}
 Environment=ROON_WISHLIST_HTTP_HOST=${HTTP_HOST}
 Environment=ROON_WISHLIST_HTTP_PORT=${HTTP_PORT}
-ExecStart=${NODE_BIN} ${INSTALL_DIR}/index.js
+# Be a quiet neighbour to Roon Server on the same box: lower CPU/IO priority and cap
+# the V8 heap. Soft/relative limits so the extension yields under contention without
+# being OOM-killed mid-scan.
+Nice=10
+CPUWeight=20
+IOSchedulingClass=best-effort
+IOSchedulingPriority=6
+MemoryHigh=192M
+NoNewPrivileges=true
+PrivateTmp=true
+ExecStart=${NODE_BIN} --max-old-space-size=128 ${INSTALL_DIR}/index.js
 Restart=always
 RestartSec=5
 

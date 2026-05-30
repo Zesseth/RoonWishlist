@@ -40,6 +40,50 @@ wishlist when lossless files appear in the local library.
 attribution (`ADDITIONAL-GRANTS.md`). Do not change the license or weaken the
 copyleft without the author's explicit permission.
 
+## Technology & performance choices (forward guidance)
+
+> **Language decision: stay on Node.js (CommonJS). Do not rewrite in another
+> language.** This was assessed deliberately for this workload — Roon comms (incl.
+> future tag/library writes), a web frontend, on Debian stable next to a music server,
+> with hard requirements of reliability, low latency and a small footprint.
+
+**Why Node.js is the right tool here:**
+
+- **Roon's only *official* extension SDK is Node.js** (`node-roon-api`,
+  `-settings`, `-status`, and later `-browse` / `-transport`, all maintained by Roon
+  Labs). Tag updates and library/browse integration (TODO #1, #11) depend on it. Ports
+  in other languages (e.g. Python `roonapi`, .NET) are unofficial, reverse-engineered,
+  and may lack write/tag support — that conflicts with the "absolute reliability"
+  requirement. **Don't reimplement the Roon MOO/SOOD protocol by hand.**
+- **The workload is I/O-bound and event-driven**: Roon WebSocket events, occasional
+  outbound HTTP scrapes, and filesystem scans. Node's single-threaded event loop fits
+  this exactly; CPU is never the bottleneck (the wishlist is a few hundred albums).
+- A Go/Rust rewrite would buy negligible runtime gain for large reliability and
+  maintenance risk. Reserve native code only for a future CPU-bound need (none exists).
+
+**Performance & resource methods to keep using (this is a *secondary* process next to
+a music server — be a quiet neighbour):**
+
+- **No heavy frameworks.** Use the built-in `http` module and a dependency-free vanilla
+  HTML/JS frontend (already the case). Don't add Express/React/etc. Prefer Node's global
+  `fetch` (undici) over an HTTP-client dependency — `src/search.js` does this.
+- **Never block the event loop.** Use async `fs/promises` for anything that touches the
+  music library; library scans are sequential / low-concurrency on purpose
+  (`src/lossless_checker.js`) so disk I/O stays gentle. Avoid unbounded `Promise.all`
+  over the whole library.
+- **Guard long operations.** A single `scanInProgress` flag prevents overlapping library
+  scans (Roon settings action + HTTP API). Report progress via Roon status, not by
+  blocking callbacks.
+- **Cheap, safe persistence.** `data/wishlist.json` is read through an mtime-keyed
+  in-memory cache and written atomically (temp file + rename). Keep writes atomic.
+- **Cap inbound work.** JSON POST bodies are size-limited (`MAX_BODY_BYTES`, 413 on
+  overflow). Keep request limits on any new endpoint.
+- **systemd neighbourliness** (`deploy/roon-wishlist.service` + the unit `install.sh`
+  generates): `Nice=10`, `CPUWeight=20`, best-effort low IO priority, soft
+  `MemoryHigh`, and a V8 heap cap (`node --max-old-space-size=128`). Keep these
+  *soft/relative* — avoid hard `MemoryMax` or aggressive sandboxing that could OOM-kill
+  a scan or block the configured music-library path.
+
 ## TODO.md maintenance — REQUIRED
 
 > **`TODO.md` in the repo root is the agent's working list. It MUST be kept up to
