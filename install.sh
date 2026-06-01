@@ -12,6 +12,7 @@
 #
 # Usage (as root, from inside a cloned copy of this repo):
 #   sudo ./install.sh
+#   sudo ./install.sh --web
 #
 # Override defaults with environment variables:
 #   INSTALL_DIR=/opt/roon-wishlist \
@@ -22,6 +23,31 @@
 #
 set -euo pipefail
 
+err() { echo "ERROR: $*" >&2; exit 1; }
+info() { echo ">>> $*"; }
+show_help() {
+  cat <<'EOF'
+Usage:
+  sudo ./install.sh [--web]
+
+Options:
+  --web, -web, -w   Expose the web UI/API on the LAN by setting HTTP_HOST=0.0.0.0
+  --help, -h        Show this help
+
+Environment overrides:
+  INSTALL_DIR=/opt/roon-wishlist
+  DATA_DIR=/var/lib/roon-wishlist
+  SERVICE_USER=roon
+  HTTP_HOST=127.0.0.1
+  HTTP_PORT=3141
+
+Examples:
+  sudo ./install.sh
+  sudo ./install.sh --web
+  sudo HTTP_PORT=4242 ./install.sh --web
+EOF
+}
+
 INSTALL_DIR="${INSTALL_DIR:-/opt/roon-wishlist}"
 DATA_DIR="${DATA_DIR:-/var/lib/roon-wishlist}"
 SERVICE_USER="${SERVICE_USER:-roon}"
@@ -31,8 +57,21 @@ HTTP_PORT="${HTTP_PORT:-3141}"
 
 SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-err() { echo "ERROR: $*" >&2; exit 1; }
-info() { echo ">>> $*"; }
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --web|-web|-w)
+      HTTP_HOST="0.0.0.0"
+      ;;
+    --help|-h)
+      show_help
+      exit 0
+      ;;
+    *)
+      err "Unknown option: $1 (run './install.sh --help')"
+      ;;
+  esac
+  shift
+done
 
 [ "$(id -u)" -eq 0 ] || err "Please run as root (e.g. 'sudo ./install.sh')."
 
@@ -127,6 +166,9 @@ EOF
   node_ok "$NODE_BIN" || err "Installed Node $("$NODE_BIN" --version) is still older than v${REQUIRED_NODE}. Your CPU architecture may be unsupported by NodeSource (only amd64/arm64); install a newer Node manually."
 fi
 info "Using node: $NODE_BIN ($("$NODE_BIN" --version))"
+if [ "$HTTP_HOST" = "0.0.0.0" ]; then
+  info "LAN web UI enabled (--web / HTTP_HOST=0.0.0.0)"
+fi
 
 # --- Service user ------------------------------------------------------------
 if ! id "$SERVICE_USER" >/dev/null 2>&1; then
