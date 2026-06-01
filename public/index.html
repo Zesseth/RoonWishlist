@@ -209,6 +209,22 @@
     .sync-note { margin-top: 6px; font-size: 13px; color: var(--muted); }
     .sync-note.warn { color: #d7b46a; }
     .sync-note.err { color: var(--danger); }
+    .danger-zone {
+      margin-top: 18px;
+      padding: 16px;
+      border: 1px solid rgba(192,73,75,0.45);
+      border-radius: 10px;
+      background: rgba(192,73,75,0.08);
+    }
+    .danger-zone h3 {
+      margin: 0 0 8px;
+      font-size: 14px;
+      font-weight: 700;
+      color: #f0b4b5;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .danger-zone p { margin: 0 0 12px; font-size: 13px; color: var(--text); }
     .page { display: none; }
     .page.active { display: block; }
     footer { text-align: center; color: var(--muted); font-size: 12px; padding: 8px 0 28px; }
@@ -289,6 +305,11 @@
         <button type="submit">Save path</button>
         <button type="button" class="secondary" id="clean-btn">Scan &amp; clean now</button>
       </form>
+      <div class="danger-zone">
+        <h3>Danger Zone</h3>
+        <p>Clear the entire wishlist and rebuild it from scratch using only albums currently tagged <strong>Wishlist</strong> in Roon. Anything not tagged in Roon will be removed from the wishlist.</p>
+        <button type="button" class="danger" id="rebuild-roon-btn">Clear &amp; rebuild from Roon tag</button>
+      </div>
     </section>
   </main>
 
@@ -377,6 +398,7 @@
         latestStatus = Object.assign({ online: true }, s);
         const chip = $("status-chip");
         const syncBtn = $("sync-roon-btn");
+        const rebuildBtn = $("rebuild-roon-btn");
         const tagName = s.roonTagName || "Wishlist";
         const syncNote = $("sync-note");
         if (s.paired) {
@@ -407,6 +429,17 @@
             syncBtn.title = 'Import albums tagged "' + tagName + '" from Roon.';
           }
         }
+        if (rebuildBtn) {
+          rebuildBtn.textContent = s.syncInProgress ? "Rebuilding…" : "Clear & rebuild from Roon tag";
+          rebuildBtn.disabled = !!s.syncInProgress;
+          if (!s.paired) {
+            rebuildBtn.title = "Pair the extension with Roon first.";
+          } else if (!s.browseAvailable) {
+            rebuildBtn.title = "Browse access is not available yet. Re-enable the extension in Roon after upgrading.";
+          } else {
+            rebuildBtn.title = 'Replace the full wishlist using albums tagged "' + tagName + '" in Roon.';
+          }
+        }
       } catch {
         latestStatus = {
           online: false,
@@ -420,6 +453,7 @@
         $("sync-note").className = "sync-note err";
         $("sync-note").textContent = "Sync unavailable: the extension is offline.";
         $("sync-roon-btn").disabled = true;
+        $("rebuild-roon-btn").disabled = true;
       }
     }
 
@@ -626,6 +660,49 @@
         await loadStatus();
       } catch (e) {
         toast("Sync failed: " + e.message, "err");
+        btn.disabled = false;
+        btn.textContent = original;
+      } finally {
+        await loadStatus();
+      }
+    });
+
+    $("rebuild-roon-btn").addEventListener("click", async () => {
+      const btn = $("rebuild-roon-btn");
+      if (!latestStatus.online) {
+        toast("Rebuild unavailable: the extension is offline.", "err");
+        return;
+      }
+      if (!latestStatus.paired) {
+        toast("Rebuild unavailable: open Roon -> Settings -> Extensions -> Wishlist and pair or re-open the extension first.", "err");
+        return;
+      }
+      if (!latestStatus.browseAvailable) {
+        toast("Rebuild unavailable: re-enable or re-open the Wishlist extension in Roon after upgrading so browse access is granted.", "err");
+        return;
+      }
+      const tagName = latestStatus.roonTagName || "Wishlist";
+      const confirmed = window.confirm(
+        'Danger Zone:\n\nThis will clear the entire wishlist and rebuild it using only albums currently tagged "' + tagName + '" in Roon.\n\nAnything not tagged in Roon will be removed.\n\nContinue?'
+      );
+      if (!confirmed) return;
+
+      const original = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = "Rebuilding…";
+      try {
+        const r = await api("/rebuild-from-roon-tag", { method: "POST" });
+        const parts = [
+          "Rebuilt from " + r.totalTaggedAlbums + " tagged album(s)",
+          "replaced " + r.previousWishlistCount + " with " + r.rebuilt,
+          "links " + r.withLinks + "/" + r.totalTaggedAlbums,
+        ];
+        if (r.lookupErrors) parts.push("lookup errors " + r.lookupErrors);
+        toast(parts.join(" — "), "ok");
+        await loadWishlist();
+        await loadStatus();
+      } catch (e) {
+        toast("Rebuild failed: " + e.message, "err");
         btn.disabled = false;
         btn.textContent = original;
       } finally {
