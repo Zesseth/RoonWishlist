@@ -13,6 +13,12 @@
 #
 #   curl -fsSL https://raw.githubusercontent.com/Zesseth/RoonWishlist/main/bootstrap.sh | sudo bash
 #
+# To expose the web UI/API on the LAN during install, forward the installer's
+# --web flag:
+#
+#   curl -fsSL https://raw.githubusercontent.com/Zesseth/RoonWishlist/main/bootstrap.sh \
+#     | sudo bash -s -- --web
+#
 # To install/update a non-main branch instead (for testing), set REPO_BRANCH and
 # download bootstrap.sh from that branch:
 #
@@ -42,6 +48,31 @@ CLONE_DIR="${CLONE_DIR:-/usr/local/src/RoonWishlist}"
 
 err() { echo "ERROR: $*" >&2; exit 1; }
 info() { echo ">>> $*"; }
+show_help() {
+  cat <<'EOF'
+Usage:
+  curl -fsSL https://raw.githubusercontent.com/Zesseth/RoonWishlist/main/bootstrap.sh | sudo bash
+  curl -fsSL https://raw.githubusercontent.com/Zesseth/RoonWishlist/main/bootstrap.sh | sudo bash -s -- --web
+  curl -fsSL https://raw.githubusercontent.com/Zesseth/RoonWishlist/<branch>/bootstrap.sh | sudo REPO_BRANCH=<branch> bash
+
+Arguments forwarded to install.sh:
+  --web, -web, -w   Expose the web UI/API on the LAN (HTTP_HOST=0.0.0.0)
+  --help, -h        Show this help
+
+Environment overrides:
+  REPO_URL, REPO_BRANCH, CLONE_DIR
+  INSTALL_DIR, DATA_DIR, SERVICE_USER, HTTP_HOST, HTTP_PORT
+EOF
+}
+
+for arg in "$@"; do
+  case "$arg" in
+    --help|-h)
+      show_help
+      exit 0
+      ;;
+  esac
+done
 
 [ "$(id -u)" -eq 0 ] || err "Please run as root, e.g. pipe into 'sudo bash' or run 'sudo bash bootstrap.sh'."
 
@@ -97,5 +128,6 @@ fi
 # --- Hand off to the main installer ------------------------------------------
 info "Running install.sh"
 chmod +x "$CLONE_DIR/install.sh"
-# Forward the current environment (INSTALL_DIR, DATA_DIR, etc.) to install.sh.
-exec bash "$CLONE_DIR/install.sh"
+# Forward the current environment (INSTALL_DIR, DATA_DIR, etc.) and any install flags
+# like --web to install.sh.
+exec bash "$CLONE_DIR/install.sh" "$@"
