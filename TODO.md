@@ -114,13 +114,11 @@ Each item maps to a GitHub issue.
   the navigation split is now implemented: top-left menu + dedicated views for
   Wishlist / Add an album / Settings.
 
-- [~] **#20 Import Wishlist-tagged albums from Roon into the wishlist.** Add a manual
-  sync action in the web UI that reads albums tagged `Wishlist` from the paired Roon
-  Core, upserts them into the wishlist, and fetches store links for display. The same
-  feature now also has a **Settings -> Danger Zone** action to clear the entire
-  wishlist and rebuild it only from Roon-tagged albums. Current implementation is in
-  `feature/roon-tag-sync`; remaining confirmation is live validation against a freshly
-  re-authorized Roon browse session after upgrade.
+- [x] **#20 Import Wishlist-tagged albums from Roon into the wishlist.** Implemented:
+  manual web UI sync from Roon tag `Wishlist`, persisted buy-link rendering, safer
+  browse/pairing feedback, filtering of non-album action rows, artist subtitle cleanup
+  (`Album by X` -> `X`), and a **Settings -> Danger Zone** action that clears and
+  rebuilds the entire wishlist using only Roon-tagged albums.
 
 - [ ] **#6 Unit tests.** `wishlist` (CRUD/dedup), `lossless_checker` (matching +
   auto-remove, mocked fs), `search` (mocked HTTP). Pick a lightweight runner
