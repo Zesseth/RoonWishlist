@@ -261,16 +261,14 @@ async function listTaggedAlbums(browseService, tagName) {
   return mapAlbumItems(albumLevel.items);
 }
 
-async function syncTaggedAlbums({ browseService, wishlist, searchAll, tagName, onProgress }) {
+async function buildTaggedWishlist({ browseService, searchAll, tagName, onProgress }) {
   const wantedTag = String(tagName || ROON_WISHLIST_TAG).trim() || ROON_WISHLIST_TAG;
   const albums = await listTaggedAlbums(browseService, wantedTag);
 
-  let added = 0;
-  let updated = 0;
-  let unchanged = 0;
   let withLinks = 0;
   let withoutLinks = 0;
   let lookupErrors = 0;
+  const wishlistAlbums = [];
 
   for (let i = 0; i < albums.length; i += 1) {
     const album = albums[i];
@@ -288,21 +286,59 @@ async function syncTaggedAlbums({ browseService, wishlist, searchAll, tagName, o
       lookupErrors += 1;
     }
 
-    const result = wishlist.upsert(next);
+    wishlistAlbums.push(next);
+  }
+
+  return {
+    tagName: wantedTag,
+    totalTaggedAlbums: albums.length,
+    wishlistAlbums,
+    withLinks,
+    withoutLinks,
+    lookupErrors,
+  };
+}
+
+async function syncTaggedAlbums({ browseService, wishlist, searchAll, tagName, onProgress }) {
+  const prepared = await buildTaggedWishlist({ browseService, searchAll, tagName, onProgress });
+
+  let added = 0;
+  let updated = 0;
+  let unchanged = 0;
+
+  for (const album of prepared.wishlistAlbums) {
+    const result = wishlist.upsert(album);
     if (result === "added") added += 1;
     else if (result === "updated") updated += 1;
     else unchanged += 1;
   }
 
   return {
-    tagName: wantedTag,
-    totalTaggedAlbums: albums.length,
+    tagName: prepared.tagName,
+    totalTaggedAlbums: prepared.totalTaggedAlbums,
     added,
     updated,
     unchanged,
-    withLinks,
-    withoutLinks,
-    lookupErrors,
+    withLinks: prepared.withLinks,
+    withoutLinks: prepared.withoutLinks,
+    lookupErrors: prepared.lookupErrors,
+  };
+}
+
+async function rebuildTaggedAlbums({ browseService, wishlist, searchAll, tagName, onProgress }) {
+  const prepared = await buildTaggedWishlist({ browseService, searchAll, tagName, onProgress });
+  const previousWishlistCount = wishlist.getAll().length;
+  const rebuilt = wishlist.replaceAll(prepared.wishlistAlbums);
+
+  return {
+    tagName: prepared.tagName,
+    totalTaggedAlbums: prepared.totalTaggedAlbums,
+    rebuilt,
+    previousWishlistCount,
+    cleared: previousWishlistCount,
+    withLinks: prepared.withLinks,
+    withoutLinks: prepared.withoutLinks,
+    lookupErrors: prepared.lookupErrors,
   };
 }
 
@@ -311,4 +347,5 @@ module.exports = {
   SyncError,
   listTaggedAlbums,
   syncTaggedAlbums,
+  rebuildTaggedAlbums,
 };
