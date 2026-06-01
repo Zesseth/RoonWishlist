@@ -31,6 +31,7 @@
   "dependencies": {
     "cheerio": "^1.2.0",
     "node-roon-api": "git+https://github.com/RoonLabs/node-roon-api.git",
+    "node-roon-api-browse": "git+https://github.com/RoonLabs/node-roon-api-browse.git",
     "node-roon-api-settings": "git+https://github.com/RoonLabs/node-roon-api-settings.git",
     "node-roon-api-status": "git+https://github.com/RoonLabs/node-roon-api-status.git"
   }

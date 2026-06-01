@@ -114,6 +114,12 @@ Each item maps to a GitHub issue.
   the navigation split is now implemented: top-left menu + dedicated views for
   Wishlist / Add an album / Settings.
 
+- [x] **#20 Import Wishlist-tagged albums from Roon into the wishlist.** Implemented:
+  manual web UI sync from Roon tag `Wishlist`, persisted buy-link rendering, safer
+  browse/pairing feedback, filtering of non-album action rows, artist subtitle cleanup
+  (`Album by X` -> `X`), and a **Settings -> Danger Zone** action that clears and
+  rebuilds the entire wishlist using only Roon-tagged albums.
+
 - [ ] **#6 Unit tests.** `wishlist` (CRUD/dedup), `lossless_checker` (matching +
   auto-remove, mocked fs), `search` (mocked HTTP). Pick a lightweight runner
   (e.g. node:test) and wire up `npm test`.
@@ -137,6 +143,11 @@ Each item maps to a GitHub issue.
 - **Native menu UX is verified only at the code/runtime level** (extension starts,
   pairs, wishlist add/remove works via the same code path through the HTTP API). The
   actual menu rendering should be eyeballed in Roon → Settings → Extensions → Wishlist.
+- **Roon tag sync needs a fresh browse authorization after upgrade.** In local smoke
+  testing the extension stayed unpaired until it is re-opened/re-enabled in Roon after
+  adding the optional browse service. The HTTP/UI error path is implemented and returns
+  a clear message (`Roon is not paired yet.` / browse unavailable), but live import
+  still needs one manual authorization pass in Roon.
 - **GitHub Projects (v2) board:** the current `gh` token lacks the `project` scope
   (scopes: gist, read:org, repo, workflow). Creating a board requires the user to run:
   `gh auth refresh -s project -s read:project`. Until then the plan lives as the

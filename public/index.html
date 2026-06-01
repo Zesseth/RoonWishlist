@@ -206,6 +206,25 @@
     .results li:last-child { border-bottom: none; }
     .toolbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
     .count { font-size: 13px; color: var(--muted); }
+    .sync-note { margin-top: 6px; font-size: 13px; color: var(--muted); }
+    .sync-note.warn { color: #d7b46a; }
+    .sync-note.err { color: var(--danger); }
+    .danger-zone {
+      margin-top: 18px;
+      padding: 16px;
+      border: 1px solid rgba(192,73,75,0.45);
+      border-radius: 10px;
+      background: rgba(192,73,75,0.08);
+    }
+    .danger-zone h3 {
+      margin: 0 0 8px;
+      font-size: 14px;
+      font-weight: 700;
+      color: #f0b4b5;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .danger-zone p { margin: 0 0 12px; font-size: 13px; color: var(--text); }
     .page { display: none; }
     .page.active { display: block; }
     footer { text-align: center; color: var(--muted); font-size: 12px; padding: 8px 0 28px; }
@@ -253,8 +272,12 @@
   <main>
     <section class="card page active" data-page="wishlist">
       <div class="toolbar">
-        <h2 style="margin:0;">Current wishlist</h2>
+        <div>
+          <h2 style="margin:0;">Current wishlist</h2>
+          <div class="sync-note" id="sync-note">Import albums tagged Wishlist from Roon and fetch store links.</div>
+        </div>
         <div class="row" style="gap:8px;">
+          <button class="secondary small" id="sync-roon-btn">Sync Roon tag</button>
           <span class="count" id="count"></span>
           <button class="secondary small" id="refresh-btn">Reload</button>
         </div>
@@ -282,6 +305,11 @@
         <button type="submit">Save path</button>
         <button type="button" class="secondary" id="clean-btn">Scan &amp; clean now</button>
       </form>
+      <div class="danger-zone">
+        <h3>Danger Zone</h3>
+        <p>Clear the entire wishlist and rebuild it from scratch using only albums currently tagged <strong>Wishlist</strong> in Roon. Anything not tagged in Roon will be removed from the wishlist.</p>
+        <button type="button" class="danger" id="rebuild-roon-btn">Clear &amp; rebuild from Roon tag</button>
+      </div>
     </section>
   </main>
 
@@ -295,6 +323,13 @@
     const $ = (id) => document.getElementById(id);
     const PAGES = new Set(["wishlist", "add", "settings"]);
     let currentPage = "wishlist";
+    let latestStatus = {
+      online: false,
+      paired: false,
+      browseAvailable: false,
+      syncInProgress: false,
+      roonTagName: "Wishlist",
+    };
 
     function normalizePage(name) {
       const n = String(name || "").toLowerCase();
@@ -360,7 +395,12 @@
     async function loadStatus() {
       try {
         const s = await api("/status");
+        latestStatus = Object.assign({ online: true }, s);
         const chip = $("status-chip");
+        const syncBtn = $("sync-roon-btn");
+        const rebuildBtn = $("rebuild-roon-btn");
+        const tagName = s.roonTagName || "Wishlist";
+        const syncNote = $("sync-note");
         if (s.paired) {
           chip.className = "chip paired";
           $("status-text").textContent = "Paired with " + (s.core || "Roon");
@@ -368,9 +408,52 @@
           chip.className = "chip unpaired";
           $("status-text").textContent = "Not paired with Roon";
         }
+        syncNote.className = "sync-note";
+        if (!s.paired) {
+          syncNote.textContent = "Sync unavailable: pair or re-open the Wishlist extension in Roon first.";
+          syncNote.classList.add("err");
+        } else if (!s.browseAvailable) {
+          syncNote.textContent = "Sync unavailable: re-enable or re-open the Wishlist extension in Roon after upgrading to grant browse access.";
+          syncNote.classList.add("warn");
+        } else {
+          syncNote.textContent = 'Import albums tagged "' + tagName + '" from Roon and fetch store links.';
+        }
+        if (syncBtn) {
+          syncBtn.textContent = s.syncInProgress ? "Syncing…" : "Sync Roon tag";
+          syncBtn.disabled = !!s.syncInProgress;
+          if (!s.paired) {
+            syncBtn.title = "Pair the extension with Roon first.";
+          } else if (!s.browseAvailable) {
+            syncBtn.title = "Browse access is not available yet. Re-enable the extension in Roon after upgrading.";
+          } else {
+            syncBtn.title = 'Import albums tagged "' + tagName + '" from Roon.';
+          }
+        }
+        if (rebuildBtn) {
+          rebuildBtn.textContent = s.syncInProgress ? "Rebuilding…" : "Clear & rebuild from Roon tag";
+          rebuildBtn.disabled = !!s.syncInProgress;
+          if (!s.paired) {
+            rebuildBtn.title = "Pair the extension with Roon first.";
+          } else if (!s.browseAvailable) {
+            rebuildBtn.title = "Browse access is not available yet. Re-enable the extension in Roon after upgrading.";
+          } else {
+            rebuildBtn.title = 'Replace the full wishlist using albums tagged "' + tagName + '" in Roon.';
+          }
+        }
       } catch {
+        latestStatus = {
+          online: false,
+          paired: false,
+          browseAvailable: false,
+          syncInProgress: false,
+          roonTagName: "Wishlist",
+        };
         $("status-chip").className = "chip unpaired";
         $("status-text").textContent = "Extension offline";
+        $("sync-note").className = "sync-note err";
+        $("sync-note").textContent = "Sync unavailable: the extension is offline.";
+        $("sync-roon-btn").disabled = true;
+        $("rebuild-roon-btn").disabled = true;
       }
     }
 
@@ -416,10 +499,42 @@
             '<button class="secondary small" data-search>Find in stores</button>' +
             '<button class="danger" data-remove>Remove</button>' +
           '</div>';
+        if (Array.isArray(a.buyLinks) && a.buyLinks.length) {
+          renderStoreResults(li.querySelector("[data-results]"), a.buyLinks, false);
+        }
         li.querySelector("[data-remove]").addEventListener("click", () => removeAlbum(a, li));
         li.querySelector("[data-search]").addEventListener("click", (ev) => searchInto(li.querySelector("[data-results]"), a.artist, a.title, ev.target));
         ul.appendChild(li);
       }
+    }
+
+    function renderStoreResults(box, results, addable, fallbackArtist, fallbackTitle) {
+      const list = document.createElement("ul");
+      list.className = "list";
+      for (const r of results) {
+        const item = document.createElement("li");
+        const left = document.createElement("div");
+        left.style.minWidth = "0";
+        left.innerHTML =
+          '<span class="store">' + esc(r.store) + '</span>' +
+          '<a href="' + esc(r.url) + '" target="_blank" rel="noopener">' +
+          esc(r.artist || fallbackArtist) + ' &mdash; ' + esc(r.title || fallbackTitle) + '</a>';
+        item.appendChild(left);
+        if (addable) {
+          const add = document.createElement("button");
+          add.className = "secondary small";
+          add.textContent = "Add";
+          add.addEventListener("click", async () => {
+            add.disabled = true;
+            try { await addAlbum(r.artist || fallbackArtist, r.title || fallbackTitle); }
+            catch (e) { add.disabled = false; toast("Add failed: " + e.message, "err"); }
+          });
+          item.appendChild(add);
+        }
+        list.appendChild(item);
+      }
+      box.innerHTML = "";
+      box.appendChild(list);
     }
 
     async function addAlbum(artist, title) {
@@ -464,32 +579,7 @@
         if (!results || !results.length) {
           box.innerHTML = '<div class="album-meta">No store results found.</div>';
         } else {
-          const list = document.createElement("ul");
-          list.className = "list";
-          for (const r of results) {
-            const item = document.createElement("li");
-            const left = document.createElement("div");
-            left.style.minWidth = "0";
-            left.innerHTML =
-              '<span class="store">' + esc(r.store) + '</span>' +
-              '<a href="' + esc(r.url) + '" target="_blank" rel="noopener">' +
-              esc(r.artist || artist) + ' &mdash; ' + esc(r.title || title) + '</a>';
-            item.appendChild(left);
-            if (addable) {
-              const add = document.createElement("button");
-              add.className = "secondary small";
-              add.textContent = "Add";
-              add.addEventListener("click", async () => {
-                add.disabled = true;
-                try { await addAlbum(r.artist || artist, r.title || title); }
-                catch (e) { add.disabled = false; toast("Add failed: " + e.message, "err"); }
-              });
-              item.appendChild(add);
-            }
-            list.appendChild(item);
-          }
-          box.innerHTML = "";
-          box.appendChild(list);
+          renderStoreResults(box, results, addable, artist, title);
         }
       } catch (e) {
         box.innerHTML = '<div class="album-meta" style="color:var(--danger)">Search failed: ' + esc(e.message) + '</div>';
@@ -538,6 +628,87 @@
     });
 
     $("refresh-btn").addEventListener("click", () => { loadWishlist(); loadStatus(); });
+
+    $("sync-roon-btn").addEventListener("click", async () => {
+      const btn = $("sync-roon-btn");
+      if (!latestStatus.online) {
+        toast("Sync unavailable: the extension is offline.", "err");
+        return;
+      }
+      if (!latestStatus.paired) {
+        toast("Sync unavailable: open Roon -> Settings -> Extensions -> Wishlist and pair or re-open the extension first.", "err");
+        return;
+      }
+      if (!latestStatus.browseAvailable) {
+        toast("Sync unavailable: re-enable or re-open the Wishlist extension in Roon after upgrading so browse access is granted.", "err");
+        return;
+      }
+      const original = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = "Syncing…";
+      try {
+        const r = await api("/sync-roon-tag", { method: "POST" });
+        const parts = [
+          "Synced " + r.totalTaggedAlbums + " tagged album(s)",
+          "added " + r.added,
+          "updated " + r.updated,
+          "links " + r.withLinks + "/" + r.totalTaggedAlbums,
+        ];
+        if (r.lookupErrors) parts.push("lookup errors " + r.lookupErrors);
+        toast(parts.join(" — "), "ok");
+        await loadWishlist();
+        await loadStatus();
+      } catch (e) {
+        toast("Sync failed: " + e.message, "err");
+        btn.disabled = false;
+        btn.textContent = original;
+      } finally {
+        await loadStatus();
+      }
+    });
+
+    $("rebuild-roon-btn").addEventListener("click", async () => {
+      const btn = $("rebuild-roon-btn");
+      if (!latestStatus.online) {
+        toast("Rebuild unavailable: the extension is offline.", "err");
+        return;
+      }
+      if (!latestStatus.paired) {
+        toast("Rebuild unavailable: open Roon -> Settings -> Extensions -> Wishlist and pair or re-open the extension first.", "err");
+        return;
+      }
+      if (!latestStatus.browseAvailable) {
+        toast("Rebuild unavailable: re-enable or re-open the Wishlist extension in Roon after upgrading so browse access is granted.", "err");
+        return;
+      }
+      const tagName = latestStatus.roonTagName || "Wishlist";
+      const confirmed = window.confirm(
+        'Danger Zone:\n\nThis will clear the entire wishlist and rebuild it using only albums currently tagged "' + tagName + '" in Roon.\n\nAnything not tagged in Roon will be removed.\n\nContinue?'
+      );
+      if (!confirmed) return;
+
+      const original = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = "Rebuilding…";
+      try {
+        const r = await api("/rebuild-from-roon-tag", { method: "POST" });
+        const parts = [
+          "Rebuilt from " + r.totalTaggedAlbums + " tagged album(s)",
+          "replaced " + r.previousWishlistCount + " with " + r.rebuilt,
+          "links " + r.withLinks + "/" + r.totalTaggedAlbums,
+        ];
+        if (r.lookupErrors) parts.push("lookup errors " + r.lookupErrors);
+        toast(parts.join(" — "), "ok");
+        await loadWishlist();
+        await loadStatus();
+      } catch (e) {
+        toast("Rebuild failed: " + e.message, "err");
+        btn.disabled = false;
+        btn.textContent = original;
+      } finally {
+        await loadStatus();
+      }
+    });
 
     $("clean-btn").addEventListener("click", async () => {
       const btn = $("clean-btn");
