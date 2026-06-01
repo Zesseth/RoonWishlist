@@ -156,7 +156,9 @@ From the browser you can view the list, add/remove albums, **search Bandcamp/Qob
 add straight from the results**, **sync albums tagged `Wishlist` from Roon**, set the
 **music library path**, run a **library scan & clean**, and see whether the extension is
 **paired** with your Roon Core. The Wishlist view also shows the stored buy links for
-synced albums.
+synced albums. The **Settings** view also includes a **Danger Zone** action that clears
+the whole wishlist and rebuilds it from scratch using only albums currently tagged
+`Wishlist` in Roon.
 
 > **After upgrading to a version with Roon tag sync:** if the web UI shows **Not paired**
 > or the **Sync Roon tag** button stays disabled, open **Roon → Settings → Extensions**,
