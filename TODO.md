@@ -51,7 +51,9 @@ Last updated: 2026-06-01
 - [x] **#12 Linux server deployment (initial)** — `install.sh` + systemd service
   (`deploy/roon-wishlist.service` template), env config
   (`ROON_WISHLIST_DATA_DIR/HTTP_HOST/HTTP_PORT`), README "Run on a Roon server
-  (Linux)" incl. ROCK/Nucleus caveat.
+  (Linux)" incl. ROCK/Nucleus caveat. Installer convenience added later: `install.sh
+  --web` (and bootstrap passthrough) enables LAN web access without typing the full
+  `HTTP_HOST=0.0.0.0` override each time.
 - [x] **Bootstrap branch installs** — `bootstrap.sh` now supports `REPO_BRANCH` so a
   specific feature branch can be cloned/updated directly on another Linux machine
   before merge (useful for testing from GitHub without a manual clone flow).
