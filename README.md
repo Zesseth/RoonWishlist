@@ -6,6 +6,7 @@ A Roon Extension — a wishlist for albums you don't yet own in lossless quality
 
 - **Wishlist**: Add albums to a buy-list
 - **Web UI**: A simple browser interface to view, add, remove and search albums
+- **Roon tag sync**: Import albums tagged `Wishlist` from Roon into the app wishlist
 - **Search**: Looks up the album on Bandcamp and Qobuz
 - **Auto-clean**: When lossless files appear in your local library, the album is
   automatically removed from the wishlist
@@ -152,8 +153,15 @@ The extension also serves a small **web interface** — this is the easiest way 
 the wishlist. The top-left menu has three views: **Wishlist** (home, current wishlist
 only), **Add an album** (add/search), and **Settings** (library path + scan/clean).
 From the browser you can view the list, add/remove albums, **search Bandcamp/Qobuz and
-add straight from the results**, set the **music library path**, run a **library scan &
-clean**, and see whether the extension is **paired** with your Roon Core.
+add straight from the results**, **sync albums tagged `Wishlist` from Roon**, set the
+**music library path**, run a **library scan & clean**, and see whether the extension is
+**paired** with your Roon Core. The Wishlist view also shows the stored buy links for
+synced albums.
+
+> **After upgrading to a version with Roon tag sync:** if the web UI shows **Not paired**
+> or the **Sync Roon tag** button stays disabled, open **Roon → Settings → Extensions**,
+> open **Wishlist**, and re-enable/re-open it once. The browse permission used for tag
+> import may need a fresh authorization after the upgrade.
 
 - **From the server itself**, open: <http://127.0.0.1:3141>
 - **From another computer on your network** (e.g. the desktop where you run the Roon
