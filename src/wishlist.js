@@ -85,6 +85,21 @@ function remove(album) {
   return true;
 }
 
+function replaceAll(albums) {
+  const seen = new Set();
+  const next = [];
+  for (const album of albums || []) {
+    const normalized = normalizeAlbum(album);
+    if (!normalized.artist || !normalized.title) continue;
+    const key = albumKey(normalized);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    next.push(normalized);
+  }
+  save(next);
+  return next.length;
+}
+
 function getAll() {
   // Return a copy so callers can't mutate the cached array in place.
   return load().slice();
@@ -126,4 +141,4 @@ function sameAlbum(a, b) {
   return JSON.stringify(a) === JSON.stringify(b);
 }
 
-module.exports = { add, upsert, remove, getAll };
+module.exports = { add, upsert, remove, replaceAll, getAll };
