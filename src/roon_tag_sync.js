@@ -24,6 +24,14 @@ function titleInSet(value, aliases) {
   return aliases.some((alias) => normalizeTitle(alias) === title);
 }
 
+const NON_ALBUM_ACTION_TITLES = new Set([
+  "play tag",
+  "shuffle tag",
+  "queue tag",
+  "start radio",
+  "play now",
+]);
+
 function findByAliases(items, aliases) {
   return (items || []).find((item) => titleInSet(item.title, aliases));
 }
@@ -99,9 +107,8 @@ async function openLevel(browseService, { hierarchy, sessionKey, itemKey, input,
 function looksLikeAlbumItems(items) {
   const actionable = (items || []).filter((item) => item && item.item_key && item.hint !== "header");
   if (!actionable.length) return false;
-  const titled = actionable.filter((item) => item.title && item.title.trim());
-  const withSubtitle = titled.filter((item) => item.subtitle && item.subtitle.trim());
-  return withSubtitle.length >= Math.max(1, Math.ceil(titled.length / 2));
+  const albumLike = actionable.filter(isLikelyAlbumItem);
+  return albumLike.length >= Math.max(1, Math.ceil(actionable.length / 2));
 }
 
 async function openTagViaBrowseTree(browseService, tagName, sessionKey) {
@@ -205,15 +212,32 @@ function mapAlbumItems(items) {
   const seen = new Set();
   const albums = [];
   for (const item of items || []) {
+    if (!isLikelyAlbumItem(item)) continue;
     const title = String(item.title || "").trim();
     if (!title) continue;
-    const artist = String(item.subtitle || "").trim();
+    const artist = normalizeAlbumArtist(item.subtitle);
+    if (!artist) continue;
     const key = `${normalizeTitle(artist)}||${normalizeTitle(title)}`;
     if (seen.has(key)) continue;
     seen.add(key);
     albums.push({ artist, title });
   }
   return albums;
+}
+
+function isLikelyAlbumItem(item) {
+  if (!item || !item.item_key || item.hint === "header") return false;
+  const title = String(item.title || "").trim();
+  const subtitle = String(item.subtitle || "").trim();
+  if (!title || !subtitle) return false;
+  return !NON_ALBUM_ACTION_TITLES.has(normalizeTitle(title));
+}
+
+function normalizeAlbumArtist(subtitle) {
+  const text = String(subtitle || "").trim();
+  if (!text) return "";
+  const match = text.match(/^(?:album|ep|single|compilation|live album|soundtrack)\s+by\s+(.+)$/i);
+  return match ? String(match[1] || "").trim() : text;
 }
 
 async function listTaggedAlbums(browseService, tagName) {
