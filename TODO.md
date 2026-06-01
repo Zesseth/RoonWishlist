@@ -5,7 +5,7 @@
 
 **Status markers:** `[ ]` not started · `[~]` in progress · `[x]` done · `[!]` blocked
 
-Last updated: 2026-05-30
+Last updated: 2026-06-01
 
 ---
 
@@ -51,17 +51,25 @@ Last updated: 2026-05-30
 - [x] **#12 Linux server deployment (initial)** — `install.sh` + systemd service
   (`deploy/roon-wishlist.service` template), env config
   (`ROON_WISHLIST_DATA_DIR/HTTP_HOST/HTTP_PORT`), README "Run on a Roon server
-  (Linux)" incl. ROCK/Nucleus caveat.
+  (Linux)" incl. ROCK/Nucleus caveat. Installer convenience added later: `install.sh
+  --web` (and bootstrap passthrough) enables LAN web access without typing the full
+  `HTTP_HOST=0.0.0.0` override each time.
+- [x] **Bootstrap branch installs** — `bootstrap.sh` now supports `REPO_BRANCH` so a
+  specific feature branch can be cloned/updated directly on another Linux machine
+  before merge (useful for testing from GitHub without a manual clone flow).
 - [x] **https-only dependency install** — switched Roon deps + lockfile `resolved`
   URLs from `git+ssh` to `git+https`. Verified `npm ci` succeeds with SSH disabled
   (mimics a headless Linux server). The install script uses `npm ci`.
 - [x] **#5 Web UI for wishlist management** — `public/index.html` (vanilla, no external
   CDNs) served by the existing HTTP server at `http://<host>:3141`: list (newest first),
   add, remove, search-and-add from Bandcamp/Qobuz results, set the music library path,
-  run scan & clean, and a live "paired with Roon core" status chip. New endpoints:
-  `GET /status`, `GET /settings`, `POST /settings`. Toast notifications; path traversal
-  guarded. Documents the Roon Browse-API limitation (extensions can't add to the Browse
-  sidebar; only the Settings screen + this web UI are available).
+  run scan & clean, and a live "paired with Roon core" status chip. Navigation now
+  includes a top-left menu with dedicated views for **Wishlist** (home, current list
+  only), **Add an album**, and **Settings**; the header `Wishlist` title also routes to
+  home. New endpoints: `GET /status`, `GET /settings`, `POST /settings`. Toast
+  notifications; path traversal guarded. Documents the Roon Browse-API limitation
+  (extensions can't add to the Browse sidebar; only the Settings screen + this web UI
+  are available).
 
 ---
 
@@ -102,10 +110,9 @@ Each item maps to a GitHub issue.
 - [ ] **#4 Harden the data layer.** `data/wishlist.json`: atomic writes, stable
   schema with item IDs, dedup edge cases, migration/versioning.
 
-- [ ] **#5 Web UI for wishlist management.** *Done — see Done section.* A vanilla web
-  frontend (`public/index.html`) is served on the HTTP API: list, add, remove, search,
-  manual library scan. Future polish (auth, responsive tweaks, library picker) can build
-  on it; richer Roon-side album picking still depends on #1.
+- [x] **#5 Web UI for wishlist management.** Initial UI is done (see Done section), and
+  the navigation split is now implemented: top-left menu + dedicated views for
+  Wishlist / Add an album / Settings.
 
 - [ ] **#6 Unit tests.** `wishlist` (CRUD/dedup), `lossless_checker` (matching +
   auto-remove, mocked fs), `search` (mocked HTTP). Pick a lightweight runner

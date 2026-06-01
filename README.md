@@ -55,6 +55,14 @@ Log into your Linux machine (or open its terminal) and paste this **single line*
 curl -fsSL https://raw.githubusercontent.com/Zesseth/RoonWishlist/main/bootstrap.sh | sudo bash
 ```
 
+If you already know you want the web UI/API reachable from other devices on your home
+LAN, use the installer's `--web` shortcut:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Zesseth/RoonWishlist/main/bootstrap.sh \
+  | sudo bash -s -- --web
+```
+
 That's it. `bootstrap.sh` does **everything** for you, automatically:
 
 1. installs **git** if it's missing,
@@ -66,6 +74,15 @@ That's it. `bootstrap.sh` does **everything** for you, automatically:
 6. starts it.
 
 When it finishes it prints the service status and what to do next in Roon.
+
+To install or update a **feature branch** on another machine before it is merged to
+`main`, use the same bootstrap flow but set `REPO_BRANCH` and download the script from
+that branch:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Zesseth/RoonWishlist/<branch>/bootstrap.sh \
+  | sudo REPO_BRANCH=<branch> bash
+```
 
 > **On a minimal Debian 12 install** `curl` may not be present yet. If the one-liner
 > says `curl: command not found`, install it first:
@@ -101,6 +118,12 @@ cd RoonWishlist
 sudo ./install.sh
 ```
 
+If you want the web UI/API reachable from another device on your LAN, use:
+
+```bash
+sudo ./install.sh --web
+```
+
 `install.sh` installs the app to `/opt/roon-wishlist`, installs dependencies with
 `npm ci` (over **https** — no SSH keys needed), creates the `roon-wishlist` systemd
 service, and starts it. If Node.js (≥ 20.18.1) or git are missing — or Node is too old
@@ -126,19 +149,37 @@ After either option, on any device with Roon open:
 ### Open the Wishlist web UI
 
 The extension also serves a small **web interface** — this is the easiest way to manage
-the wishlist. From the browser you can view the list, add/remove albums, **search
-Bandcamp/Qobuz and add straight from the results**, set the **music library path**, run a
-**library scan & clean**, and see whether the extension is **paired** with your Roon Core.
+the wishlist. The top-left menu has three views: **Wishlist** (home, current wishlist
+only), **Add an album** (add/search), and **Settings** (library path + scan/clean).
+From the browser you can view the list, add/remove albums, **search Bandcamp/Qobuz and
+add straight from the results**, set the **music library path**, run a **library scan &
+clean**, and see whether the extension is **paired** with your Roon Core.
 
 - **From the server itself**, open: <http://127.0.0.1:3141>
 - **From another computer on your network** (e.g. the desktop where you run the Roon
   app), the web UI is **off by default** for safety (it binds to localhost only). To
-  reach it from other machines, install (or re-run) with `HTTP_HOST=0.0.0.0`:
+  reach it from other machines, the simplest option is the installer's `--web` flag:
 
   ```bash
   curl -fsSL https://raw.githubusercontent.com/Zesseth/RoonWishlist/main/bootstrap.sh \
-    | sudo HTTP_HOST=0.0.0.0 bash
+    | sudo bash -s -- --web
   ```
+
+  Or, for a feature branch:
+
+  ```bash
+  curl -fsSL https://raw.githubusercontent.com/Zesseth/RoonWishlist/<branch>/bootstrap.sh \
+    | sudo REPO_BRANCH=<branch> bash -s -- --web
+  ```
+
+  Or, from your own clone:
+
+  ```bash
+  sudo ./install.sh --web
+  ```
+
+  `--web` is just a shortcut for `HTTP_HOST=0.0.0.0`; use the environment variable only
+  if you want a custom host value.
 
   Then open `http://<server-ip>:3141` (e.g. `http://192.168.1.50:3141`) in any browser.
 
@@ -154,6 +195,16 @@ curl -fsSL https://raw.githubusercontent.com/Zesseth/RoonWishlist/main/bootstrap
 
 # Or manually, from your clone:
 cd /usr/local/src/RoonWishlist && git pull && sudo ./install.sh
+```
+
+If you had enabled LAN web access, repeat the same shortcut on update so the service
+keeps binding to `0.0.0.0`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Zesseth/RoonWishlist/main/bootstrap.sh \
+  | sudo bash -s -- --web
+
+cd /usr/local/src/RoonWishlist && git pull && sudo ./install.sh --web
 ```
 
 ### Managing the service
@@ -264,6 +315,18 @@ sudo -E ./install.sh
 The manual systemd unit template is in
 [`deploy/roon-wishlist.service`](./deploy/roon-wishlist.service) if you'd rather wire it
 up by hand.
+
+For the common "make the UI visible on my LAN" case, you do not need to remember the
+full `HTTP_HOST=0.0.0.0` form — both installers support:
+
+```bash
+# bootstrap.sh
+curl -fsSL https://raw.githubusercontent.com/Zesseth/RoonWishlist/main/bootstrap.sh \
+  | sudo bash -s -- --web
+
+# install.sh
+sudo ./install.sh --web
+```
 
 ## HTTP API (port 3141)
 
