@@ -7,7 +7,7 @@ const RoonApiStatus = require("node-roon-api-status");
 const wishlist = require("./src/wishlist");
 const { searchAll } = require("./src/search");
 const lossless = require("./src/lossless_checker");
-const { ROON_WISHLIST_TAG, SyncError, syncTaggedAlbums } = require("./src/roon_tag_sync");
+const { ROON_WISHLIST_TAG, SyncError, syncTaggedAlbums, rebuildTaggedAlbums } = require("./src/roon_tag_sync");
 
 let roon, mysettings, svc_status;
 let pairedCore = null;
@@ -251,6 +251,44 @@ function getBrowseService() {
   return pairedCore && pairedCore.services ? pairedCore.services.RoonApiBrowse : null;
 }
 
+async function runRoonTagAction(res, { verb, successStatus, action }) {
+  if (!pairedCore) {
+    res.statusCode = 503;
+    res.end(JSON.stringify({ error: "Roon is not paired yet." }));
+    return;
+  }
+  if (syncInProgress) {
+    res.statusCode = 409;
+    res.end(JSON.stringify({ error: "A Roon tag sync is already running" }));
+    return;
+  }
+
+  const browseService = getBrowseService();
+  syncInProgress = true;
+  svc_status.set_status(`${verb} Roon tag "${ROON_WISHLIST_TAG}"…`, false);
+  try {
+    const result = await action({
+      browseService,
+      onProgress({ current, total, album }) {
+        svc_status.set_status(
+          `${verb} Roon tag "${ROON_WISHLIST_TAG}"… ${current}/${total} (${album.artist || "Unknown artist"} — ${album.title})`,
+          false
+        );
+      },
+    });
+    try { svc_settings.update_settings(make_layout(mysettings)); } catch {}
+    svc_status.set_status(successStatus(result), false);
+    res.end(JSON.stringify(result, null, 2));
+  } catch (e) {
+    const statusCode = e instanceof SyncError && e.statusCode ? e.statusCode : 500;
+    svc_status.set_status(`Roon tag action failed: ${e.message}`, false);
+    res.statusCode = statusCode;
+    res.end(JSON.stringify({ error: e.message }));
+  } finally {
+    syncInProgress = false;
+  }
+}
+
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://localhost`);
 
@@ -262,6 +300,7 @@ const server = http.createServer(async (req, res) => {
     "/search",
     "/check-lossless",
     "/sync-roon-tag",
+    "/rebuild-from-roon-tag",
     "/settings",
     "/status",
   ];
@@ -338,47 +377,45 @@ const server = http.createServer(async (req, res) => {
       res.end(JSON.stringify({ error: "Method not allowed" }));
       return;
     }
-    if (!pairedCore) {
-      res.statusCode = 503;
-      res.end(JSON.stringify({ error: "Roon is not paired yet." }));
-      return;
-    }
-    if (syncInProgress) {
-      res.statusCode = 409;
-      res.end(JSON.stringify({ error: "A Roon tag sync is already running" }));
-      return;
-    }
+    await runRoonTagAction(res, {
+      verb: "Syncing",
+      successStatus(result) {
+        return `Roon tag sync done: added ${result.added}, updated ${result.updated}, links ${result.withLinks}/${result.totalTaggedAlbums}`;
+      },
+      action({ browseService, onProgress }) {
+        return syncTaggedAlbums({
+          browseService,
+          wishlist,
+          searchAll,
+          tagName: ROON_WISHLIST_TAG,
+          onProgress,
+        });
+      },
+    });
+    return;
+  }
 
-    const browseService = getBrowseService();
-    syncInProgress = true;
-    svc_status.set_status(`Syncing Roon tag "${ROON_WISHLIST_TAG}"…`, false);
-    try {
-      const result = await syncTaggedAlbums({
-        browseService,
-        wishlist,
-        searchAll,
-        tagName: ROON_WISHLIST_TAG,
-        onProgress({ current, total, album }) {
-          svc_status.set_status(
-            `Syncing Roon tag "${ROON_WISHLIST_TAG}"… ${current}/${total} (${album.artist || "Unknown artist"} — ${album.title})`,
-            false
-          );
-        },
-      });
-      try { svc_settings.update_settings(make_layout(mysettings)); } catch {}
-      svc_status.set_status(
-        `Roon tag sync done: added ${result.added}, updated ${result.updated}, links ${result.withLinks}/${result.totalTaggedAlbums}`,
-        false
-      );
-      res.end(JSON.stringify(result, null, 2));
-    } catch (e) {
-      const statusCode = e instanceof SyncError && e.statusCode ? e.statusCode : 500;
-      svc_status.set_status(`Roon tag sync failed: ${e.message}`, false);
-      res.statusCode = statusCode;
-      res.end(JSON.stringify({ error: e.message }));
-    } finally {
-      syncInProgress = false;
+  if (url.pathname === "/rebuild-from-roon-tag") {
+    if (req.method !== "POST") {
+      res.statusCode = 405;
+      res.end(JSON.stringify({ error: "Method not allowed" }));
+      return;
     }
+    await runRoonTagAction(res, {
+      verb: "Rebuilding from",
+      successStatus(result) {
+        return `Roon tag rebuild done: replaced ${result.previousWishlistCount} with ${result.rebuilt}, links ${result.withLinks}/${result.totalTaggedAlbums}`;
+      },
+      action({ browseService, onProgress }) {
+        return rebuildTaggedAlbums({
+          browseService,
+          wishlist,
+          searchAll,
+          tagName: ROON_WISHLIST_TAG,
+          onProgress,
+        });
+      },
+    });
     return;
   }
 
