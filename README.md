@@ -67,6 +67,15 @@ That's it. `bootstrap.sh` does **everything** for you, automatically:
 
 When it finishes it prints the service status and what to do next in Roon.
 
+To install or update a **feature branch** on another machine before it is merged to
+`main`, use the same bootstrap flow but set `REPO_BRANCH` and download the script from
+that branch:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Zesseth/RoonWishlist/<branch>/bootstrap.sh \
+  | sudo REPO_BRANCH=<branch> bash
+```
+
 > **On a minimal Debian 12 install** `curl` may not be present yet. If the one-liner
 > says `curl: command not found`, install it first:
 >
@@ -140,6 +149,13 @@ clean**, and see whether the extension is **paired** with your Roon Core.
   ```bash
   curl -fsSL https://raw.githubusercontent.com/Zesseth/RoonWishlist/main/bootstrap.sh \
     | sudo HTTP_HOST=0.0.0.0 bash
+  ```
+
+  Or, for a feature branch:
+
+  ```bash
+  curl -fsSL https://raw.githubusercontent.com/Zesseth/RoonWishlist/<branch>/bootstrap.sh \
+    | sudo REPO_BRANCH=<branch> HTTP_HOST=0.0.0.0 bash
   ```
 
   Then open `http://<server-ip>:3141` (e.g. `http://192.168.1.50:3141`) in any browser.

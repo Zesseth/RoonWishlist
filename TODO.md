@@ -52,6 +52,9 @@ Last updated: 2026-06-01
   (`deploy/roon-wishlist.service` template), env config
   (`ROON_WISHLIST_DATA_DIR/HTTP_HOST/HTTP_PORT`), README "Run on a Roon server
   (Linux)" incl. ROCK/Nucleus caveat.
+- [x] **Bootstrap branch installs** — `bootstrap.sh` now supports `REPO_BRANCH` so a
+  specific feature branch can be cloned/updated directly on another Linux machine
+  before merge (useful for testing from GitHub without a manual clone flow).
 - [x] **https-only dependency install** — switched Roon deps + lockfile `resolved`
   URLs from `git+ssh` to `git+https`. Verified `npm ci` succeeds with SSH disabled
   (mimics a headless Linux server). The install script uses `npm ci`.

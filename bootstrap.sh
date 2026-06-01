@@ -13,6 +13,12 @@
 #
 #   curl -fsSL https://raw.githubusercontent.com/Zesseth/RoonWishlist/main/bootstrap.sh | sudo bash
 #
+# To install/update a non-main branch instead (for testing), set REPO_BRANCH and
+# download bootstrap.sh from that branch:
+#
+#   curl -fsSL https://raw.githubusercontent.com/Zesseth/RoonWishlist/<branch>/bootstrap.sh \
+#     | sudo REPO_BRANCH=<branch> bash
+#
 # Or, if you prefer to inspect it first (recommended):
 #
 #   curl -fsSL https://raw.githubusercontent.com/Zesseth/RoonWishlist/main/bootstrap.sh -o bootstrap.sh
@@ -24,12 +30,14 @@
 #
 # Optional environment variables (all forwarded to install.sh too):
 #   REPO_URL    git URL to clone (default: this repo over https)
+#   REPO_BRANCH git branch to clone/update (default: repo default branch / current branch)
 #   CLONE_DIR   where to keep the source (default: /usr/local/src/RoonWishlist)
 #   INSTALL_DIR DATA_DIR SERVICE_USER HTTP_HOST HTTP_PORT  (see install.sh)
 #
 set -euo pipefail
 
 REPO_URL="${REPO_URL:-https://github.com/Zesseth/RoonWishlist.git}"
+REPO_BRANCH="${REPO_BRANCH:-}"
 CLONE_DIR="${CLONE_DIR:-/usr/local/src/RoonWishlist}"
 
 err() { echo "ERROR: $*" >&2; exit 1; }
@@ -64,11 +72,26 @@ ensure_git
 # --- Clone or update ----------------------------------------------------------
 if [ -d "$CLONE_DIR/.git" ]; then
   info "Updating existing checkout in $CLONE_DIR"
-  git -C "$CLONE_DIR" pull --ff-only
+  if [ -n "$REPO_BRANCH" ]; then
+    info "Checking out branch $REPO_BRANCH"
+    git -C "$CLONE_DIR" fetch origin
+    if git -C "$CLONE_DIR" show-ref --verify --quiet "refs/heads/$REPO_BRANCH"; then
+      git -C "$CLONE_DIR" checkout "$REPO_BRANCH"
+    else
+      git -C "$CLONE_DIR" checkout -b "$REPO_BRANCH" --track "origin/$REPO_BRANCH"
+    fi
+    git -C "$CLONE_DIR" pull --ff-only origin "$REPO_BRANCH"
+  else
+    git -C "$CLONE_DIR" pull --ff-only
+  fi
 else
   info "Cloning $REPO_URL into $CLONE_DIR"
   mkdir -p "$(dirname "$CLONE_DIR")"
-  git clone "$REPO_URL" "$CLONE_DIR"
+  if [ -n "$REPO_BRANCH" ]; then
+    git clone --branch "$REPO_BRANCH" --single-branch "$REPO_URL" "$CLONE_DIR"
+  else
+    git clone "$REPO_URL" "$CLONE_DIR"
+  fi
 fi
 
 # --- Hand off to the main installer ------------------------------------------
