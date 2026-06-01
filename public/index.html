@@ -207,6 +207,8 @@
     .toolbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
     .count { font-size: 13px; color: var(--muted); }
     .sync-note { margin-top: 6px; font-size: 13px; color: var(--muted); }
+    .sync-note.warn { color: #d7b46a; }
+    .sync-note.err { color: var(--danger); }
     .page { display: none; }
     .page.active { display: block; }
     footer { text-align: center; color: var(--muted); font-size: 12px; padding: 8px 0 28px; }
@@ -300,6 +302,13 @@
     const $ = (id) => document.getElementById(id);
     const PAGES = new Set(["wishlist", "add", "settings"]);
     let currentPage = "wishlist";
+    let latestStatus = {
+      online: false,
+      paired: false,
+      browseAvailable: false,
+      syncInProgress: false,
+      roonTagName: "Wishlist",
+    };
 
     function normalizePage(name) {
       const n = String(name || "").toLowerCase();
@@ -365,9 +374,11 @@
     async function loadStatus() {
       try {
         const s = await api("/status");
+        latestStatus = Object.assign({ online: true }, s);
         const chip = $("status-chip");
         const syncBtn = $("sync-roon-btn");
         const tagName = s.roonTagName || "Wishlist";
+        const syncNote = $("sync-note");
         if (s.paired) {
           chip.className = "chip paired";
           $("status-text").textContent = "Paired with " + (s.core || "Roon");
@@ -375,10 +386,19 @@
           chip.className = "chip unpaired";
           $("status-text").textContent = "Not paired with Roon";
         }
-        $("sync-note").textContent = 'Import albums tagged "' + tagName + '" from Roon and fetch store links.';
+        syncNote.className = "sync-note";
+        if (!s.paired) {
+          syncNote.textContent = "Sync unavailable: pair or re-open the Wishlist extension in Roon first.";
+          syncNote.classList.add("err");
+        } else if (!s.browseAvailable) {
+          syncNote.textContent = "Sync unavailable: re-enable or re-open the Wishlist extension in Roon after upgrading to grant browse access.";
+          syncNote.classList.add("warn");
+        } else {
+          syncNote.textContent = 'Import albums tagged "' + tagName + '" from Roon and fetch store links.';
+        }
         if (syncBtn) {
           syncBtn.textContent = s.syncInProgress ? "Syncing…" : "Sync Roon tag";
-          syncBtn.disabled = !s.paired || !s.browseAvailable || !!s.syncInProgress;
+          syncBtn.disabled = !!s.syncInProgress;
           if (!s.paired) {
             syncBtn.title = "Pair the extension with Roon first.";
           } else if (!s.browseAvailable) {
@@ -388,8 +408,17 @@
           }
         }
       } catch {
+        latestStatus = {
+          online: false,
+          paired: false,
+          browseAvailable: false,
+          syncInProgress: false,
+          roonTagName: "Wishlist",
+        };
         $("status-chip").className = "chip unpaired";
         $("status-text").textContent = "Extension offline";
+        $("sync-note").className = "sync-note err";
+        $("sync-note").textContent = "Sync unavailable: the extension is offline.";
         $("sync-roon-btn").disabled = true;
       }
     }
@@ -568,6 +597,18 @@
 
     $("sync-roon-btn").addEventListener("click", async () => {
       const btn = $("sync-roon-btn");
+      if (!latestStatus.online) {
+        toast("Sync unavailable: the extension is offline.", "err");
+        return;
+      }
+      if (!latestStatus.paired) {
+        toast("Sync unavailable: open Roon -> Settings -> Extensions -> Wishlist and pair or re-open the extension first.", "err");
+        return;
+      }
+      if (!latestStatus.browseAvailable) {
+        toast("Sync unavailable: re-enable or re-open the Wishlist extension in Roon after upgrading so browse access is granted.", "err");
+        return;
+      }
       const original = btn.textContent;
       btn.disabled = true;
       btn.textContent = "Syncing…";
