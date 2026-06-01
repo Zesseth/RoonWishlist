@@ -54,9 +54,26 @@ function add(album) {
   const list = load().slice();
   const key = albumKey(album);
   if (list.find((a) => albumKey(a) === key)) return false;
-  list.push({ ...album, addedAt: new Date().toISOString() });
+  list.push(normalizeAlbum(album));
   save(list);
   return true;
+}
+
+function upsert(album) {
+  const list = load().slice();
+  const key = albumKey(album);
+  const idx = list.findIndex((a) => albumKey(a) === key);
+  if (idx === -1) {
+    list.push(normalizeAlbum(album));
+    save(list);
+    return "added";
+  }
+
+  const next = normalizeAlbum(album, list[idx]);
+  if (sameAlbum(list[idx], next)) return "unchanged";
+  list[idx] = next;
+  save(list);
+  return "updated";
 }
 
 function remove(album) {
@@ -77,4 +94,36 @@ function albumKey(album) {
   return `${(album.artist || "").toLowerCase().trim()}||${(album.title || "").toLowerCase().trim()}`;
 }
 
-module.exports = { add, remove, getAll };
+function normalizeAlbum(album, existing) {
+  const next = {
+    ...(existing || {}),
+    ...(album || {}),
+    artist: String(album && album.artist ? album.artist : (existing && existing.artist) || "").trim(),
+    title: String(album && album.title ? album.title : (existing && existing.title) || "").trim(),
+  };
+  const buyLinks = normalizeBuyLinks(album && album.buyLinks);
+  if (buyLinks) next.buyLinks = buyLinks;
+  else if (album && Object.prototype.hasOwnProperty.call(album, "buyLinks")) next.buyLinks = [];
+  else if (existing && Array.isArray(existing.buyLinks)) next.buyLinks = normalizeBuyLinks(existing.buyLinks);
+  if (existing && existing.addedAt) next.addedAt = existing.addedAt;
+  else next.addedAt = album && album.addedAt ? album.addedAt : new Date().toISOString();
+  return next;
+}
+
+function normalizeBuyLinks(links) {
+  if (!Array.isArray(links)) return undefined;
+  return links
+    .map((link) => ({
+      store: String(link && link.store ? link.store : "").trim(),
+      title: String(link && link.title ? link.title : "").trim(),
+      artist: String(link && link.artist ? link.artist : "").trim(),
+      url: String(link && link.url ? link.url : "").trim(),
+    }))
+    .filter((link) => link.store && link.url);
+}
+
+function sameAlbum(a, b) {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+module.exports = { add, upsert, remove, getAll };
