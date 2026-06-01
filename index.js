@@ -7,13 +7,16 @@ const RoonApiStatus = require("node-roon-api-status");
 const wishlist = require("./src/wishlist");
 const { searchAll } = require("./src/search");
 const lossless = require("./src/lossless_checker");
+const lowQualityIgnore = require("./src/ignored_low_quality");
 const { ROON_WISHLIST_TAG, SyncError, syncTaggedAlbums, rebuildTaggedAlbums } = require("./src/roon_tag_sync");
 
 let roon, mysettings, svc_status;
 let pairedCore = null;
 // Guards against two library scans running at once (Roon settings action + HTTP API).
 let scanInProgress = false;
+let scanActivity = null;
 let syncInProgress = false;
+let lastLowQualityScan = null;
 
 const roonApp = new RoonApi({
   extension_id: "com.zesseth.roon-wishlist",
@@ -73,6 +76,7 @@ function make_layout(settings) {
         { title: "Add album to wishlist", value: "add" },
         { title: "Remove album from wishlist", value: "remove" },
         { title: "Refresh & clean (scan library)", value: "clean" },
+        { title: "Scan low-quality albums into wishlist", value: "low_quality" },
       ],
       setting: "action",
     },
@@ -85,8 +89,8 @@ function make_layout(settings) {
 
   l.layout.push({
     type: "string",
-    title: "Music library path (lossless detection)",
-    subtitle: "Local path where lossless files are stored. Used to auto-remove albums from the wishlist.",
+    title: "Music library path (FLAC detection)",
+    subtitle: "Local path where albums are scanned. Fully FLAC albums are cleaned from the wishlist; partial/non-FLAC albums can be added to it.",
     setting: "music_library_path",
   });
 
@@ -109,15 +113,12 @@ async function performAction(values) {
       : "Album not found on wishlist";
   }
   if (action === "clean") {
-    if (!mysettings.music_library_path) return "Set the music library path first";
-    if (scanInProgress) return "A library scan is already running";
-    scanInProgress = true;
-    try {
-      const removed = await lossless.checkAndClean(mysettings.music_library_path, wishlist);
-      return `Refresh & clean done: removed ${removed.length} album(s) found locally`;
-    } finally {
-      scanInProgress = false;
-    }
+    const removed = await runLosslessClean();
+    return `Refresh & clean done: removed ${removed.length} album(s) that are already fully FLAC`;
+  }
+  if (action === "low_quality") {
+    const result = await runLowQualityScan();
+    return `Low-quality scan done: added ${result.added}, already on wishlist ${result.alreadyPresent}, ignored ${result.ignored}`;
   }
   return "Settings saved";
 }
@@ -149,7 +150,8 @@ const svc_settings = new RoonApiSettings(roonApp, {
       // A library scan can take a while; show immediate feedback and run it without
       // blocking this callback. Errors are reported via status, not send_complete
       // (which has already been called above).
-      if (action === "clean") svc_status.set_status("Scanning library…", false);
+      if (action === "clean") svc_status.set_status("Scanning library for all-FLAC albums...", false);
+      if (action === "low_quality") svc_status.set_status("Scanning library for low-quality albums...", false);
 
       Promise.resolve()
         .then(() => performAction(settings.values))
@@ -251,6 +253,70 @@ function getBrowseService() {
   return pairedCore && pairedCore.services ? pairedCore.services.RoonApiBrowse : null;
 }
 
+function makeHttpError(statusCode, message) {
+  const error = new Error(message);
+  error.statusCode = statusCode;
+  return error;
+}
+
+async function runLibraryScanAction(task, { startStatus, successStatus, action }) {
+  const libraryPath = (mysettings.music_library_path || "").trim();
+  if (!libraryPath) {
+    throw makeHttpError(400, "Music library path is not set. Set it in Settings first.");
+  }
+  if (scanInProgress) {
+    throw makeHttpError(409, "A library scan is already running");
+  }
+
+  scanInProgress = true;
+  scanActivity = task;
+  svc_status.set_status(startStatus, false);
+  try {
+    const result = await action(libraryPath);
+    try { svc_settings.update_settings(make_layout(mysettings)); } catch {}
+    svc_status.set_status(successStatus(result), false);
+    return result;
+  } catch (e) {
+    svc_status.set_status(`Library scan failed: ${e.message}`, false);
+    throw e;
+  } finally {
+    scanInProgress = false;
+    scanActivity = null;
+  }
+}
+
+async function runLosslessClean() {
+  return runLibraryScanAction("clean", {
+    startStatus: "Scanning library for all-FLAC albums...",
+    successStatus(removed) {
+      return `Refresh & clean done: removed ${removed.length} album(s) that are already fully FLAC`;
+    },
+    action(libraryPath) {
+      return lossless.checkAndClean(libraryPath, wishlist);
+    },
+  });
+}
+
+async function runLowQualityScan() {
+  const startedAt = new Date().toISOString();
+  const result = await runLibraryScanAction("low-quality", {
+    startStatus: "Scanning library for low-quality albums...",
+    successStatus(summary) {
+      return `Low-quality scan done: added ${summary.added}, already on wishlist ${summary.alreadyPresent}, ignored ${summary.ignored}`;
+    },
+    action(libraryPath) {
+      return lossless.scanLowQualityAlbums(libraryPath, wishlist, lowQualityIgnore);
+    },
+  });
+
+  lastLowQualityScan = {
+    ...result,
+    startedAt,
+    finishedAt: new Date().toISOString(),
+  };
+  return lastLowQualityScan;
+}
+
 async function runRoonTagAction(res, { verb, successStatus, action }) {
   if (!pairedCore) {
     res.statusCode = 503;
@@ -299,6 +365,8 @@ const server = http.createServer(async (req, res) => {
     "/wishlist/remove",
     "/search",
     "/check-lossless",
+    "/scan-low-quality",
+    "/ignore-low-quality",
     "/sync-roon-tag",
     "/rebuild-from-roon-tag",
     "/settings",
@@ -347,27 +415,76 @@ const server = http.createServer(async (req, res) => {
 
   // Auto-check: remove from wishlist if lossless found in library
   if (req.method === "POST" && url.pathname === "/check-lossless") {
-    const libraryPath = mysettings.music_library_path;
-    if (!libraryPath) {
-      res.statusCode = 400;
-      res.end(JSON.stringify({ error: "Music library path is not set. Set it in the Library section first." }));
-      return;
-    }
-    if (scanInProgress) {
-      res.statusCode = 409;
-      res.end(JSON.stringify({ error: "A library scan is already running" }));
-      return;
-    }
-    scanInProgress = true;
     try {
-      const removed = await lossless.checkAndClean(libraryPath, wishlist);
+      const removed = await runLosslessClean();
       res.end(JSON.stringify({ removedFromWishlist: removed }));
     } catch (e) {
-      res.statusCode = 500;
-      res.end(JSON.stringify({ error: "Scan failed: " + e.message }));
-    } finally {
-      scanInProgress = false;
+      res.statusCode = e.statusCode || 500;
+      res.end(JSON.stringify({ error: e.message }));
     }
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/scan-low-quality") {
+    try {
+      const result = await runLowQualityScan();
+      res.end(JSON.stringify(result, null, 2));
+    } catch (e) {
+      res.statusCode = e.statusCode || 500;
+      res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/ignore-low-quality") {
+    readJsonBody(req, res, (album) => {
+      Promise.resolve()
+        .then(async () => {
+          const artist = typeof album.artist === "string" ? album.artist.trim() : "";
+          const title = typeof album.title === "string" ? album.title.trim() : "";
+          if (!artist || !title) {
+            throw makeHttpError(400, "artist and title are required");
+          }
+
+          const ignored = await lowQualityIgnore.add({ artist, title });
+          const removedFromWishlist = wishlist.remove({ artist, title });
+          if (lastLowQualityScan) {
+            const matchesAlbum = (item) => item && item.artist === artist && item.title === title;
+            const removedFromAdded = Array.isArray(lastLowQualityScan.addedAlbums)
+              ? lastLowQualityScan.addedAlbums.filter(matchesAlbum).length
+              : 0;
+            const removedFromAlreadyPresent = Array.isArray(lastLowQualityScan.alreadyPresentAlbums)
+              ? lastLowQualityScan.alreadyPresentAlbums.filter(matchesAlbum).length
+              : 0;
+            const ignoredAlbums = Array.isArray(lastLowQualityScan.ignoredAlbums)
+              ? lastLowQualityScan.ignoredAlbums.filter((item) => !matchesAlbum(item))
+              : [];
+            ignoredAlbums.push({ artist, title });
+            lastLowQualityScan = Object.assign({}, lastLowQualityScan, {
+              added: Math.max(0, (lastLowQualityScan.added || 0) - removedFromAdded),
+              alreadyPresent: Math.max(0, (lastLowQualityScan.alreadyPresent || 0) - removedFromAlreadyPresent),
+              ignored: (lastLowQualityScan.ignored || 0) + removedFromAdded + removedFromAlreadyPresent,
+              addedAlbums: Array.isArray(lastLowQualityScan.addedAlbums)
+                ? lastLowQualityScan.addedAlbums.filter((item) => !matchesAlbum(item))
+                : [],
+              alreadyPresentAlbums: Array.isArray(lastLowQualityScan.alreadyPresentAlbums)
+                ? lastLowQualityScan.alreadyPresentAlbums.filter((item) => !matchesAlbum(item))
+                : [],
+              ignoredAlbums,
+            });
+          }
+          try { svc_settings.update_settings(make_layout(mysettings)); } catch {}
+          svc_status.set_status(`Ignored low-quality album: ${artist} — ${title}`, false);
+          return { ignored, removedFromWishlist };
+        })
+        .then((payload) => {
+          res.end(JSON.stringify(payload));
+        })
+        .catch((e) => {
+          res.statusCode = e.statusCode || 500;
+          res.end(JSON.stringify({ error: e.message }));
+        });
+    });
     return;
   }
 
@@ -427,6 +544,9 @@ const server = http.createServer(async (req, res) => {
       browseAvailable: !!getBrowseService(),
       roonTagName: ROON_WISHLIST_TAG,
       syncInProgress,
+      scanInProgress,
+      scanActivity,
+      lastLowQualityScan,
       libraryPath: mysettings.music_library_path || "",
       count: wishlist.getAll().length,
       version: "0.1.0",

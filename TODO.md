@@ -83,17 +83,25 @@ Each item maps to a GitHub issue.
   the wishlist directly from Roon, and library lookups can use the Roon library
   rather than only a raw local path. **Most significant unfinished piece.**
 
-- [ ] **#2 Automatic scheduled lossless check.** Currently only a manual
-  `POST /check-lossless`. Add a configurable interval and/or filesystem watch that
-  runs `checkAndClean` automatically.
+- [ ] **#2 Add nightly automation for store link refresh and low-quality scans.**
+  Add an optional nightly scheduler for the existing manual tasks: store-link refresh
+  / search and low-quality album scan. The user must be able to enable/disable it in
+  Settings and choose the daily run time from a 24-hour dropdown.
 
-- [ ] **#15 Storage locations from Roon + full-album lossless detection.** Read the
+- [~] **#15 Storage locations from Roon + full-album FLAC detection.** Read the
   music storage location(s) from Roon's settings (depends on #1) instead of a manual
   path, with an option to exclude a location. Change the removal rule: only remove an
-  album when the **whole album** is lossless; if it's present only in a lossy format,
-  **keep** it. Surface per-album status (not found / found lossy → kept / found
-  lossless → removed) in the native UI. Today `checkAndClean` removes on *any* lossless
-  file in the folder — tighten this.
+  album when the **whole album** is FLAC; if it is only partially FLAC / not FLAC,
+  **keep** it. Done so far: recursive album scan, whole-album FLAC matching, and
+  `x/y` FLAC track counts for low-quality results. Remaining: read storage locations
+  from Roon (#1), support exclude rules, and surface the kept/removed reasons in the
+  native Roon UI.
+
+- [~] **#22 Add low-quality album scan to the wishlist.** Add a manual low-quality
+  library scan that finds albums which are not fully FLAC and adds them to the
+  wishlist automatically. Done so far: `/scan-low-quality`, dedicated web UI section,
+  per-album `FLAC x/y` counts, and an ignore action that suppresses future re-adds.
+  Remaining: user testing / merge, plus consider an unignore management UI later.
 
 - [ ] **#11 Tag wishlist albums & tracks in Roon (kept in sync).** Tag both albums
   and tracks on the wishlist in Roon (default tag `Wishlist`). Tags must be
