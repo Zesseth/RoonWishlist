@@ -32,9 +32,90 @@
       align-items: center;
       gap: 12px;
       flex-wrap: wrap;
+      position: relative;
     }
-    header h1 { margin: 0; font-size: 24px; font-weight: 600; letter-spacing: 0.2px; }
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      position: relative;
+    }
+    .title-link {
+      background: transparent;
+      border: 0;
+      color: var(--text);
+      margin: 0;
+      padding: 0;
+      font-size: 24px;
+      font-weight: 600;
+      letter-spacing: 0.2px;
+      line-height: 1;
+      cursor: pointer;
+    }
+    .title-link:hover { text-decoration: underline; text-underline-offset: 4px; }
+    .menu-toggle {
+      width: 34px;
+      height: 34px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--panel-2);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0;
+      cursor: pointer;
+    }
+    .menu-toggle:hover,
+    .menu-toggle[aria-expanded="true"] { background: #34373c; }
+    .menu-icon {
+      display: inline-flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+    .menu-icon span {
+      display: block;
+      width: 14px;
+      height: 2px;
+      border-radius: 2px;
+      background: var(--text);
+    }
+    .menu-panel {
+      position: absolute;
+      top: 42px;
+      left: 0;
+      min-width: 190px;
+      padding: 6px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: var(--panel);
+      box-shadow: 0 10px 24px rgba(0, 0, 0, 0.45);
+      z-index: 40;
+    }
+    .menu-item {
+      width: 100%;
+      background: transparent;
+      border: 0;
+      color: var(--text);
+      text-align: left;
+      padding: 9px 10px;
+      border-radius: 7px;
+      font-size: 14px;
+      font-weight: 500;
+    }
+    .menu-item:hover,
+    .menu-item.active { background: var(--panel-2); }
     header .sub { color: var(--muted); font-size: 13px; flex: 1 1 auto; }
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
     .chip {
       display: inline-flex;
       align-items: center;
@@ -125,6 +206,8 @@
     .results li:last-child { border-bottom: none; }
     .toolbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
     .count { font-size: 13px; color: var(--muted); }
+    .page { display: none; }
+    .page.active { display: block; }
     footer { text-align: center; color: var(--muted); font-size: 12px; padding: 8px 0 28px; }
     footer a { color: var(--muted); }
     /* Toasts */
@@ -151,13 +234,35 @@
 </head>
 <body>
   <header>
-    <h1>Wishlist</h1>
+    <div class="header-left" id="header-left">
+      <button type="button" class="menu-toggle" id="menu-toggle" aria-haspopup="true" aria-expanded="false" aria-controls="main-menu" title="Open menu">
+        <span class="menu-icon" aria-hidden="true"><span></span><span></span><span></span></span>
+        <span class="sr-only">Open menu</span>
+      </button>
+      <button type="button" class="title-link" id="home-link">Wishlist</button>
+      <nav class="menu-panel" id="main-menu" hidden>
+        <button type="button" class="menu-item" data-nav="wishlist">Wishlist</button>
+        <button type="button" class="menu-item" data-nav="add">Add an album</button>
+        <button type="button" class="menu-item" data-nav="settings">Settings</button>
+      </nav>
+    </div>
     <span class="sub">Roon extension &mdash; lossless album wishlist</span>
     <span class="chip" id="status-chip"><span class="dot"></span><span id="status-text">Connecting…</span></span>
   </header>
 
   <main>
-    <section class="card">
+    <section class="card page active" data-page="wishlist">
+      <div class="toolbar">
+        <h2 style="margin:0;">Current wishlist</h2>
+        <div class="row" style="gap:8px;">
+          <span class="count" id="count"></span>
+          <button class="secondary small" id="refresh-btn">Reload</button>
+        </div>
+      </div>
+      <ul class="list" id="wishlist"></ul>
+    </section>
+
+    <section class="card page" data-page="add">
       <h2>Add an album</h2>
       <p class="hint">Type an artist and album, then <strong>Add</strong> it directly, or <strong>Search stores</strong> to find it on Bandcamp/Qobuz first.</p>
       <form id="add-form" class="row" autocomplete="off">
@@ -169,7 +274,7 @@
       <div class="results" id="search-results"></div>
     </section>
 
-    <section class="card">
+    <section class="card page" data-page="settings">
       <h2>Library</h2>
       <p class="hint">Local folder where your lossless files live (on the machine running this extension). Used by <em>Scan &amp; clean</em> to auto-remove albums you already own losslessly.</p>
       <form id="lib-form" class="row" autocomplete="off">
@@ -177,17 +282,6 @@
         <button type="submit">Save path</button>
         <button type="button" class="secondary" id="clean-btn">Scan &amp; clean now</button>
       </form>
-    </section>
-
-    <section class="card">
-      <div class="toolbar">
-        <h2 style="margin:0;">Current wishlist</h2>
-        <div class="row" style="gap:8px;">
-          <span class="count" id="count"></span>
-          <button class="secondary small" id="refresh-btn">Reload</button>
-        </div>
-      </div>
-      <ul class="list" id="wishlist"></ul>
     </section>
   </main>
 
@@ -199,6 +293,39 @@
 
   <script>
     const $ = (id) => document.getElementById(id);
+    const PAGES = new Set(["wishlist", "add", "settings"]);
+    let currentPage = "wishlist";
+
+    function normalizePage(name) {
+      const n = String(name || "").toLowerCase();
+      return PAGES.has(n) ? n : "wishlist";
+    }
+
+    function setPage(name, updateHash) {
+      currentPage = normalizePage(name);
+      for (const page of document.querySelectorAll("[data-page]")) {
+        page.classList.toggle("active", page.dataset.page === currentPage);
+      }
+      for (const item of document.querySelectorAll("[data-nav]")) {
+        item.classList.toggle("active", item.dataset.nav === currentPage);
+      }
+      if (updateHash) {
+        const target = "#" + currentPage;
+        if (window.location.hash !== target) window.location.hash = target;
+      }
+    }
+
+    function closeMenu() {
+      $("main-menu").hidden = true;
+      $("menu-toggle").setAttribute("aria-expanded", "false");
+    }
+
+    function toggleMenu() {
+      const menu = $("main-menu");
+      const nextHidden = !menu.hidden;
+      menu.hidden = nextHidden;
+      $("menu-toggle").setAttribute("aria-expanded", nextHidden ? "false" : "true");
+    }
 
     function toast(msg, kind) {
       const el = document.createElement("div");
@@ -270,7 +397,7 @@
       ul.innerHTML = "";
       $("count").textContent = items.length + (items.length === 1 ? " album" : " albums");
       if (!items.length) {
-        ul.innerHTML = '<li class="empty">Wishlist is empty. Add an album above.</li>';
+        ul.innerHTML = '<li class="empty">Wishlist is empty. Open "Add an album" from the menu.</li>';
         return;
       }
       // Newest first.
@@ -431,7 +558,40 @@
       }
     });
 
+    $("home-link").addEventListener("click", () => {
+      setPage("wishlist", true);
+      closeMenu();
+    });
+
+    $("menu-toggle").addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      toggleMenu();
+    });
+
+    for (const item of document.querySelectorAll("[data-nav]")) {
+      item.addEventListener("click", () => {
+        setPage(item.dataset.nav, true);
+        closeMenu();
+      });
+    }
+
+    document.addEventListener("click", (ev) => {
+      if ($("main-menu").hidden) return;
+      if (!$("header-left").contains(ev.target)) closeMenu();
+    });
+
+    document.addEventListener("keydown", (ev) => {
+      if (ev.key === "Escape") closeMenu();
+    });
+
+    window.addEventListener("hashchange", () => {
+      const route = normalizePage(window.location.hash.replace(/^#/, ""));
+      setPage(route, false);
+      closeMenu();
+    });
+
     // Initial load + light polling so the status chip stays current.
+    setPage(normalizePage(window.location.hash.replace(/^#/, "")), false);
     loadStatus();
     loadSettings();
     loadWishlist();

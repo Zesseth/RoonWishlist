@@ -126,9 +126,11 @@ After either option, on any device with Roon open:
 ### Open the Wishlist web UI
 
 The extension also serves a small **web interface** — this is the easiest way to manage
-the wishlist. From the browser you can view the list, add/remove albums, **search
-Bandcamp/Qobuz and add straight from the results**, set the **music library path**, run a
-**library scan & clean**, and see whether the extension is **paired** with your Roon Core.
+the wishlist. The top-left menu has three views: **Wishlist** (home, current wishlist
+only), **Add an album** (add/search), and **Settings** (library path + scan/clean).
+From the browser you can view the list, add/remove albums, **search Bandcamp/Qobuz and
+add straight from the results**, set the **music library path**, run a **library scan &
+clean**, and see whether the extension is **paired** with your Roon Core.
 
 - **From the server itself**, open: <http://127.0.0.1:3141>
 - **From another computer on your network** (e.g. the desktop where you run the Roon
