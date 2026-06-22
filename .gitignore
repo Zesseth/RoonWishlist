@@ -1,7 +1,17 @@
 node_modules/
 data/wishlist.json
+data/ignored-low-quality.json
 *.log
 .env
 
 # Roon pairing token / runtime state (machine-specific, never commit)
 config.json
+
+# Test coverage and temporary test files
+coverage/
+.nyc_output/
+
+# IDE/Editor files
+.idea/
+.vscode/
+.DS_Store
