@@ -110,10 +110,11 @@ Each item maps to a GitHub issue.
   **Depends on #1.** Research note: confirm what tagging capability the Roon
   extension API exposes (browse/transport) before implementing.
 
-- [ ] **#3 Harden Bandcamp/Qobuz search providers.** `src/search.js` relies on HTML
-  scraping; Qobuz selectors are guesses and fragile. (Done so far: migrated off `axios`
-  to native `fetch` with an AbortController timeout + `resp.ok` check.) Still TODO:
-  investigate more stable APIs, add retry/caching and richer error handling.
+- [~] **#3 Harden Bandcamp/Qobuz search providers.** `src/search.js` now uses live
+  provider APIs instead of fragile HTML scraping: Bandcamp autocomplete + Qobuz album
+  search, with timeout/retry/basic TTL caching, result normalization, ranking, and
+  graceful empty-failure handling. Remaining TODO before closing: mocked HTTP tests
+  (tracked under #6).
 
 - [ ] **#4 Harden the data layer.** `data/wishlist.json`: atomic writes, stable
   schema with item IDs, dedup edge cases, migration/versioning.
