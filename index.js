@@ -361,6 +361,8 @@ const server = http.createServer(async (req, res) => {
   // Serve the web UI (GET, non-API paths) before defaulting to JSON responses.
   const apiPaths = [
     "/wishlist",
+    "/wishlist/roon-tag",
+    "/wishlist/low-quality",
     "/wishlist/add",
     "/wishlist/remove",
     "/search",
@@ -400,8 +402,7 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === "POST" && url.pathname === "/wishlist/add") {
     readJsonBody(req, res, (album) => {
-      const albumWithSource = { ...album, source: "manual" };
-      const added = wishlist.add(albumWithSource);
+      const added = wishlist.add(album);
       res.end(JSON.stringify({ added }));
     });
     return;
