@@ -4,7 +4,9 @@
   "description": "Roon extension: wishlist for albums to buy, with Bandcamp/Qobuz search and lossless auto-clean",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "test": "node --test",
+    "test:watch": "node --test --watch"
   },
   "repository": {
     "type": "git",

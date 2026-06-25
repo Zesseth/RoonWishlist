@@ -285,6 +285,19 @@
       <ul class="list" id="wishlist"></ul>
     </section>
 
+    <section class="card page active" data-page="wishlist">
+      <div class="toolbar">
+        <div>
+          <h2 style="margin:0;">Low-quality library scan</h2>
+          <div class="sync-note" id="low-quality-note">Scan the configured library and add albums that are not fully FLAC to the wishlist.</div>
+        </div>
+        <button class="secondary small" id="scan-low-quality-btn">Scan low-quality albums now</button>
+      </div>
+      <div class="results" id="low-quality-results">
+        <div class="empty">No low-quality scan has been run yet.</div>
+      </div>
+    </section>
+
     <section class="card page" data-page="add">
       <h2>Add an album</h2>
       <p class="hint">Type an artist and album, then <strong>Add</strong> it directly, or <strong>Search stores</strong> to find it on Bandcamp/Qobuz first.</p>
@@ -299,7 +312,7 @@
 
     <section class="card page" data-page="settings">
       <h2>Library</h2>
-      <p class="hint">Local folder where your lossless files live (on the machine running this extension). Used by <em>Scan &amp; clean</em> to auto-remove albums you already own losslessly.</p>
+      <p class="hint">Local folder where your music files live (on the machine running this extension). Used by <em>Scan &amp; clean</em> to remove albums that are fully FLAC, and by the low-quality scan to add albums that are only partially FLAC / not FLAC.</p>
       <form id="lib-form" class="row" autocomplete="off">
         <input type="text" id="lib-path" placeholder="/mnt/music" />
         <button type="submit">Save path</button>
@@ -328,7 +341,11 @@
       paired: false,
       browseAvailable: false,
       syncInProgress: false,
+      scanInProgress: false,
+      scanActivity: null,
       roonTagName: "Wishlist",
+      libraryPath: "",
+      lastLowQualityScan: null,
     };
 
     function normalizePage(name) {
@@ -392,6 +409,80 @@
         .replace(/"/g, "&quot;");
     }
 
+    function hasTrackCounts(item) {
+      return Number.isFinite(Number(item && item.qualityTotalTracks)) && Number(item.qualityTotalTracks) > 0;
+    }
+
+    function formatFlacRatio(flacTracks, totalTracks) {
+      const total = Number(totalTracks);
+      const flac = Number(flacTracks);
+      if (!Number.isFinite(total) || total <= 0) return "";
+      return String(Number.isFinite(flac) ? flac : 0) + "/" + String(total) + " FLAC tracks";
+    }
+
+    function renderLowQualitySummary(summary) {
+      if (!summary) {
+        return '<div class="empty">No low-quality scan has been run yet.</div>';
+      }
+
+      const meta = [
+        "Scanned " + summary.scannedAlbums + " album folder(s)",
+        "added " + summary.added,
+        "already on wishlist " + summary.alreadyPresent,
+        "ignored " + summary.ignored,
+        "all-FLAC skipped " + summary.skippedAllFlac,
+      ];
+      if (summary.errors) meta.push("errors " + summary.errors);
+      let html =
+        '<div class="album-meta">Last run ' + esc(new Date(summary.finishedAt || summary.startedAt || Date.now()).toLocaleString()) + '</div>' +
+        '<div class="album-meta">' + esc(meta.join(" - ")) + '</div>';
+
+      if (Array.isArray(summary.addedAlbums) && summary.addedAlbums.length) {
+        html += '<ul class="list">';
+        for (const album of summary.addedAlbums) {
+          html +=
+            '<li><div class="album-main">' +
+              '<div><span class="album-artist">' + esc(album.artist) + '</span> ' +
+              '<span class="album-title">&mdash; ' + esc(album.title) + '</span></div>' +
+              '<div class="album-meta">' + esc(formatFlacRatio(album.flacTracks, album.totalTracks)) + '</div>' +
+            '</div></li>';
+        }
+        html += '</ul>';
+      } else {
+        html += '<div class="empty">No new low-quality albums were added in the latest run.</div>';
+      }
+
+      return html;
+    }
+
+    function renderLowQualitySection() {
+      const btn = $("scan-low-quality-btn");
+      const note = $("low-quality-note");
+      const results = $("low-quality-results");
+      const hasLibraryPath = !!(latestStatus.libraryPath || "").trim();
+      const scanRunning = !!latestStatus.scanInProgress;
+      const lowQualityRunning = scanRunning && latestStatus.scanActivity === "low-quality";
+      const otherScanRunning = scanRunning && latestStatus.scanActivity && latestStatus.scanActivity !== "low-quality";
+
+      btn.textContent = lowQualityRunning ? "Scanning..." : "Scan low-quality albums now";
+      btn.disabled = !hasLibraryPath || scanRunning;
+
+      note.className = "sync-note";
+      if (!hasLibraryPath) {
+        note.textContent = "Library path is not set. Configure it in Settings first.";
+        note.classList.add("warn");
+      } else if (lowQualityRunning) {
+        note.textContent = "Scanning the library for albums that are not fully FLAC...";
+      } else if (otherScanRunning) {
+        note.textContent = "Another library scan is already running. Wait for it to finish first.";
+        note.classList.add("warn");
+      } else {
+        note.textContent = "Scan the configured library and add albums that are not fully FLAC to the wishlist.";
+      }
+
+      results.innerHTML = renderLowQualitySummary(latestStatus.lastLowQualityScan);
+    }
+
     async function loadStatus() {
       try {
         const s = await api("/status");
@@ -399,6 +490,7 @@
         const chip = $("status-chip");
         const syncBtn = $("sync-roon-btn");
         const rebuildBtn = $("rebuild-roon-btn");
+        const cleanBtn = $("clean-btn");
         const tagName = s.roonTagName || "Wishlist";
         const syncNote = $("sync-note");
         if (s.paired) {
@@ -440,13 +532,23 @@
             rebuildBtn.title = 'Replace the full wishlist using albums tagged "' + tagName + '" in Roon.';
           }
         }
+        if (cleanBtn) {
+          const cleanRunning = s.scanInProgress && s.scanActivity === "clean";
+          cleanBtn.textContent = cleanRunning ? "Scanning..." : "Scan & clean now";
+          cleanBtn.disabled = !(s.libraryPath || "").trim() || !!s.scanInProgress;
+        }
+        renderLowQualitySection();
       } catch {
         latestStatus = {
           online: false,
           paired: false,
           browseAvailable: false,
           syncInProgress: false,
+          scanInProgress: false,
+          scanActivity: null,
           roonTagName: "Wishlist",
+          libraryPath: "",
+          lastLowQualityScan: null,
         };
         $("status-chip").className = "chip unpaired";
         $("status-text").textContent = "Extension offline";
@@ -454,6 +556,8 @@
         $("sync-note").textContent = "Sync unavailable: the extension is offline.";
         $("sync-roon-btn").disabled = true;
         $("rebuild-roon-btn").disabled = true;
+        $("clean-btn").disabled = true;
+        renderLowQualitySection();
       }
     }
 
@@ -488,15 +592,23 @@
       for (const a of sorted) {
         const li = document.createElement("li");
         const added = a.addedAt ? new Date(a.addedAt).toLocaleDateString() : "";
+        const qualityMeta = hasTrackCounts(a)
+          ? '<div class="album-meta">' + esc(formatFlacRatio(a.qualityFlacTracks, a.qualityTotalTracks)) + '</div>'
+          : '';
+        const ignoreButton = hasTrackCounts(a)
+          ? '<button class="secondary small" data-ignore>Ignore</button>'
+          : '';
         li.innerHTML =
           '<div class="album-main">' +
             '<div><span class="album-artist">' + esc(a.artist) + '</span> ' +
             '<span class="album-title">&mdash; ' + esc(a.title) + '</span></div>' +
             (added ? '<div class="album-meta">added ' + esc(added) + '</div>' : '') +
+            qualityMeta +
             '<div class="results" data-results></div>' +
           '</div>' +
           '<div class="album-actions">' +
             '<button class="secondary small" data-search>Find in stores</button>' +
+            ignoreButton +
             '<button class="danger" data-remove>Remove</button>' +
           '</div>';
         if (Array.isArray(a.buyLinks) && a.buyLinks.length) {
@@ -504,6 +616,10 @@
         }
         li.querySelector("[data-remove]").addEventListener("click", () => removeAlbum(a, li));
         li.querySelector("[data-search]").addEventListener("click", (ev) => searchInto(li.querySelector("[data-results]"), a.artist, a.title, ev.target));
+        const ignoreBtn = li.querySelector("[data-ignore]");
+        if (ignoreBtn) {
+          ignoreBtn.addEventListener("click", () => ignoreLowQuality(a, li));
+        }
         ul.appendChild(li);
       }
     }
@@ -565,6 +681,30 @@
       } catch (e) {
         btn.disabled = false;
         toast("Remove failed: " + e.message, "err");
+      }
+    }
+
+    async function ignoreLowQuality(a, li) {
+      const btn = li.querySelector("[data-ignore]");
+      if (!btn) return;
+      const confirmed = window.confirm(
+        'Ignore "' + a.title + '" by ' + a.artist + '" in future low-quality scans?\n\nThis will remove it from the wishlist and prevent automatic re-addition.'
+      );
+      if (!confirmed) return;
+
+      btn.disabled = true;
+      try {
+        await api("/ignore-low-quality", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ artist: a.artist, title: a.title }),
+        });
+        toast("Ignored for future low-quality scans: " + a.artist + " — " + a.title, "ok");
+        await loadWishlist();
+        await loadStatus();
+      } catch (e) {
+        btn.disabled = false;
+        toast("Ignore failed: " + e.message, "err");
       }
     }
 
@@ -717,15 +857,43 @@
         const r = await api("/check-lossless", { method: "POST" });
         const removed = (r && r.removedFromWishlist) || [];
         if (removed.length) {
-          toast("Removed " + removed.length + " album(s) found locally.", "ok");
+          toast("Removed " + removed.length + " album(s) that are already fully FLAC locally.", "ok");
         } else {
-          toast("No matching lossless albums found locally.", "");
+          toast("No fully FLAC albums matched the wishlist.", "");
         }
         await loadWishlist();
+        await loadStatus();
       } catch (e) {
         toast("Scan failed: " + e.message, "err");
       } finally {
-        btn.disabled = false;
+        await loadStatus();
+      }
+    });
+
+    $("scan-low-quality-btn").addEventListener("click", async () => {
+      const btn = $("scan-low-quality-btn");
+      if (!(latestStatus.libraryPath || "").trim()) {
+        toast("Set the library path in Settings first.", "err");
+        return;
+      }
+
+      btn.disabled = true;
+      try {
+        const r = await api("/scan-low-quality", { method: "POST" });
+        const parts = [
+          "added " + r.added,
+          "already on wishlist " + r.alreadyPresent,
+          "ignored " + r.ignored,
+          "all-FLAC skipped " + r.skippedAllFlac,
+        ];
+        if (r.errors) parts.push("errors " + r.errors);
+        toast("Low-quality scan done - " + parts.join(" - "), "ok");
+        await loadWishlist();
+        await loadStatus();
+      } catch (e) {
+        toast("Low-quality scan failed: " + e.message, "err");
+      } finally {
+        await loadStatus();
       }
     });
 
