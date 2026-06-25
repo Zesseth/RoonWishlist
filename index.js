@@ -434,11 +434,33 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // Auto-check: remove from wishlist if lossless found in library
+  // Clear & rebuild: remove low-quality albums, clean FLAC matches, then rescan for low-quality
   if (req.method === "POST" && url.pathname === "/check-lossless") {
     try {
+      // First: clear existing low-quality albums
+      const allItems = wishlist.getAll();
+      const lowQualityItems = allItems.filter(a => a.source === "low-quality");
+      const clearedLowQuality = [];
+      for (const item of lowQualityItems) {
+        if (wishlist.remove(item)) {
+          clearedLowQuality.push(item);
+        }
+      }
+      
+      // Second: remove FLAC albums from wishlist
       const removed = await runLosslessClean();
-      res.end(JSON.stringify({ removedFromWishlist: removed }));
+      
+      // Third: scan for new low-quality albums
+      let lowQualityResult = null;
+      if (mysettings.music_library_path && mysettings.music_library_path.trim()) {
+        lowQualityResult = await runLowQualityScan();
+      }
+      
+      res.end(JSON.stringify({ 
+        clearedLowQuality,
+        removedFromWishlist: removed,
+        lowQualityScan: lowQualityResult
+      }));
     } catch (e) {
       res.statusCode = e.statusCode || 500;
       res.end(JSON.stringify({ error: e.message }));
