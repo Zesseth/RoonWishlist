@@ -289,8 +289,9 @@
       <div class="toolbar">
         <div>
           <h2 style="margin:0;">Low-quality albums</h2>
-          <div class="sync-note" id="low-quality-note">Albums in your library that are not fully FLAC. <strong>Use Settings → Library → "Scan low-quality albums now" to add albums here.</strong></div>
+          <div class="sync-note" id="low-quality-note">Albums in your library that are not fully FLAC.</div>
         </div>
+        <button class="secondary small" id="scan-low-quality-btn" title="Scan your library and add non-FLAC albums to the wishlist">Scan low-quality albums now</button>
       </div>
       <ul class="list" id="low-quality-list"></ul>
       <div class="results" id="low-quality-results"></div>
@@ -302,17 +303,16 @@
       <form id="lib-form" class="row" autocomplete="off">
         <input type="text" id="lib-path" placeholder="/mnt/music" />
         <button type="submit">Save path</button>
-        <button type="button" class="secondary" id="scan-low-quality-btn" title="Scan your library and add non-FLAC albums to the wishlist">Scan low-quality albums now</button>
       </form>
       <div class="danger-zone">
         <h3>Danger Zone</h3>
-        <p>These actions modify or remove data from your wishlist.</p>
-        <p><strong>Scan &amp; clean now:</strong> Remove albums from wishlist that are already fully FLAC in your library.</p>
-        <p><strong>Clear &amp; rebuild from Roon tag:</strong> Clear the entire wishlist and rebuild it from scratch using only albums currently tagged <strong>Wishlist</strong> in Roon. Anything not tagged in Roon will be removed from the wishlist.</p>
-        <div style="display: flex; gap: 12px; flex-wrap: wrap; margin-top: 12px;">
-          <button type="button" class="danger" id="clean-btn" title="Remove albums from wishlist that are already fully FLAC in your library">Scan &amp; clean now</button>
+        <p>These actions <strong>empty and rebuild</strong> their respective sections from scratch.</p>
+        <div style="display: flex; flex-direction: column; gap: 12px; margin-top: 12px;">
           <button type="button" class="danger" id="rebuild-roon-btn">Clear &amp; rebuild from Roon tag</button>
+          <button type="button" class="danger" id="clean-btn" title="Empty low-quality albums, remove FLAC matches, then rescan library for new non-FLAC albums">Clear &amp; rebuild low-quality albums</button>
         </div>
+        <p style="margin-top: 12px;"><strong>Clear &amp; rebuild from Roon tag:</strong> Empty the entire wishlist and rebuild <strong>only</strong> from albums tagged "Wishlist" in Roon. Non-tagged albums will be removed.</p>
+        <p><strong>Clear &amp; rebuild low-quality albums:</strong> Empty low-quality albums, remove any albums that are already fully FLAC in your library, then scan library and add non-FLAC albums.</p>
       </div>
     </section>
   </main>
@@ -606,7 +606,7 @@
       if (!ul) return;
       ul.innerHTML = "";
       if (!items.length) {
-        ul.innerHTML = '<li class="empty">No low-quality albums on wishlist.</li>';
+        ul.innerHTML = '<li class="empty">No low-quality albums on wishlist. Use Settings → Library → "Scan low-quality albums now" to add albums here.</li>';
         return;
       }
       renderWishlistItems(ul, items, true);
@@ -858,16 +858,34 @@
       btn.disabled = true;
       try {
         const r = await api("/check-lossless", { method: "POST" });
+        const clearedLowQuality = (r && r.clearedLowQuality) || [];
         const removed = (r && r.removedFromWishlist) || [];
-        if (removed.length) {
-          toast("Removed " + removed.length + " album(s) that are already fully FLAC locally.", "ok");
-        } else {
-          toast("No fully FLAC albums matched the wishlist.", "");
+        const lowQualityResult = (r && r.lowQualityScan) || null;
+        
+        const parts = [];
+        if (clearedLowQuality.length) {
+          parts.push("Cleared " + clearedLowQuality.length + " existing low-quality album(s)");
         }
+        if (removed.length) {
+          parts.push("Removed " + removed.length + " FLAC album(s)");
+        } else if (clearedLowQuality.length === 0) {
+          parts.push("No FLAC albums to remove");
+        }
+        
+        if (lowQualityResult) {
+          parts.push("Added " + lowQualityResult.added + " new low-quality album(s)");
+          if (lowQualityResult.alreadyPresent) {
+            parts.push("Already present: " + lowQualityResult.alreadyPresent);
+          }
+        } else {
+          parts.push("Low-quality scan skipped (library path not set)");
+        }
+        
+        toast(parts.join(" - "), "ok");
         await loadWishlist();
         await loadStatus();
       } catch (e) {
-        toast("Scan failed: " + e.message, "err");
+        toast("Operation failed: " + e.message, "err");
       } finally {
         await loadStatus();
       }
