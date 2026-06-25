@@ -289,9 +289,8 @@
       <div class="toolbar">
         <div>
           <h2 style="margin:0;">Low-quality albums</h2>
-          <div class="sync-note" id="low-quality-note">Albums in your library that are not fully FLAC.</div>
+          <div class="sync-note" id="low-quality-note">Albums in your library that are not fully FLAC. <strong>Use Settings → Library → "Scan low-quality albums now" to add albums here.</strong></div>
         </div>
-        <button class="secondary small" id="scan-low-quality-btn">Scan low-quality albums now</button>
       </div>
       <ul class="list" id="low-quality-list"></ul>
       <div class="results" id="low-quality-results"></div>
@@ -299,16 +298,21 @@
 
     <section class="card page" data-page="settings">
       <h2>Library</h2>
-      <p class="hint">Local folder where your music files live (on the machine running this extension). Used by <em>Scan &amp; clean</em> to remove albums that are fully FLAC, and by the low-quality scan to add albums that are only partially FLAC / not FLAC.</p>
+      <p class="hint">Local folder where your music files live (on the machine running this extension).</p>
       <form id="lib-form" class="row" autocomplete="off">
         <input type="text" id="lib-path" placeholder="/mnt/music" />
         <button type="submit">Save path</button>
-        <button type="button" class="secondary" id="clean-btn">Scan &amp; clean now</button>
+        <button type="button" class="secondary" id="scan-low-quality-btn" title="Scan your library and add non-FLAC albums to the wishlist">Scan low-quality albums now</button>
       </form>
       <div class="danger-zone">
         <h3>Danger Zone</h3>
-        <p>Clear the entire wishlist and rebuild it from scratch using only albums currently tagged <strong>Wishlist</strong> in Roon. Anything not tagged in Roon will be removed from the wishlist.</p>
-        <button type="button" class="danger" id="rebuild-roon-btn">Clear &amp; rebuild from Roon tag</button>
+        <p>These actions modify or remove data from your wishlist.</p>
+        <p><strong>Scan &amp; clean now:</strong> Remove albums from wishlist that are already fully FLAC in your library.</p>
+        <p><strong>Clear &amp; rebuild from Roon tag:</strong> Clear the entire wishlist and rebuild it from scratch using only albums currently tagged <strong>Wishlist</strong> in Roon. Anything not tagged in Roon will be removed from the wishlist.</p>
+        <div style="display: flex; gap: 12px; flex-wrap: wrap; margin-top: 12px;">
+          <button type="button" class="danger" id="clean-btn" title="Remove albums from wishlist that are already fully FLAC in your library">Scan &amp; clean now</button>
+          <button type="button" class="danger" id="rebuild-roon-btn">Clear &amp; rebuild from Roon tag</button>
+        </div>
       </div>
     </section>
   </main>
