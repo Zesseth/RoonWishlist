@@ -384,9 +384,24 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (req.method === "GET" && url.pathname === "/wishlist/roon-tag") {
+    const all = wishlist.getAll();
+    const roonTagAlbums = all.filter((a) => a.source === "roon-tag");
+    res.end(JSON.stringify(roonTagAlbums, null, 2));
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/wishlist/low-quality") {
+    const all = wishlist.getAll();
+    const lowQualityAlbums = all.filter((a) => a.source === "low-quality");
+    res.end(JSON.stringify(lowQualityAlbums, null, 2));
+    return;
+  }
+
   if (req.method === "POST" && url.pathname === "/wishlist/add") {
     readJsonBody(req, res, (album) => {
-      const added = wishlist.add(album);
+      const albumWithSource = { ...album, source: "manual" };
+      const added = wishlist.add(albumWithSource);
       res.end(JSON.stringify({ added }));
     });
     return;

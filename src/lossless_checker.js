@@ -255,6 +255,7 @@ async function scanLowQualityAlbums(libraryPath, wishlistModule, ignoreModule) {
 
     wishlistModule.upsert({
       ...nextAlbum,
+      source: "low-quality",
       detectedBy: "low-quality-scan",
       qualityFlacTracks: local.flacFiles,
       qualityTotalTracks: local.totalAudioFiles,

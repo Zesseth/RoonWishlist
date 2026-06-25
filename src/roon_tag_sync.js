@@ -276,7 +276,7 @@ async function buildTaggedWishlist({ browseService, searchAll, tagName, onProgre
       await onProgress({ current: i + 1, total: albums.length, album, tagName: wantedTag });
     }
 
-    let next = { artist: album.artist, title: album.title };
+    let next = { artist: album.artist, title: album.title, source: "roon-tag" };
     try {
       const buyLinks = await searchAll(album.artist, album.title);
       next.buyLinks = buyLinks;

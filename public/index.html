@@ -261,7 +261,7 @@
       <button type="button" class="title-link" id="home-link">Wishlist</button>
       <nav class="menu-panel" id="main-menu" hidden>
         <button type="button" class="menu-item" data-nav="wishlist">Wishlist</button>
-        <button type="button" class="menu-item" data-nav="add">Add an album</button>
+        <button type="button" class="menu-item" data-nav="low-quality">Low-quality albums</button>
         <button type="button" class="menu-item" data-nav="settings">Settings</button>
       </nav>
     </div>
@@ -273,8 +273,8 @@
     <section class="card page active" data-page="wishlist">
       <div class="toolbar">
         <div>
-          <h2 style="margin:0;">Current wishlist</h2>
-          <div class="sync-note" id="sync-note">Import albums tagged Wishlist from Roon and fetch store links.</div>
+          <h2 style="margin:0;">Wishlist</h2>
+          <div class="sync-note" id="sync-note">Albums tagged Wishlist in Roon.</div>
         </div>
         <div class="row" style="gap:8px;">
           <button class="secondary small" id="sync-roon-btn">Sync Roon tag</button>
@@ -285,29 +285,16 @@
       <ul class="list" id="wishlist"></ul>
     </section>
 
-    <section class="card page active" data-page="wishlist">
+    <section class="card page" data-page="low-quality">
       <div class="toolbar">
         <div>
-          <h2 style="margin:0;">Low-quality library scan</h2>
-          <div class="sync-note" id="low-quality-note">Scan the configured library and add albums that are not fully FLAC to the wishlist.</div>
+          <h2 style="margin:0;">Low-quality albums</h2>
+          <div class="sync-note" id="low-quality-note">Albums in your library that are not fully FLAC.</div>
         </div>
         <button class="secondary small" id="scan-low-quality-btn">Scan low-quality albums now</button>
       </div>
-      <div class="results" id="low-quality-results">
-        <div class="empty">No low-quality scan has been run yet.</div>
-      </div>
-    </section>
-
-    <section class="card page" data-page="add">
-      <h2>Add an album</h2>
-      <p class="hint">Type an artist and album, then <strong>Add</strong> it directly, or <strong>Search stores</strong> to find it on Bandcamp/Qobuz first.</p>
-      <form id="add-form" class="row" autocomplete="off">
-        <input type="text" id="add-artist" placeholder="Artist" required />
-        <input type="text" id="add-title" placeholder="Album title" required />
-        <button type="submit">Add</button>
-        <button type="button" class="secondary" id="search-btn">Search stores</button>
-      </form>
-      <div class="results" id="search-results"></div>
+      <ul class="list" id="low-quality-list"></ul>
+      <div class="results" id="low-quality-results"></div>
     </section>
 
     <section class="card page" data-page="settings">
@@ -334,7 +321,7 @@
 
   <script>
     const $ = (id) => document.getElementById(id);
-    const PAGES = new Set(["wishlist", "add", "settings"]);
+    const PAGES = new Set(["wishlist", "low-quality", "settings"]);
     let currentPage = "wishlist";
     let latestStatus = {
       online: false,
@@ -364,6 +351,13 @@
       if (updateHash) {
         const target = "#" + currentPage;
         if (window.location.hash !== target) window.location.hash = target;
+      }
+      // Load appropriate data for the page
+      if (currentPage === "wishlist") {
+        loadRoonTagWishlist();
+      } else if (currentPage === "low-quality") {
+        loadLowQualityWishlist();
+        renderLowQualitySection();
       }
     }
 
@@ -570,23 +564,51 @@
       } catch { /* ignore */ }
     }
 
-    async function loadWishlist() {
+    async function loadRoonTagWishlist() {
       try {
-        const items = await api("/wishlist");
-        renderWishlist(items || []);
+        const items = await api("/wishlist/roon-tag");
+        renderRoonTagWishlist(items || []);
       } catch (e) {
-        toast("Failed to load wishlist: " + e.message, "err");
+        toast("Failed to load Roon tag wishlist: " + e.message, "err");
       }
     }
 
-    function renderWishlist(items) {
+    async function loadLowQualityWishlist() {
+      try {
+        const items = await api("/wishlist/low-quality");
+        renderLowQualityWishlist(items || []);
+      } catch (e) {
+        toast("Failed to load low-quality wishlist: " + e.message, "err");
+      }
+    }
+
+    async function loadWishlist() {
+      await Promise.all([loadRoonTagWishlist(), loadLowQualityWishlist()]);
+    }
+
+    function renderRoonTagWishlist(items) {
       const ul = $("wishlist");
       ul.innerHTML = "";
       $("count").textContent = items.length + (items.length === 1 ? " album" : " albums");
       if (!items.length) {
-        ul.innerHTML = '<li class="empty">Wishlist is empty. Open "Add an album" from the menu.</li>';
+        ul.innerHTML = '<li class="empty">Wishlist is empty. Tag albums with "Wishlist" in Roon to populate it.</li>';
         return;
       }
+      renderWishlistItems(ul, items, false);
+    }
+
+    function renderLowQualityWishlist(items) {
+      const ul = $("low-quality-list");
+      if (!ul) return;
+      ul.innerHTML = "";
+      if (!items.length) {
+        ul.innerHTML = '<li class="empty">No low-quality albums on wishlist.</li>';
+        return;
+      }
+      renderWishlistItems(ul, items, true);
+    }
+
+    function renderWishlistItems(ul, items, showIgnore) {
       // Newest first.
       const sorted = items.slice().sort((a, b) => String(b.addedAt || "").localeCompare(String(a.addedAt || "")));
       for (const a of sorted) {
@@ -595,7 +617,7 @@
         const qualityMeta = hasTrackCounts(a)
           ? '<div class="album-meta">' + esc(formatFlacRatio(a.qualityFlacTracks, a.qualityTotalTracks)) + '</div>'
           : '';
-        const ignoreButton = hasTrackCounts(a)
+        const ignoreButton = showIgnore && hasTrackCounts(a)
           ? '<button class="secondary small" data-ignore>Ignore</button>'
           : '';
         li.innerHTML =
@@ -727,29 +749,6 @@
         if (btn) btn.disabled = false;
       }
     }
-
-    $("add-form").addEventListener("submit", async (ev) => {
-      ev.preventDefault();
-      const artist = $("add-artist").value.trim();
-      const title = $("add-title").value.trim();
-      if (!artist || !title) return;
-      try {
-        await addAlbum(artist, title);
-        $("add-artist").value = "";
-        $("add-title").value = "";
-        $("search-results").innerHTML = "";
-        $("add-artist").focus();
-      } catch (e) {
-        toast("Add failed: " + e.message, "err");
-      }
-    });
-
-    $("search-btn").addEventListener("click", () => {
-      const artist = $("add-artist").value.trim();
-      const title = $("add-title").value.trim();
-      if (!artist && !title) { toast("Type an artist and/or album to search.", ""); return; }
-      searchInto($("search-results"), artist, title, $("search-btn"), true);
-    });
 
     $("lib-form").addEventListener("submit", async (ev) => {
       ev.preventDefault();

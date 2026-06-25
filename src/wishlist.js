@@ -122,6 +122,14 @@ function normalizeAlbum(album, existing) {
   else if (existing && Array.isArray(existing.buyLinks)) next.buyLinks = normalizeBuyLinks(existing.buyLinks);
   if (existing && existing.addedAt) next.addedAt = existing.addedAt;
   else next.addedAt = album && album.addedAt ? album.addedAt : new Date().toISOString();
+  // Preserve source if existing, otherwise default to "manual" for backward compatibility
+  if (existing && existing.source) {
+    next.source = existing.source;
+  } else if (album && album.source) {
+    next.source = album.source;
+  } else if (!next.source) {
+    next.source = "manual";
+  }
   return next;
 }
 

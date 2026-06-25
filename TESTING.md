@@ -14,6 +14,10 @@ npm test
 
 ## Test Categories
 
+> **Note:** This document describes tests for the **main branch** after the UI cleanup changes. The `test/unit-tests` branch has been merged to main.
+
+
+
 ### 1. Unit Tests (Automated)
 
 **Module:** `src/wishlist.js`  
@@ -322,6 +326,107 @@ Before reporting issues, verify:
 
 ---
 
+## User Testing Guide
+
+### Test these features manually in the Web UI
+
+#### 1. Wishlist Section (Roon-tagged albums only)
+- [ ] Open: http://localhost:3141
+- [ ] Verify: Page shows "Wishlist" as the default view
+- [ ] In Roon: Tag an album with "Wishlist"
+- [ ] Click: "Sync Roon tag" button
+- [ ] Verify: Tagged album appears in the Wishlist section
+- [ ] Verify: Album shows artist and title, NO ignore button
+- [ ] Click: "Find in stores" for the album
+- [ ] Verify: Bandcamp and Qobuz links appear
+- [ ] Click: "Remove" button
+- [ ] Verify: Album is removed from wishlist
+
+#### 2. Low-Quality Albums Section
+- [ ] Navigate: Click "Low-quality albums" in the menu
+- [ ] Verify: Page shows "Low-quality albums" header
+- [ ] In Settings: Set music library path
+- [ ] Click: "Scan low-quality albums now"
+- [ ] Verify: Non-FLAC albums appear in the list
+- [ ] Verify: Each album shows "FLAC x/y" track count
+- [ ] Verify: Each album has "Find in stores" AND "Ignore" buttons
+- [ ] Click: "Ignore" for an album
+- [ ] Verify: Album is removed and won't reappear on next scan
+- [ ] Click: "Find in stores" for an album
+- [ ] Verify: Bandcamp and Qobuz links appear
+
+#### 3. Menu Navigation
+- [ ] Verify: Menu has exactly 3 items: Wishlist, Low-quality albums, Settings
+- [ ] Verify: "Add an album" is NOT in the menu
+- [ ] Click: Each menu item
+- [ ] Verify: Correct section opens
+- [ ] Verify: Only one section is "active" at a time
+
+---
+
+## Technical Tests (AI/Automated)
+
+Run these on a server to verify the source-based separation works correctly.
+
+### Test 1: API Endpoints Return Correct Sources
+```bash
+# Clear existing data
+rm -rf data/wishlist.json
+
+# Add a manual album
+curl -X POST http://localhost:3141/wishlist/add \
+  -H "Content-Type: application/json" \
+  -d '{"artist": "Manual Artist", "title": "Manual Album"}'
+
+# Add a Roon-tagged album (simulate via upsert with source)
+curl -X POST http://localhost:3141/wishlist/add \
+  -H "Content-Type: application/json" \
+  -d '{"artist": "Roon Artist", "title": "Roon Album", "source": "roon-tag"}'
+
+# Add a low-quality album (simulate via upsert with source)
+curl -X POST http://localhost:3141/wishlist/add \
+  -H "Content-Type: application/json" \
+  -d '{"artist": "Low Quality Artist", "title": "Low Quality Album", "source": "low-quality"}'
+
+# Verify all albums exist
+curl http://localhost:3141/wishlist | jq '.[] | {artist, title, source}'
+# Expected: 3 albums with sources: manual, roon-tag, low-quality
+
+# Verify Roon-tag endpoint returns only Roon-tagged
+curl http://localhost:3141/wishlist/roon-tag | jq '.[] | {artist, title, source}'
+# Expected: 1 album with source: roon-tag
+
+# Verify low-quality endpoint returns only low-quality
+curl http://localhost:3141/wishlist/low-quality | jq '.[] | {artist, title, source}'
+# Expected: 1 album with source: low-quality
+```
+
+### Test 2: Ignore Button Only in Low-Quality Section
+```bash
+# Clear data
+rm -rf data/wishlist.json
+
+# Add a low-quality album with quality metadata
+curl -X POST http://localhost:3141/wishlist/add \
+  -H "Content-Type: application/json" \
+  -d '{"artist": "Test Artist", "title": "Test Album", "source": "low-quality", "qualityFlacTracks": 5, "qualityTotalTracks": 10}'
+
+# Add a Roon-tagged album
+curl -X POST http://localhost:3141/wishlist/add \
+  -H "Content-Type: application/json" \
+  -d '{"artist": "Roon Artist", "title": "Roon Album", "source": "roon-tag"}'
+
+# Verify Roon-tag endpoint album has no quality metadata
+curl http://localhost:3141/wishlist/roon-tag | jq '.[] | select(.artist == "Roon Artist") | {hasQuality: (.qualityFlacTracks != null and .qualityTotalTracks != null)}'
+# Expected: {"hasQuality": false}
+
+# Verify low-quality endpoint album has quality metadata
+curl http://localhost:3141/wishlist/low-quality | jq '.[] | select(.artist == "Test Artist") | {hasQuality: (.qualityFlacTracks != null and .qualityTotalTracks != null)}'
+# Expected: {"hasQuality": true}
+```
+
+---
+
 ## Clean Up
 
 To reset after testing:
@@ -329,9 +434,6 @@ To reset after testing:
 ```bash
 # Remove test data
 rm -rf data/wishlist.json data/ignored-low-quality.json
-
-# Return to main branch
-git checkout main
 ```
 
 ---
