@@ -1,17 +1,12 @@
 # Testing Guide - RoonWishlist
 
-> **This branch:** `test/unit-tests` - Contains all testable features + unit tests
-
 ## Quick Start
 
 ```bash
-# 1. Checkout this branch
-git checkout test/unit-tests
-
-# 2. Install dependencies
+# 1. Install dependencies
 npm ci
 
-# 3. Run all tests
+# 2. Run all tests
 npm test
 ```
 
@@ -341,5 +336,4 @@ git checkout main
 
 ---
 
-*Last updated: 2026-06-22*  
-*Branch: test/unit-tests*
+*Last updated: 2026-06-25*
