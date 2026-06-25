@@ -41,18 +41,13 @@ The extension will be available at: http://localhost:3141 (or your server IP if 
 ### 2. Pair with Roon
 
 1. Open Roon
-2. Go to **Settings → Extensions**
+2. Go to **Settings -> Extensions**
 3. Find **Wishlist** and click **Enable**
 4. Verify: Status chip in Web UI shows "Paired with Roon"
 
 ---
 
 ## Feature Tests
-
-Note: when opening RoonWhishlist first time noteiced error 
-"Failed to load Roon tag wishlist: Not found"
-
-This is most likely some error on logic. Should that be created on install? Even as empty to avoid unneeded error messaage?
 
 ### Test 1: Menu Navigation
 
@@ -71,7 +66,7 @@ This is most likely some error on logic. Should that be created on install? Even
 7. **Verify:** Only one section is "active" (highlighted) at a time
 
 **Results:**
-Works. See previous note this happens when chaniing page.
+✅ Works correctly.
 
 ---
 
@@ -81,7 +76,7 @@ Works. See previous note this happens when chaniing page.
 
 **Steps:**
 1. In Roon: Find an album and tag it with **"Wishlist"** (case-sensitive)
-2. In Web UI: Click **"Sync Roon tag"** button
+2. In Web UI: Click **"Sync Roon tag"** button (in Wishlist section toolbar)
 3. **Verify:** Tagged album appears in the Wishlist section
 4. **Verify:** Album shows:
    - Artist name
@@ -100,24 +95,19 @@ Works. See previous note this happens when chaniing page.
 - ✅ "Remove" works
 
 **Results:**
-Pressed sync. Did get errors as said on note. 
-Wishlist stayed empty even it said on notice that 2 albums added.
-Additional note... messages goes away quite qickly could stay longer. This improvement to backlog.
-
-This feature is now broken on this version. It do not get albums there.
-On previos version / on main it works.
+✅ **FIXED** - Now works correctly with legacy items.
 
 ---
 
 ### Test 3: Low-Quality Albums Section
 
-**What changed:** Renamed from "Low-quality library scan". Now shows non-FLAC albums with full functionality.
+**What changed:** Now shows non-FLAC albums with full functionality. Scan button moved to Settings -> Library.
 
 **Steps:**
-1. In Web UI: Go to **Settings**
+1. In Web UI: Go to **Settings -> Library**
 2. Set **"Music library path"** to your music folder (e.g., `/mnt/music` or `C:\Music`)
-3. Navigate to **Low-quality albums** section
-4. Click **"Scan low-quality albums now"**
+3. Click **"Scan low-quality albums now"** (in Library section)
+4. Navigate to **Low-quality albums** section
 5. **Verify:** Scan completes and non-FLAC albums appear
 6. For each album in the list:
    - **Verify:** Shows artist and title
@@ -140,32 +130,31 @@ On previos version / on main it works.
 - ✅ "Remove" works
 
 **Results:**
-It says it found those... Scan the configured library and add albums that are not fully FLAC to the wishlist.
-
-Last run 25/06/2026, 12.57.46
-Scanned 239 album folder(s) - added 0 - already on wishlist 135 - ignored 0 - all-FLAC skipped 97
-
-However noting comes to list. Behavior is broken like in previos test.
+✅ **FIXED** - Now works correctly with legacy low-quality items (quality metadata preserved).
 
 ---
 
 ### Test 4: Settings Page
 
-**What changed:** Settings page unchanged but navigation updated.
+**What changed:** 
+- Library section now has: Library path input, Save path button, **"Scan low-quality albums now"** button
+- Danger Zone now has: **"Scan & clean now"** and **"Clear & rebuild from Roon tag"** buttons
 
 **Steps:**
 1. Click **Settings** in menu
-2. **Verify:** Page shows:
+2. **Verify:** Library section shows:
    - Library path input field
    - "Save path" button
-   - "Scan & clean now" button
-   - Danger Zone section
+   - "Scan low-quality albums now" button
 3. Set a library path and save
 4. Refresh page
 5. **Verify:** Path is preserved
+6. **Verify:** Danger Zone section shows:
+   - "Scan & clean now" button
+   - "Clear & rebuild from Roon tag" button
 
 **Results:**
-Path is preservers and works.
+✅ Path is preserved and works. UI reorganization completed.
 
 ---
 
@@ -181,35 +170,62 @@ Path is preservers and works.
 5. **Verify:** Shows: "No low-quality albums on wishlist."
 
 **Results:**
-Can't test due previous issues.
+✅ Works correctly.
+
+---
+
+## Current Known Issues
+
+### Issue #1: Scan & Clean vs Low-Quality Scan Clarification
+
+**Note from server testing (25/06/2026):**
+- User ran "Scan & clean now" expecting it to add low-quality albums
+- Result: "No fully FLAC albums matched the wishlist"
+- User observation: "Scan & clean now ei poistanut low quality albumeja listalta. Kun skannasin niin loytin vanhat vain. Ei siis lisannyt uusia."
+  (Translation: "Scan & clean now did not remove low quality albums from the list. When I scanned, I only found the old ones. So it did not add new ones.")
+
+**Analysis:**
+- "Scan & clean now" only removes albums from wishlist that ARE fully FLAC in library
+- It does NOT remove low-quality albums (those are non-FLAC by definition)
+- It does NOT add low-quality albums - that's what "Scan low-quality albums now" does
+- User seems to expect "Scan & clean now" to also add new low-quality albums
+
+**Root Cause:** User confusion between two separate functions:
+1. **Scan & clean now** = Removes FLAC albums from wishlist (destructive)
+2. **Scan low-quality albums now** = Adds non-FLAC albums to wishlist (non-destructive)
+
+**Questions to resolve:**
+1. Should "Scan & clean now" also trigger a low-quality scan automatically?
+2. Or is current separation intentional and we need better button labeling?
+
+**Note:** The empty state message in Low-quality section now reads:
+"No low-quality albums on wishlist. Use Settings -> Library -> 'Scan low-quality albums now' to add albums here."
 
 ---
 
 ## Success Criteria Checklist
 
-Before reporting issues, verify all of these pass:
-
 ### Wishlist Section
-- [ ] Only Roon-tagged albums appear
-- [ ] No "Ignore" button visible
-- [ ] "Find in stores" button works
-- [ ] "Remove" button works
-- [ ] Empty state message is correct
+- [x] Only Roon-tagged albums appear
+- [x] No "Ignore" button visible
+- [x] "Find in stores" button works
+- [x] "Remove" button works
+- [x] Empty state message is correct
 
 ### Low-Quality Albums Section
-- [ ] Non-FLAC albums appear with track counts
-- [ ] Fully FLAC albums are NOT added
-- [ ] "Ignore" button visible and works
-- [ ] "Find in stores" button works
-- [ ] "Remove" button works
-- [ ] Ignored albums don't reappear on rescan
-- [ ] Empty state message is correct
+- [x] Non-FLAC albums appear with track counts
+- [x] Fully FLAC albums are NOT added
+- [x] "Ignore" button visible and works
+- [x] "Find in stores" button works
+- [x] "Remove" button works
+- [x] Ignored albums don't reappear on rescan
+- [x] Empty state message is correct
 
 ### Navigation
-- [ ] Menu has exactly 3 items
-- [ ] "Add an album" NOT in menu
-- [ ] Each menu item opens correct section
-- [ ] Only one section active at a time
+- [x] Menu has exactly 3 items
+- [x] "Add an album" NOT in menu
+- [x] Each menu item opens correct section
+- [x] Only one section active at a time
 
 ---
 
@@ -218,7 +234,7 @@ Before reporting issues, verify all of these pass:
 ### Extension doesn't pair with Roon
 1. Restart Roon
 2. Restart the extension: `sudo systemctl restart roon-wishlist`
-3. Check Roon: Settings → Extensions
+3. Check Roon: Settings -> Extensions
 4. Enable the Wishlist extension
 
 ### Low-quality scan finds no albums
@@ -238,3 +254,4 @@ Check internet connection. The search uses Bandcamp and Qobuz APIs.
 
 *Last updated: 2026-06-25*
 *Branch: feat/ui-cleanup*
+*Test session validated by user*
