@@ -388,14 +388,19 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === "GET" && url.pathname === "/wishlist/roon-tag") {
     const all = wishlist.getAll();
-    const roonTagAlbums = all.filter((a) => a.source === "roon-tag");
+    // Include items with source "roon-tag" or legacy items without a source (manual additions)
+    const roonTagAlbums = all.filter((a) => a.source === "roon-tag" || !a.source);
     res.end(JSON.stringify(roonTagAlbums, null, 2));
     return;
   }
 
   if (req.method === "GET" && url.pathname === "/wishlist/low-quality") {
     const all = wishlist.getAll();
-    const lowQualityAlbums = all.filter((a) => a.source === "low-quality");
+    // Include items with source "low-quality" or legacy low-quality items with quality metadata
+    const lowQualityAlbums = all.filter((a) => 
+      a.source === "low-quality" || 
+      (a.qualityFlacTracks !== undefined && a.qualityTotalTracks !== undefined)
+    );
     res.end(JSON.stringify(lowQualityAlbums, null, 2));
     return;
   }
