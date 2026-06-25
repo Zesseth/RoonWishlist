@@ -49,6 +49,11 @@ The extension will be available at: http://localhost:3141 (or your server IP if 
 
 ## Feature Tests
 
+Note: when opening RoonWhishlist first time noteiced error 
+"Failed to load Roon tag wishlist: Not found"
+
+This is most likely some error on logic. Should that be created on install? Even as empty to avoid unneeded error messaage?
+
 ### Test 1: Menu Navigation
 
 **What changed:** "Add an album" removed from menu. New structure with 3 items.
@@ -66,6 +71,7 @@ The extension will be available at: http://localhost:3141 (or your server IP if 
 7. **Verify:** Only one section is "active" (highlighted) at a time
 
 **Results:**
+Works. See previous note this happens when chaniing page.
 
 ---
 
@@ -94,6 +100,12 @@ The extension will be available at: http://localhost:3141 (or your server IP if 
 - ✅ "Remove" works
 
 **Results:**
+Pressed sync. Did get errors as said on note. 
+Wishlist stayed empty even it said on notice that 2 albums added.
+Additional note... messages goes away quite qickly could stay longer. This improvement to backlog.
+
+This feature is now broken on this version. It do not get albums there.
+On previos version / on main it works.
 
 ---
 
@@ -128,6 +140,12 @@ The extension will be available at: http://localhost:3141 (or your server IP if 
 - ✅ "Remove" works
 
 **Results:**
+It says it found those... Scan the configured library and add albums that are not fully FLAC to the wishlist.
+
+Last run 25/06/2026, 12.57.46
+Scanned 239 album folder(s) - added 0 - already on wishlist 135 - ignored 0 - all-FLAC skipped 97
+
+However noting comes to list. Behavior is broken like in previos test.
 
 ---
 
@@ -147,6 +165,7 @@ The extension will be available at: http://localhost:3141 (or your server IP if 
 5. **Verify:** Path is preserved
 
 **Results:**
+Path is preservers and works.
 
 ---
 
@@ -162,6 +181,7 @@ The extension will be available at: http://localhost:3141 (or your server IP if 
 5. **Verify:** Shows: "No low-quality albums on wishlist."
 
 **Results:**
+Can't test due previous issues.
 
 ---
 
