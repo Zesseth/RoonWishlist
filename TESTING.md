@@ -23,7 +23,7 @@ npm test
 
 **Module:** `src/wishlist.js`  
 **File:** `test/wishlist.test.js`  
-**Tests:** 26 tests covering CRUD operations  
+**Tests:** 17 tests covering CRUD operations  
 **Command:** `npm test`
 
 | Function | Tests | Coverage |
@@ -45,9 +45,9 @@ npm test
   ✔ replaceAll() (6 tests)
   ✔ data persistence (2 tests)
 
-ℹ tests 26
+ℹ tests 17
 ℹ suites 7
-ℹ pass 26
+ℹ pass 17
 ℹ fail 0
 ```
 
@@ -113,12 +113,11 @@ npm test
    - Expected: JSON response with Bandcamp and Qobuz results
    - Expected: Results have `store`, `title`, `artist`, `url` fields
 
-2. **Add album with buy links via Web UI:**
+2. **Find album in stores via Web UI:**
    - Open: http://localhost:3141
-   - Click "Add an album"
-   - Search for an artist/album
-   - Select a result
-   - Expected: Album added to wishlist with store link
+   - Go to "Low-quality albums" section
+   - Click "Find in stores" for an album
+   - Expected: Search results from Bandcamp and Qobuz appear
 
 3. **Verify buy links persist:**
    - Refresh the page
@@ -180,9 +179,9 @@ npm test
 
 2. **Test navigation:**
    - Click "Wishlist" in top-left menu
-   - Expected: Shows current wishlist
-   - Click "Add an album"
-   - Expected: Shows search form
+   - Expected: Shows albums tagged with "Wishlist" in Roon
+   - Click "Low-quality albums"
+   - Expected: Shows non-FLAC albums from your library
    - Click "Settings"
    - Expected: Shows settings page
    - Click "Wishlist" header
@@ -199,6 +198,9 @@ npm test
 - [ ] All menu items work
 - [ ] Navigation doesn't break
 - [ ] Settings persist across page reloads
+- [ ] "Wishlist" section shows only Roon-tagged albums
+- [ ] "Low-quality albums" section shows non-FLAC albums with find/ignore options 
+
 
 ---
 
@@ -229,9 +231,9 @@ node index.js
 
 ### 2. Native Settings Menu Works
 - In Roon: Settings → Extensions → Wishlist → Settings
-- Expected: Menu loads with Current wishlist, Actions, Music library path
-- Try: Add an album via native menu
-- Expected: Album appears in wishlist
+- Expected: Menu loads with Wishlist, Actions, Music library path, Low-quality scan
+- Try: Run scan or clean via native menu
+- Expected: Operation completes successfully
 
 ### 3. Auto-Clean Works
 1. Add an album to wishlist (via Web UI or Settings)
@@ -302,7 +304,7 @@ mkdir -p data
 
 Before reporting issues, verify:
 
-- [ ] `npm test` passes (26 tests)
+- [ ] `npm test` passes (17 tests)
 - [ ] Extension loads in Roon
 - [ ] Web UI accessible at http://localhost:3141
 - [ ] Music library path is set
@@ -316,7 +318,7 @@ Before reporting issues, verify:
 
 | Feature | Expected Behavior |
 |---------|-------------------|
-| Unit tests | 26/26 pass |
+| Unit tests | 17/17 pass |
 | Low-quality scan | Adds non-FLAC albums to wishlist |
 | Store search | Returns Bandcamp + Qobuz links |
 | Tag sync | Imports Wishlist-tagged albums |
