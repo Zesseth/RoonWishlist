@@ -6,26 +6,37 @@ This guide helps you manually test the RoonWishlist extension features after the
 
 ## Before You Start
 
-### 1. Use the correct branch
+### 1. Install and Run the Extension
 
-The UI cleanup changes are in the `feat/ui-cleanup` branch. To test:
+**Use the installer scripts** (recommended for Linux servers):
 
 ```bash
-# Clone the repository (if you haven't already)
+# Fully automatic - clones, installs, and runs everything
+curl -fsSL https://raw.githubusercontent.com/Zesseth/RoonWishlist/feat/ui-cleanup/bootstrap.sh \
+  | sudo REPO_BRANCH=feat/ui-cleanup bash
+
+# If you want the web UI accessible from other devices on your LAN:
+curl -fsSL https://raw.githubusercontent.com/Zesseth/RoonWishlist/feat/ui-cleanup/bootstrap.sh \
+  | sudo REPO_BRANCH=feat/ui-cleanup bash -s --web
+```
+
+**OR manual installation:**
+
+```bash
+# Clone the repository
 git clone https://github.com/Zesseth/RoonWishlist.git
 cd RoonWishlist
 
 # Switch to the UI cleanup branch
 git checkout feat/ui-cleanup
 
-# Install dependencies
-npm ci
-
-# Start the extension
-node index.js
+# Run the installer
+sudo ./install.sh          # Localhost only
+# OR for LAN access:
+sudo ./install.sh --web
 ```
 
-The extension will be available at: http://localhost:3141
+The extension will be available at: http://localhost:3141 (or your server IP if using --web)
 
 ### 2. Pair with Roon
 
@@ -54,6 +65,8 @@ The extension will be available at: http://localhost:3141
 6. **Verify:** Correct section opens for each
 7. **Verify:** Only one section is "active" (highlighted) at a time
 
+**Results:**
+
 ---
 
 ### Test 2: Wishlist Section (Roon-tagged albums only)
@@ -79,6 +92,8 @@ The extension will be available at: http://localhost:3141
 - ✅ No ignore button (managed via Roon tags)
 - ✅ "Find in stores" works
 - ✅ "Remove" works
+
+**Results:**
 
 ---
 
@@ -112,6 +127,8 @@ The extension will be available at: http://localhost:3141
 - ✅ "Find in stores" works
 - ✅ "Remove" works
 
+**Results:**
+
 ---
 
 ### Test 4: Settings Page
@@ -129,6 +146,8 @@ The extension will be available at: http://localhost:3141
 4. Refresh page
 5. **Verify:** Path is preserved
 
+**Results:**
+
 ---
 
 ### Test 5: Empty States
@@ -141,6 +160,8 @@ The extension will be available at: http://localhost:3141
 3. **Verify:** Shows: "Wishlist is empty. Tag albums with "Wishlist" in Roon to populate it."
 4. Go to **Low-quality albums** section
 5. **Verify:** Shows: "No low-quality albums on wishlist."
+
+**Results:**
 
 ---
 
@@ -176,7 +197,7 @@ Before reporting issues, verify all of these pass:
 
 ### Extension doesn't pair with Roon
 1. Restart Roon
-2. Restart the extension: `node index.js`
+2. Restart the extension: `sudo systemctl restart roon-wishlist`
 3. Check Roon: Settings → Extensions
 4. Enable the Wishlist extension
 
