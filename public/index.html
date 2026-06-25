@@ -307,12 +307,10 @@
       <div class="danger-zone">
         <h3>Danger Zone</h3>
         <p>These actions <strong>empty and rebuild</strong> their respective sections from scratch.</p>
-        <div style="display: flex; flex-direction: column; gap: 12px; margin-top: 12px;">
-          <button type="button" class="danger" id="rebuild-roon-btn">Clear &amp; rebuild from Roon tag</button>
-          <button type="button" class="danger" id="clean-btn" title="Empty low-quality albums, remove FLAC matches, then rescan library for new non-FLAC albums">Clear &amp; rebuild low-quality albums</button>
-        </div>
         <p style="margin-top: 12px;"><strong>Clear &amp; rebuild from Roon tag:</strong> Empty the entire wishlist and rebuild <strong>only</strong> from albums tagged "Wishlist" in Roon. Non-tagged albums will be removed.</p>
+        <button type="button" class="danger" id="rebuild-roon-btn" style="margin-bottom: 16px;">Clear &amp; rebuild from Roon tag</button>
         <p><strong>Clear &amp; rebuild low-quality albums:</strong> Empty low-quality albums, remove any albums that are already fully FLAC in your library, then scan library and add non-FLAC albums.</p>
+        <button type="button" class="danger" id="clean-btn" title="Empty low-quality albums, remove FLAC matches, then rescan library for new non-FLAC albums">Clear &amp; rebuild low-quality albums</button>
       </div>
     </section>
   </main>
