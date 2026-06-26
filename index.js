@@ -9,6 +9,7 @@ const { searchAll } = require("./src/search");
 const lossless = require("./src/lossless_checker");
 const lowQualityIgnore = require("./src/ignored_low_quality");
 const { ROON_WISHLIST_TAG, SyncError, syncTaggedAlbums, rebuildTaggedAlbums } = require("./src/roon_tag_sync");
+const { getStorageLocations } = require("./src/roon_storage");
 
 let roon, mysettings, svc_status;
 let pairedCore = null;
@@ -170,9 +171,47 @@ const svc_settings = new RoonApiSettings(roonApp, {
 
 svc_status = new RoonApiStatus(roonApp);
 
+// Service ID for Roon browse actions - must be globally unique, not user-specific
+const ROON_BROWSE_SERVICE_ID = "com.roonwishlist.browse";
+
+// Create a custom Browse service that extends RoonApiBrowse to add our actions
+const svc_browse = new RoonApiBrowse(roonApp);
+
+// Add custom action: Add current album to wishlist directly from Roon UI
+svc_browse.add_action({
+  name: "Add to wishlist",
+  // Show this action when user is viewing an album in Browse
+  when: { hierarchy: "browse", level: "album" },
+  action: function(params, callback) {
+    const artist = params.artist || "";
+    const title = params.title || "";
+    
+    if (!artist || !title) {
+      callback({ success: false, message: "No album information available" });
+      return;
+    }
+    
+    try {
+      const trimmedArtist = artist.trim();
+      const trimmedTitle = title.trim();
+      
+      if (wishlist.add({ artist: trimmedArtist, title: trimmedTitle, source: "roon-browse" })) {
+        console.log(`Added album to wishlist from Roon: ${trimmedArtist} — ${trimmedTitle}`);
+        svc_status.set_status(`Added to wishlist: ${trimmedArtist} — ${trimmedTitle}`, false);
+        callback({ success: true, message: "Added to wishlist" });
+      } else {
+        callback({ success: false, message: "Already on wishlist" });
+      }
+    } catch (e) {
+      console.error("Error adding album from Roon:", e.message);
+      callback({ success: false, message: "Error adding to wishlist" });
+    }
+  },
+});
+
 roonApp.init_services({
-  provided_services: [svc_settings, svc_status],
-  optional_services: [RoonApiBrowse],
+  provided_services: [svc_settings, svc_status, svc_browse],
+  optional_services: [],
 });
 
 svc_status.set_status("Initializing…", false);
@@ -253,16 +292,40 @@ function getBrowseService() {
   return pairedCore && pairedCore.services ? pairedCore.services.RoonApiBrowse : null;
 }
 
+/**
+ * Get all storage locations to scan.
+ * Tries to fetch from Roon first, falls back to manual library path.
+ */
+async function getAllStorageLocations() {
+  const browseService = getBrowseService();
+  const manualPath = (mysettings.music_library_path || "").trim();
+  
+  // If we have browse service, try to get storage locations from Roon
+  if (browseService) {
+    const roonLocations = await getStorageLocations(browseService, manualPath);
+    if (roonLocations.length > 0) {
+      return roonLocations;
+    }
+  }
+  
+  // Fallback to manual path
+  if (manualPath) {
+    return [manualPath];
+  }
+  
+  return [];
+}
+
 function makeHttpError(statusCode, message) {
   const error = new Error(message);
   error.statusCode = statusCode;
   return error;
 }
 
-async function runLibraryScanAction(task, { startStatus, successStatus, action }) {
-  const libraryPath = (mysettings.music_library_path || "").trim();
-  if (!libraryPath) {
-    throw makeHttpError(400, "Music library path is not set. Set it in Settings first.");
+async function runLibraryScanAction(task, { startStatus, successStatus, action, actionMultiple }) {
+  const storageLocations = await getAllStorageLocations();
+  if (!storageLocations || storageLocations.length === 0) {
+    throw makeHttpError(400, "No storage locations available. Set music library path in Settings or pair with Roon.");
   }
   if (scanInProgress) {
     throw makeHttpError(409, "A library scan is already running");
@@ -272,7 +335,10 @@ async function runLibraryScanAction(task, { startStatus, successStatus, action }
   scanActivity = task;
   svc_status.set_status(startStatus, false);
   try {
-    const result = await action(libraryPath);
+    // Use multi-location version if available, otherwise fall back to single
+    const result = actionMultiple 
+      ? await actionMultiple(storageLocations)
+      : await action(storageLocations[0]);
     try { svc_settings.update_settings(make_layout(mysettings)); } catch {}
     svc_status.set_status(successStatus(result), false);
     return result;
@@ -291,6 +357,10 @@ async function runLosslessClean() {
     successStatus(removed) {
       return `Refresh & clean done: removed ${removed.length} album(s) that are already fully FLAC`;
     },
+    actionMultiple(storageLocations) {
+      return lossless.checkAndCleanMultiple(storageLocations, wishlist);
+    },
+    // Fallback for single location (should not be used with new code)
     action(libraryPath) {
       return lossless.checkAndClean(libraryPath, wishlist);
     },
@@ -304,6 +374,10 @@ async function runLowQualityScan() {
     successStatus(summary) {
       return `Low-quality scan done: added ${summary.added}, already on wishlist ${summary.alreadyPresent}, ignored ${summary.ignored}`;
     },
+    actionMultiple(storageLocations) {
+      return lossless.scanLowQualityAlbumsMultiple(storageLocations, wishlist, lowQualityIgnore);
+    },
+    // Fallback for single location (should not be used with new code)
     action(libraryPath) {
       return lossless.scanLowQualityAlbums(libraryPath, wishlist, lowQualityIgnore);
     },

@@ -182,7 +182,7 @@ async function scanLibrary(libraryPath) {
 }
 
 /**
- * Checks all wishlist albums against the library.
+ * Checks all wishlist albums against a single library path.
  * Removes any album from the wishlist only when the matching local album is fully FLAC.
  * Returns array of removed albums.
  */
@@ -192,6 +192,52 @@ async function checkAndClean(libraryPath, wishlistModule) {
 
   const { albums: localAlbums } = await scanLibrary(libraryPath);
   const ownedAllFlacAlbums = localAlbums.filter((album) => album.status === "owned-all-flac");
+  const removed = [];
+
+  for (const item of wishlistItems) {
+    const match = ownedAllFlacAlbums.find(
+      (local) => namesMatchExactly(local.artist, item.artist) && namesMatchExactly(local.album, item.title),
+    );
+    if (!match) continue;
+
+    wishlistModule.remove(item);
+    removed.push({
+      ...item,
+      foundAt: match.fullPath,
+      qualityStatus: match.status,
+      flacTracks: match.flacFiles,
+      totalTracks: match.totalAudioFiles,
+    });
+  }
+
+  return removed;
+}
+
+/**
+ * Checks all wishlist albums against multiple storage locations.
+ * Removes any album from the wishlist only when the matching local album is fully FLAC.
+ * Returns array of removed albums.
+ */
+async function checkAndCleanMultiple(storageLocations, wishlistModule) {
+  const wishlistItems = wishlistModule.getAll();
+  if (!wishlistItems.length) return [];
+
+  // Scan all storage locations and collect all local albums
+  const allLocalAlbums = [];
+  let totalErrors = 0;
+
+  for (const location of storageLocations) {
+    try {
+      const { albums, errors } = await scanLibrary(location);
+      allLocalAlbums.push(...albums);
+      totalErrors += errors;
+    } catch (e) {
+      console.error(`Error scanning storage location ${location}:`, e.message);
+      totalErrors += 1;
+    }
+  }
+
+  const ownedAllFlacAlbums = allLocalAlbums.filter((album) => album.status === "owned-all-flac");
   const removed = [];
 
   for (const item of wishlistItems) {
@@ -285,9 +331,101 @@ async function scanLowQualityAlbums(libraryPath, wishlistModule, ignoreModule) {
   };
 }
 
+/**
+ * Scans multiple storage locations for low-quality albums and adds them to the wishlist.
+ * Returns scan results aggregated across all locations.
+ */
+async function scanLowQualityAlbumsMultiple(storageLocations, wishlistModule, ignoreModule) {
+  const existingKeys = new Set(
+    wishlistModule.getAll().map((item) => albumKey(item.artist, item.title)),
+  );
+  const addedAlbums = [];
+  const alreadyPresentAlbums = [];
+  const ignoredAlbums = [];
+  let scannedAlbums = 0;
+  let skippedAllFlac = 0;
+  let skippedNoAudio = 0;
+  let totalErrors = 0;
+
+  for (const location of storageLocations) {
+    try {
+      const { albums: localAlbums, errors } = await scanLibrary(location);
+      totalErrors += errors;
+      scannedAlbums += localAlbums.length;
+
+      for (const local of localAlbums) {
+        if (local.status === "owned-all-flac") {
+          skippedAllFlac += 1;
+          continue;
+        }
+        if (local.status !== "owned-partial-or-low-quality") {
+          skippedNoAudio += 1;
+          continue;
+        }
+
+        const nextAlbum = { artist: local.artist, title: local.album };
+        const result = {
+          artist: nextAlbum.artist,
+          title: nextAlbum.title,
+          foundAt: local.fullPath,
+          flacTracks: local.flacFiles,
+          totalTracks: local.totalAudioFiles,
+          rawArtist: local.rawArtist,
+          rawAlbum: local.rawAlbum,
+        };
+
+        if (ignoreModule && ignoreModule.has(nextAlbum.artist, nextAlbum.title)) {
+          ignoredAlbums.push(result);
+          continue;
+        }
+
+        const key = albumKey(nextAlbum.artist, nextAlbum.title);
+        const exists = existingKeys.has(key);
+
+        if (!exists) {
+          wishlistModule.upsert({
+            ...nextAlbum,
+            source: "low-quality",
+            detectedBy: "low-quality-scan",
+            qualityFlacTracks: local.flacFiles,
+            qualityTotalTracks: local.totalAudioFiles,
+            qualityUpdatedAt: new Date().toISOString(),
+          });
+          existingKeys.add(key);
+        }
+
+        if (exists) {
+          alreadyPresentAlbums.push(result);
+        } else {
+          addedAlbums.push(result);
+        }
+      }
+    } catch (e) {
+      console.error(`Error scanning storage location ${location}:`, e.message);
+      totalErrors += 1;
+    }
+  }
+
+  return {
+    scannedAlbums,
+    lowQualityAlbums: addedAlbums.length + alreadyPresentAlbums.length,
+    added: addedAlbums.length,
+    alreadyPresent: alreadyPresentAlbums.length,
+    ignored: ignoredAlbums.length,
+    skippedAllFlac,
+    skippedNoAudio,
+    errors: totalErrors,
+    addedAlbums,
+    alreadyPresentAlbums,
+    ignoredAlbums,
+  };
+}
+
 module.exports = {
   checkAndClean,
+  checkAndCleanMultiple,
   classifyAlbumFolder,
   scanLibrary,
   scanLowQualityAlbums,
+  scanLowQualityAlbumsMultiple,
 };
