@@ -9,6 +9,8 @@ const { searchAll } = require("./src/search");
 const lossless = require("./src/lossless_checker");
 const lowQualityIgnore = require("./src/ignored_low_quality");
 const { ROON_WISHLIST_TAG, SyncError, syncTaggedAlbums, rebuildTaggedAlbums } = require("./src/roon_tag_sync");
+const { reconcileOnStartup, trackSyncHealth } = require("./src/roon_reconciliation");
+const { getStorageLocations } = require("./src/roon_storage");
 
 let roon, mysettings, svc_status;
 let pairedCore = null;
@@ -16,7 +18,10 @@ let pairedCore = null;
 let scanInProgress = false;
 let scanActivity = null;
 let syncInProgress = false;
+let reconciliationInProgress = false;
 let lastLowQualityScan = null;
+let lastReconciliation = null;
+let roonStorageLocations = [];
 
 const roonApp = new RoonApi({
   extension_id: "com.zesseth.roon-wishlist",
@@ -30,6 +35,11 @@ const roonApp = new RoonApi({
     pairedCore = core;
     console.log("Paired with Roon core:", core.display_name);
     svc_status.set_status("Paired", false);
+    
+    // Trigger reconciliation on pairing (async, don't wait)
+    triggerReconciliation().catch((err) => {
+      console.warn("Reconciliation after pairing failed:", err.message);
+    });
   },
 
   core_unpaired(core) {
@@ -251,6 +261,44 @@ function readJsonBody(req, res, onJson) {
 
 function getBrowseService() {
   return pairedCore && pairedCore.services ? pairedCore.services.RoonApiBrowse : null;
+}
+
+async function triggerReconciliation() {
+  if (reconciliationInProgress) {
+    return { status: "already_running" };
+  }
+
+  reconciliationInProgress = true;
+  try {
+    const browseService = getBrowseService();
+    const result = await reconcileOnStartup({
+      browseService,
+      wishlist,
+      searchAll,
+      tagName: ROON_WISHLIST_TAG,
+    });
+    lastReconciliation = {
+      timestamp: new Date().toISOString(),
+      result,
+    };
+    console.log("Reconciliation completed:", result);
+    return result;
+  } finally {
+    reconciliationInProgress = false;
+  }
+}
+
+async function getStorageLocationsFromRoon() {
+  try {
+    const browseService = getBrowseService();
+    if (!browseService) return [];
+    const locations = await getStorageLocations(browseService);
+    roonStorageLocations = locations;
+    return locations;
+  } catch (err) {
+    console.warn("Could not fetch storage locations:", err.message);
+    return [];
+  }
 }
 
 function makeHttpError(statusCode, message) {
@@ -587,13 +635,48 @@ const server = http.createServer(async (req, res) => {
       browseAvailable: !!getBrowseService(),
       roonTagName: ROON_WISHLIST_TAG,
       syncInProgress,
+      reconciliationInProgress,
       scanInProgress,
       scanActivity,
+      lastReconciliation,
       lastLowQualityScan,
       libraryPath: mysettings.music_library_path || "",
+      storageLocations: roonStorageLocations,
       count: wishlist.getAll().length,
       version: "0.1.0",
     }));
+    return;
+  }
+
+  // Trigger reconciliation manually
+  if (req.method === "POST" && url.pathname === "/reconcile") {
+    if (reconciliationInProgress) {
+      res.statusCode = 409;
+      res.end(JSON.stringify({ error: "Reconciliation already in progress" }));
+      return;
+    }
+    triggerReconciliation()
+      .then((result) => {
+        res.statusCode = 200;
+        res.end(JSON.stringify({ success: true, result }));
+      })
+      .catch((err) => {
+        res.statusCode = 500;
+        res.end(JSON.stringify({ error: err.message }));
+      });
+    return;
+  }
+
+  // Get storage locations from Roon
+  if (req.method === "GET" && url.pathname === "/storage-locations") {
+    getStorageLocationsFromRoon()
+      .then((locations) => {
+        res.end(JSON.stringify({ locations }));
+      })
+      .catch((err) => {
+        res.statusCode = 502;
+        res.end(JSON.stringify({ error: err.message }));
+      });
     return;
   }
 
