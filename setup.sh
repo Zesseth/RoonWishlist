@@ -7,6 +7,7 @@ set -e
 
 INSTALL_DIR="${1:-$HOME/RoonWishlist}"
 REPO_URL="https://github.com/Zesseth/RoonWishlist.git"
+BRANCH="feat/complete-roon-tagging"  # Branch with all tests and documentation
 
 echo "════════════════════════════════════════════════════════════════════════════════"
 echo "                   RoonWishlist — Local Setup & Installation"
@@ -30,8 +31,8 @@ if [ -d "$INSTALL_DIR" ]; then
 fi
 
 # Clone repository
-echo "📥 Cloning repository from GitHub..."
-git clone --depth 1 "$REPO_URL" "$INSTALL_DIR"
+echo "📥 Cloning repository from GitHub (branch: $BRANCH)..."
+git clone --depth 1 --branch "$BRANCH" "$REPO_URL" "$INSTALL_DIR"
 cd "$INSTALL_DIR"
 
 echo "✅ Repository cloned"
