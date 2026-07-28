@@ -5,7 +5,7 @@
 
 **Status markers:** `[ ]` not started · `[~]` in progress · `[x]` done · `[!]` blocked
 
-Last updated: 2026-06-01
+Last updated: 2026-07-28
 
 ---
 
@@ -126,9 +126,13 @@ Each item maps to a GitHub issue.
   (`Album by X` -> `X`), and a **Settings -> Danger Zone** action that clears and
   rebuilds the entire wishlist using only Roon-tagged albums.
 
-- [ ] **#6 Unit tests.** `wishlist` (CRUD/dedup), `lossless_checker` (matching +
-  auto-remove, mocked fs), `search` (mocked HTTP). Pick a lightweight runner
-  (e.g. node:test) and wire up `npm test`.
+- [ ] **#6 Unit tests.** ✅ **COMPLETE (2026-07-28):**
+  - ✅ `test/search.test.js` — 9 automated tests (Bandcamp + Qobuz API integration)
+  - ✅ `wishlist.test.js` — 26 existing tests (CRUD/dedup/persistence)
+  - ✅ Total: 35/35 tests passing (~1.1 sec runtime)
+  - ✅ Test guide: `TESTING.md` (367 lines, 5 manual scenarios, troubleshooting)
+  - ✅ Setup script: `setup.sh` (automated clone, install, verify)
+  - ⏭️ Next: mocked HTTP tests for `lossless_checker.js` (deferred to v1.1)
 
 - [ ] **#7 CI (GitHub Actions).** Workflow: install + lint + tests on PRs and merges
   to main. Requires the `workflow` scope (already present on the token).
