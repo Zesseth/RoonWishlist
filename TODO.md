@@ -77,38 +77,35 @@ Last updated: 2026-06-01
 
 Each item maps to a GitHub issue.
 
-- [ ] **#1 Roon library & browse integration (CORE).** The extension currently only
-  exposes settings + an HTTP API; there is no real Roon integration. Add
-  `node-roon-api-browse` (and `-transport` if needed) so the user can add albums to
-  the wishlist directly from Roon, and library lookups can use the Roon library
-  rather than only a raw local path. **Most significant unfinished piece.**
+- [~] **#1 Roon library & browse integration (CORE).** Browse API wired up. **Read-only implementation complete:**
+  - ✅ Sync Roon "Wishlist" tags into wishlist (one-way, Roon → wishlist)
+  - ✅ Auto-reconciliation on startup (detects & adds missing tagged albums)
+  - ✅ Storage location reading from Roon settings (with fallback to manual path)
+  - ❌ Write tags back to Roon — **Blocked by Roon API limitation** (no tag-write method exists)
+  - ❌ Track-level tagging — Not supported by Browse API (album-level only)
+  See `ROON_API_LIMITATIONS.md` for details. **PR:** `feat/complete-roon-tagging`
 
 - [ ] **#2 Add nightly automation for store link refresh and low-quality scans.**
   Add an optional nightly scheduler for the existing manual tasks: store-link refresh
   / search and low-quality album scan. The user must be able to enable/disable it in
   Settings and choose the daily run time from a 24-hour dropdown.
 
-- [~] **#15 Storage locations from Roon + full-album FLAC detection.** Read the
-  music storage location(s) from Roon's settings (depends on #1) instead of a manual
-  path, with an option to exclude a location. Change the removal rule: only remove an
-  album when the **whole album** is FLAC; if it is only partially FLAC / not FLAC,
-  **keep** it. Done so far: recursive album scan, whole-album FLAC matching, and
-  `x/y` FLAC track counts for low-quality results. Remaining: read storage locations
-  from Roon (#1), support exclude rules, and surface the kept/removed reasons in the
-  native Roon UI.
+- [~] **#15 Storage locations from Roon + full-album FLAC detection.** 
+  - ✅ Recursive album scan, whole-album FLAC matching, `x/y` FLAC track counts
+  - ✅ Read storage locations from Roon settings (NEW in feat/complete-roon-tagging)
+  - [ ] Support exclude rules (defer to v1.1)
+  - [ ] Surface kept/removed reasons in native Roon UI
 
-- [~] **#22 Add low-quality album scan to the wishlist.** Add a manual low-quality
-  library scan that finds albums which are not fully FLAC and adds them to the
-  wishlist automatically. Done so far: `/scan-low-quality`, dedicated web UI section,
-  per-album `FLAC x/y` counts, and an ignore action that suppresses future re-adds.
-  Remaining: user testing / merge, plus consider an unignore management UI later.
+- [~] **#22 Add low-quality album scan to the wishlist.**
+  - ✅ `/scan-low-quality` endpoint, dedicated web UI section, per-album `FLAC x/y` counts
+  - ✅ Ignore action that suppresses future re-adds
+  - [ ] User testing / merge to main
+  - [ ] Consider unignore management UI (defer to v1.1)
 
-- [ ] **#11 Tag wishlist albums & tracks in Roon (kept in sync).** Tag both albums
-  and tracks on the wishlist in Roon (default tag `Wishlist`). Tags must be
-  maintained the same way as the wishlist: add tag on add, remove tag on removal /
-  auto-clean, and reconcile on startup so Roon tags match the wishlist exactly.
-  **Depends on #1.** Research note: confirm what tagging capability the Roon
-  extension API exposes (browse/transport) before implementing.
+- [ ] **#11 Tag wishlist albums & tracks in Roon (kept in sync).** 
+  **BLOCKED: Depends on Roon API tag-write capability (see #1).** Research complete:
+  Roon Extension SDK does not expose `setMultipleMetadata` or tag-write API. 
+  Recommend filing enhancement request with Roon Labs or using one-way sync approach.
 
 - [~] **#3 Harden Bandcamp/Qobuz search providers.** `src/search.js` now uses live
   provider APIs instead of fragile HTML scraping: Bandcamp autocomplete + Qobuz album
