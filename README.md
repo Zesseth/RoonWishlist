@@ -364,6 +364,9 @@ src/
   wishlist.js         ← Wishlist CRUD (data/wishlist.json)
   search.js           ← Bandcamp & Qobuz search
   lossless_checker.js ← Library check, auto-remove
+  roon_tag_sync.js    ← Sync albums from Roon's "Wishlist" tag
+  roon_reconciliation.js ← Auto-sync on startup, sync health tracking
+  roon_storage.js     ← Read storage locations from Roon
 deploy/
   roon-wishlist.service ← systemd unit template (manual installs)
 bootstrap.sh          ← one-command Linux installer (installs git/Node, clones, runs install.sh)
@@ -371,6 +374,13 @@ install.sh            ← Linux install script (systemd service)
 data/
   wishlist.json       ← (created automatically, not committed)
 ```
+
+## Documentation
+
+- [`ROON_API_LIMITATIONS.md`](./ROON_API_LIMITATIONS.md) — Known limitations with Roon Extension SDK (e.g., tag write-back not supported)
+- [`TESTING_USER.md`](./TESTING_USER.md) — User-facing testing guide
+- [`TESTING_TECH.md`](./TESTING_TECH.md) — Technical testing and development guide
+- [`PRIORITY.md`](./PRIORITY.md) — Priority tracking for v1.0 features
 
 ## License
 
