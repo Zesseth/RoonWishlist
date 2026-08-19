@@ -51,6 +51,7 @@ const roonApp = new RoonApi({
 
 mysettings = roonApp.load_config("settings") || {
   music_library_path: "",
+  qobuz_region: "fr",
 };
 
 function renderWishlist(items) {
@@ -102,6 +103,28 @@ function make_layout(settings) {
     title: "Music library path (FLAC detection)",
     subtitle: "Local path where albums are scanned. Fully FLAC albums are cleaned from the wishlist; partial/non-FLAC albums can be added to it.",
     setting: "music_library_path",
+  });
+
+  l.layout.push({
+    type: "dropdown",
+    title: "Qobuz region",
+    subtitle: "Select your region for better Qobuz search results.",
+    values: [
+      { title: "France", value: "fr" },
+      { title: "United States", value: "us" },
+      { title: "United Kingdom", value: "gb" },
+      { title: "Germany", value: "de" },
+      { title: "Italy", value: "it" },
+      { title: "Spain", value: "es" },
+      { title: "Netherlands", value: "nl" },
+      { title: "Belgium", value: "be" },
+      { title: "Austria", value: "at" },
+      { title: "Switzerland", value: "ch" },
+      { title: "Denmark", value: "dk" },
+      { title: "Sweden", value: "se" },
+      { title: "Norway", value: "no" },
+    ],
+    setting: "qobuz_region",
   });
 
   return l;
