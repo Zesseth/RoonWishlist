@@ -13,7 +13,7 @@ npm test          # node --test
 npm run test:watch
 ```
 
-**118 tests total**, roughly 1–2 seconds.
+**127 tests total**, roughly 1–2 seconds.
 
 ### `test/wishlist.test.js` — 26 tests
 
@@ -43,17 +43,17 @@ Pure unit tests against temporary fixture directories; no network, no Roon.
 | persisted `lastCheck` | 4 | status written to the entry, no write when unchanged, survives a module without `upsert()` |
 | `scanLowQualityAlbums()` | 4 | what gets added, the ignore list, recorded quality |
 
-### `test/roon_tag_sync.test.js` — 13 tests
+### `test/roon_tag_sync.test.js` — 16 tests
 
 Stubbed Roon browse tree (Library -> Tags -> Wishlist -> Albums); no Roon core.
 
 | Group | Tests | Covers |
 |---|---|---|
-| `listTaggedAlbumsDetailed()` | 4 | a missing tag reads as empty, a missing browse service still throws |
+| `listTaggedAlbumsDetailed()` | 7 | all three shapes of an empty tag read as empty; a missing browse service still throws |
 | `syncTaggedAlbums()` | 6 | adds, removes on untag, clears an emptied tag, never touches manual entries |
 | `reconcileOnStartup()` | 3 | the same removal rule on startup, and no action without browse |
 
-### `test/scan_locations.test.js` — 29 tests
+### `test/scan_locations.test.js` — 35 tests
 
 | Group | Tests | Covers |
 |---|---|---|
@@ -63,6 +63,7 @@ Stubbed Roon browse tree (Library -> Tags -> Wishlist -> Albums); no Roon core.
 | `resolveScanLocations()` | 9 | Roon locations, manual fallback, several manual paths, dedupe, exclusions |
 | `toggleExclusion()` | 4 | add, remove, no duplicates, blank input |
 | `validateLocations()` | 4 | readable dir, missing dir, a file, mixed input |
+| `removeManualPath()` | 6 | drops a typed path, canonical matching, null for a path that is not manual |
 
 ### `test/roon_storage.test.js` — 8 tests
 

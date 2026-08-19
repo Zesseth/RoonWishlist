@@ -121,11 +121,13 @@ These are quick and catch an upgrade that went wrong.
    them — you should *not* need to press anything to see them
 4. Press **Find in stores** on an album that has no links yet
 5. **Expect:** links appear for it
-6. Press **Remove** on any album
-7. **Expect:** it disappears from the list
+6. **Expect: there is no Remove button here.** The note under the heading tells you to
+   remove the Wishlist tag in Roon instead.
 
-(Removing a low-quality album is harmless — the next *Scan low-quality albums now* puts
-it back.)
+Point 6 is a change you asked for. A Remove button on this list was misleading: Roon is
+the master, so the next sync simply brought the album back. The tag is the only real way
+to take something off this list. (The **Low-quality albums** list still has Remove —
+that list is local data, not a mirror of Roon.)
 
 ### Test 4 — Settings page
 
@@ -175,21 +177,35 @@ of step with Roon.
 
 1. In Roon, remove the `Wishlist` tag from **every** album
 2. Press **Sync Roon tag**
-3. **Expect:** no error. The wishlist is empty of tag-derived albums, and the status
-   line mentions that the tag was treated as empty.
+3. **Expect:** no error. The tag-derived albums are gone, and the status line mentions
+   that the tag was treated as empty.
 
-Previously this reported *"Could not find the Roon tag Wishlist"* and changed nothing —
-the one case where clearing matters most was the case that aborted. Roon hides a tag
-once its last album is untagged, so "tag missing" and "tag empty" are the same thing.
+This failed when you tested it, and the fix was incomplete: a tag that has been emptied
+but **still exists** in Roon opens as a level with no albums under it, and that path
+still threw *"the album list could not be opened"*. Three shapes of "empty" are now all
+read as empty — the tag is gone from the tag list, the tag exists but holds nothing, and
+the tag exists but Roon answers with a "nothing to show" message.
 
-### Test 8 — Albums you added by hand are never deleted by a sync
+Not being able to reach Roon at all still reports an error, and correctly so: failing to
+look must never be mistaken for an empty tag, or a dropped connection would wipe the
+list.
 
-1. Add an album manually in the web UI (one that is **not** tagged in Roon)
-2. Press **Sync Roon tag**
-3. **Expect:** your manual album is **still there**
+### Test 8 — Albums added by hand are never deleted by a sync
 
-The tag has no authority over entries that did not come from it. Only tag-derived
-albums are removed by a sync.
+Manual adding is in **Roon's settings screen**, not the web UI (my earlier instructions
+pointed you at the wrong place — sorry).
+
+1. **Roon → Settings → Extensions → Wishlist → Settings**
+2. Under **Actions**, pick *Add album to wishlist*, fill in Artist and Album title,
+   press **Save**
+3. In the web UI, press **Sync Roon tag**
+4. **Expect:** the album you added by hand is **still there**, even though it carries no
+   Roon tag
+
+The more important everyday case is the same rule: your **135 low-quality albums** were
+found by scanning, not by the tag, so a sync must never touch them either. This has
+already been verified live on your install — a `/reconcile` run found the tag, and
+removed nothing.
 
 ---
 
@@ -213,14 +229,16 @@ This is the question the whole issue hangs on, and it needs the extension paired
 
 1. Go to **Settings** → **Music storage locations**
 2. Press **Refresh from Roon**
-3. **Write down exactly what the diagnostic line says.**
+3. **Expect:** the message now tells you the outcome. Either *"Roon reported N storage
+   location(s)"*, or *"Roon reported no storage locations"* followed by the reason.
 
-Expected on Roon 2.71: it reports that Roon **did not expose** any storage entry, and
-lists what Roon's settings menu *did* offer. That is the evidence that this is a Roon
-limitation rather than the extension looking under the wrong name.
+You reported this button as doing nothing. It was in fact querying Roon every time — but
+it always said "Storage locations refreshed", which is indistinguishable from a button
+that is wired to nothing. It now reports what Roon answered.
 
-If instead it lists your real music folders, that is genuinely new information and
-worth reporting on issue #15 with your Roon version.
+Expected on Roon 2.71: no storage locations, because Roon's browsable settings contain
+no Storage or Library entry. If instead it lists your real music folders, that is
+genuinely new and worth reporting on issue #15 with your Roon version.
 
 ### Test 10 — Several library folders at once
 
@@ -231,16 +249,27 @@ worth reporting on issue #15 with your Roon version.
    ```
 
 2. Press **Save path**
-3. **Expect:** the storage panel now lists **both** folders as active
+3. **Expect:** the storage panel lists **both** folders, each marked *typed here*, and
+   says two of two locations will be scanned
 
-### Test 11 — Excluding a folder
+### Test 11 — Removing and excluding a folder
 
-1. Exclude `libB` from the storage panel
-2. **Expect:** it moves to the excluded list and is no longer counted as active
-3. Re-include it
-4. **Expect:** it comes back
+The two buttons now mean different things, which is the change you asked for.
 
-This also works in Roon's own settings screen, under **Music storage locations**.
+1. **Expect:** each folder you typed has a **Remove** button
+2. Press **Remove** on `libB` and confirm
+3. **Expect:** it disappears from the list *and* from the Library path field — it is
+   genuinely gone, not just skipped
+4. Put it back by typing the path again and pressing **Save path**
+
+If Roon ever does report a folder, that entry gets an **Exclude** button instead of
+Remove, and its line says *remove it in Roon*. A Roon-supplied path is not ours to
+delete — deleting it here would only bring it back at the next refresh — but you can
+still stop it being scanned.
+
+> On Roon 2.71 you will not see a Roon-supplied entry at all, so only the Remove button
+> is testable today. Excluding is still exercised by the Roon settings screen and by the
+> automated tests.
 
 ### Test 12 — The detection rules
 
