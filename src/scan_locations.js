@@ -38,6 +38,23 @@ function canonicalize(value) {
 }
 
 /**
+ * The manual override is the fallback for setups where Roon does not report storage
+ * over the API. If it only accepted a single folder, those users would be locked out
+ * of multi-location scanning entirely — which is the whole point of issue #15. So the
+ * override accepts several paths separated by a newline or a semicolon.
+ *
+ * Comma is deliberately *not* a separator: it is a legal character in a directory
+ * name, and splitting on it would silently break libraries such as
+ * "/music/Crosby, Stills & Nash".
+ */
+function splitManualPaths(value) {
+  return String(value || "")
+    .split(/[\n;]+/)
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
+
+/**
  * Extracts usable filesystem paths from whatever `getStorageLocations()` returned.
  * Roon puts the path in `subtitle` on some versions and in `title` on others, so both
  * are considered and the first plausible one wins.
@@ -119,9 +136,9 @@ function resolveScanLocations({ roonLocations, manualPath, excluded } = {}) {
     register({ path: roon.path, title: roon.title, source: "roon" });
   }
 
-  const manual = String(manualPath || "").trim();
-  if (manual) {
-    register({ path: manual, title: manual, source: "manual" });
+  const manual = splitManualPaths(manualPath);
+  for (const entry of manual) {
+    register({ path: entry, title: entry, source: "manual" });
   }
 
   const active = locations.filter((entry) => !entry.excluded).map((entry) => entry.path);
@@ -131,7 +148,7 @@ function resolveScanLocations({ roonLocations, manualPath, excluded } = {}) {
     active,
     excluded: locations.filter((entry) => entry.excluded).map((entry) => entry.path),
     // True when Roon told us nothing usable and we are relying on the typed path.
-    usedFallback: !extractRoonPaths(roonLocations).length && !!manual,
+    usedFallback: !extractRoonPaths(roonLocations).length && manual.length > 0,
   };
 }
 
@@ -186,6 +203,7 @@ module.exports = {
   isExcluded,
   looksLikeFilesystemPath,
   resolveScanLocations,
+  splitManualPaths,
   toggleExclusion,
   validateLocations,
 };

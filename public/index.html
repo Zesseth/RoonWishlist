@@ -291,7 +291,7 @@
           <h2 style="margin:0;">Low-quality albums</h2>
           <div class="sync-note" id="low-quality-note">Albums in your library that are not fully FLAC.</div>
         </div>
-        <button class="secondary small" id="scan-low-quality-btn" title="Scan your library and add non-FLAC albums to the wishlist">Scan low-quality albums now</button>
+        <button class="secondary small" id="scan-low-quality-btn" title="Scan your library and add albums that are not fully lossless to the wishlist">Scan low-quality albums now</button>
       </div>
       <ul class="list" id="low-quality-list"></ul>
       <div class="results" id="low-quality-results"></div>
@@ -308,9 +308,9 @@
       </div>
 
       <h2 style="margin-top: 24px;">Library path (override / fallback)</h2>
-      <p class="hint">Local folder where your music files live (on the machine running this extension). Leave empty to rely on Roon alone.</p>
+      <p class="hint">Local folder where your music files live (on the machine running this extension). Separate several folders with a semicolon. Leave empty to rely on Roon alone.</p>
       <form id="lib-form" class="row" autocomplete="off">
-        <input type="text" id="lib-path" placeholder="/mnt/music" />
+        <input type="text" id="lib-path" placeholder="/mnt/music; /mnt/music2" />
         <button type="submit">Save path</button>
       </form>
       <div class="danger-zone">

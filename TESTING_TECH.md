@@ -13,7 +13,7 @@ npm test          # node --test
 npm run test:watch
 ```
 
-**86 tests total**, roughly 1–2 seconds.
+**93 tests total**, roughly 1–2 seconds.
 
 ### `test/wishlist.test.js` — 26 tests
 
@@ -42,13 +42,14 @@ Pure unit tests against temporary fixture directories; no network, no Roon.
 | `checkAndClean()` | 7 | removal rules and the kept-with-reason reporting |
 | `scanLowQualityAlbums()` | 4 | what gets added, the ignore list, recorded quality |
 
-### `test/scan_locations.test.js` — 22 tests
+### `test/scan_locations.test.js` — 29 tests
 
 | Group | Tests | Covers |
 |---|---|---|
 | `looksLikeFilesystemPath()` | 3 | POSIX, Windows and UNC paths; display-only labels rejected |
 | `extractRoonPaths()` | 4 | path in subtitle or title, unusable entries skipped |
-| `resolveScanLocations()` | 7 | Roon locations, manual fallback, dedupe, exclusions |
+| `splitManualPaths()` | 5 | single path, semicolon/newline separators, commas kept |
+| `resolveScanLocations()` | 9 | Roon locations, manual fallback, several manual paths, dedupe, exclusions |
 | `toggleExclusion()` | 4 | add, remove, no duplicates, blank input |
 | `validateLocations()` | 4 | readable dir, missing dir, a file, mixed input |
 
@@ -542,9 +543,14 @@ curl -s -X POST $API/storage-locations/exclude -H 'Content-Type: application/jso
 
 ### 9f. Two locations, best copy wins
 
+The manual override accepts several folders separated by a semicolon, so this works
+even when Roon reports no storage at all.
+
 ```bash
 curl -s -X POST $API/settings -H 'Content-Type: application/json' \
-  -d '{"music_library_path":"/tmp/rw-fixture/libB"}' > /dev/null
+  -d '{"music_library_path":"/tmp/rw-fixture/libA; /tmp/rw-fixture/libB"}' > /dev/null
+
+curl -s $API/storage-locations | jq '.active'
 
 curl -s -X POST $API/wishlist/add -H 'Content-Type: application/json' \
   -d '{"artist":"Portishead","title":"Dummy"}' > /dev/null
@@ -552,8 +558,24 @@ curl -s -X POST $API/wishlist/add -H 'Content-Type: application/json' \
 curl -s -X POST $API/check-lossless | jq '[.removedFromWishlist[] | .artist]'
 ```
 
-**Expect:** `["Portishead"]` — a lossless copy in *any* scanned location counts as
-owned, even though `libA` holds only MP3s.
+**Expect:** `active` lists **both** folders, and the result is `["Portishead"]` — a
+lossless copy in *any* scanned location counts as owned, even though `libA` holds only
+MP3s of the same album.
+
+### 9f2. An unreadable location is reported, not silently treated as empty
+
+```bash
+curl -s -X POST $API/settings -H 'Content-Type: application/json' \
+  -d '{"music_library_path":"/tmp/rw-fixture/libA; /mnt/definitely-not-mounted"}' > /dev/null
+
+curl -s $API/storage-locations | jq '{active, unreadable}'
+curl -s -X POST $API/check-lossless | jq '.scanLocations'
+```
+
+**Expect:** `unreadable` names the missing path with a reason, and `scanLocations`
+contains only the readable folder — the scan degrades to what it can actually read
+instead of reporting an empty library. An unmounted share must never be indistinguishable
+from "you own no albums".
 
 ### 9g. Running two instances side by side
 

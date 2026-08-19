@@ -64,6 +64,35 @@ describe("extractRoonPaths()", () => {
   });
 });
 
+describe("splitManualPaths()", () => {
+  it("returns an empty list for blank input", () => {
+    assert.deepStrictEqual(scanLocations.splitManualPaths(""), []);
+    assert.deepStrictEqual(scanLocations.splitManualPaths(undefined), []);
+  });
+
+  it("returns a single path unchanged", () => {
+    assert.deepStrictEqual(scanLocations.splitManualPaths("/mnt/music"), ["/mnt/music"]);
+  });
+
+  it("splits on semicolons and newlines and trims each entry", () => {
+    assert.deepStrictEqual(
+      scanLocations.splitManualPaths(" /mnt/a ; /mnt/b \n/mnt/c "),
+      ["/mnt/a", "/mnt/b", "/mnt/c"]
+    );
+  });
+
+  it("keeps commas, because a directory name may legally contain one", () => {
+    assert.deepStrictEqual(
+      scanLocations.splitManualPaths("/music/Crosby, Stills & Nash"),
+      ["/music/Crosby, Stills & Nash"]
+    );
+  });
+
+  it("drops empty segments from stray separators", () => {
+    assert.deepStrictEqual(scanLocations.splitManualPaths(";;/mnt/a;;"), ["/mnt/a"]);
+  });
+});
+
 describe("resolveScanLocations()", () => {
   it("uses the Roon locations when available", () => {
     const result = scanLocations.resolveScanLocations({
@@ -90,8 +119,24 @@ describe("resolveScanLocations()", () => {
     assert.deepStrictEqual(result.active, ["/mnt/music", "/mnt/extra"]);
   });
 
-  it("does not scan the same folder twice when Roon and the manual path agree", () => {
+  it("resolves several manual paths so multi-location works without Roon", () => {
     const result = scanLocations.resolveScanLocations({
+      manualPath: "/mnt/a; /mnt/b",
+    });
+    assert.deepStrictEqual(result.active, ["/mnt/a", "/mnt/b"]);
+    assert.strictEqual(result.usedFallback, true);
+  });
+
+  it("can exclude one of several manual paths", () => {
+    const result = scanLocations.resolveScanLocations({
+      manualPath: "/mnt/a;/mnt/b",
+      excluded: ["/mnt/a"],
+    });
+    assert.deepStrictEqual(result.active, ["/mnt/b"]);
+    assert.deepStrictEqual(result.excluded, ["/mnt/a"]);
+  });
+
+  it("does not scan the same folder twice when Roon and the manual path agree", () => {    const result = scanLocations.resolveScanLocations({
       roonLocations: [{ title: "Main", subtitle: "/mnt/music" }],
       manualPath: "/mnt/music/",
     });

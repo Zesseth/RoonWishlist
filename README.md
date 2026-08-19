@@ -161,10 +161,13 @@ the wishlist. The top-left menu has three views: **Wishlist** (home, current wis
 and low-quality scan section), **Add an album** (add/search), and **Settings** (library
 path + scan/clean). From the browser you can view the list, add/remove albums,
 **search Bandcamp/Qobuz and add straight from the results**, **sync albums tagged
-`Wishlist` from Roon**, set the **music library path**, run a **library scan & clean**,
+`Wishlist` from Roon**, set the **music library path**, rebuild the **low-quality
+albums** list,
 run a **low-quality scan** that adds albums which are not fully lossless, and see
 whether the extension is **paired** with your Roon Core. The **Settings** view also
 lists the **music storage locations** being scanned and lets you exclude any of them.
+The library path is only an override and a fallback for setups where Roon does not
+report its storage folders; it accepts **several folders separated by a semicolon**.
 The Wishlist view shows the stored buy links for synced albums and, for low-quality
 finds, the current **x/y lossless tracks** count plus an **Ignore** action so that a special version is not re-added on the
 next scan. The **Settings** view also includes a **Danger Zone** action that clears the

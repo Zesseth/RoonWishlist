@@ -27,7 +27,7 @@ curl -fsSL https://raw.githubusercontent.com/Zesseth/RoonWishlist/main/bootstrap
 git clone https://github.com/Zesseth/RoonWishlist.git
 cd RoonWishlist
 
-# Switch to the UI cleanup branch
+# Use the released branch
 git checkout main
 
 # Run the installer
@@ -39,6 +39,29 @@ sudo ./install.sh --web
 The extension will be available at: http://localhost:3141 (or your server IP if using --web)
 
 ### Testing a feature branch alongside the working install
+
+> **A test instance of `feat/roon-storage-locations` is already running on the music
+> server**, so you can skip the install steps below and go straight to
+> **<http://192.168.1.100:3142>** from any device on the same network.
+>
+> It runs as a plain user process rather than a systemd service, because installing a
+> service needs a `sudo` password that was not available. That means **it does not
+> survive a reboot**. If it is not answering, start it again with:
+>
+> ```bash
+> cd ~/roon-wishlist-test/app
+> ROON_WISHLIST_DATA_DIR=~/roon-wishlist-test/data \
+> ROON_WISHLIST_HTTP_HOST=0.0.0.0 \
+> ROON_WISHLIST_HTTP_PORT=3142 \
+> ROON_WISHLIST_EXTENSION_ID=com.zesseth.roon-wishlist.test \
+> ROON_WISHLIST_DISPLAY_NAME="Wishlist (test)" \
+> nohup node index.js > ~/roon-wishlist-test/server.log 2>&1 &
+> ```
+>
+> To stop it: `pgrep -f roon-wishlist.test` and then `kill <pid>`.
+>
+> It has **not** been enabled in Roon yet - that is the first step of the storage
+> locations test section below, and it is the first thing to do.
 
 When you want to try an unreleased branch **without disturbing the install you rely
 on**, run it as a second instance. Roon identifies an extension by its `extension_id`,
@@ -170,7 +193,7 @@ sudo ./install.sh --uninstall --instance test
 
 **What changed:** 
 - Library section now has: Library path input, Save path button, **"Scan low-quality albums now"** button
-- Danger Zone now has: **"Scan & clean now"** and **"Clear & rebuild from Roon tag"** buttons
+- Danger Zone now has: **"Clear & rebuild low-quality albums"** and **"Clear & rebuild from Roon tag"** buttons
 
 **Steps:**
 1. Click **Settings** in menu
@@ -182,7 +205,7 @@ sudo ./install.sh --uninstall --instance test
 4. Refresh page
 5. **Verify:** Path is preserved
 6. **Verify:** Danger Zone section shows:
-   - "Scan & clean now" button
+   - "Clear & rebuild low-quality albums" button
    - "Clear & rebuild from Roon tag" button
 
 **Results:**
@@ -211,6 +234,58 @@ sudo ./install.sh --uninstall --instance test
 > These tests cover the `feat/roon-storage-locations` branch. Run them on the **test
 > instance** (port 3142) so your working install stays untouched.
 
+### First: enable the test extension in Roon
+
+The test instance announces itself under a **different** extension id, so Roon lists it
+separately and the two never fight over the pairing.
+
+1. Roon -> **Settings -> Extensions**
+2. Find **Wishlist (test)** and click **Enable**
+3. **Verify:** `http://192.168.1.100:3142` shows "Paired with Roon"
+4. **Verify:** the original **Wishlist** entry is still enabled and still paired
+
+Until you do this, the test instance runs unpaired: the web UI works and the folder
+scanning tests below still pass, but nothing can be read from Roon.
+
+### A ready-made test library is already set up
+
+So that Tests C-G do not depend on hunting for the right albums in your real library,
+a small fake library has been created on the server and the test instance is already
+pointed at it. Nothing here touches your real music.
+
+```
+~/roon-wishlist-test/fixture/libA/       ~/roon-wishlist-test/fixture/libB/
+  Opeth/Blackwater Park/     5x .flac      Pink Floyd/Wish You Were Here/  3x .dsf
+  Portishead/Dummy/          5x .mp3       Radiohead/In Rainbows/          3x .flac
+  Tool/Lateralus/            9x .mp3 + 1x .flac
+  Miles Davis/Kind of Blue/  3x .wav
+  Nils Frahm/Spaces/         3x .aiff
+  Radiohead/In Rainbows/     3x .mp3
+```
+
+The files are empty placeholders - only their extensions matter, which is exactly what
+the detection logic looks at. The wishlist is pre-seeded with all eight albums plus one
+("Nobody - Missing Album") that exists nowhere.
+
+**Expected outcome of a single "Clear & rebuild low-quality albums" run against this library:**
+
+| Album | Expected | Why |
+|---|---|---|
+| Opeth - Blackwater Park | **removed** | every track FLAC |
+| Miles Davis - Kind of Blue | **removed** | every track WAV - lossless, not FLAC |
+| Nils Frahm - Spaces | **removed** | every track AIFF |
+| Pink Floyd - Wish You Were Here | **removed** | every track DSD, and it lives in the *second* location |
+| Radiohead - In Rainbows | **removed** | MP3 in libA but FLAC in libB - owning it anywhere counts |
+| Portishead - Dummy | kept, `owned-lossy` | every track MP3 |
+| Tool - Lateralus | kept, `owned-mixed` | 1 FLAC among 10 - **the main fix**, previously deleted |
+| Nobody - Missing Album | kept, `not-found` | not in the library |
+
+To put the test data back to this starting state at any time, re-add the removed
+albums by hand, or ask for the seeding script to be run again.
+
+If you would rather test against your **real** library, just change the library path in
+Settings - but then work from albums you know the contents of.
+
 ### What changed, in plain terms
 
 1. **You no longer have to type a library path.** The extension asks Roon where your
@@ -225,18 +300,24 @@ sudo ./install.sh --uninstall --instance test
 
 ### Test A: See where the extension is scanning
 
-1. Open the test web UI: `http://<server-ip>:3142`
+1. Open the test web UI: `http://192.168.1.100:3142`
 2. Go to **Settings**
 3. **Verify:** the "Music storage locations" panel lists at least one folder
 4. **Verify:** each entry says whether it is `scanned` or `excluded`, and whether it
    came `from Roon` or is `manual`
 5. Click **Refresh from Roon**
 6. **Verify:** the list reloads without error
+7. **Verify:** after enabling the extension in Roon, your **real** storage folders
+   appear in the list alongside the two fixture folders, marked `from Roon`. This is
+   the headline feature of the issue - please report whether they show up.
 
-> If the list says "No storage location detected", Roon did not expose its storage
-> settings over the API. That is a known Roon limitation, not a bug — type a path into
-> "Library path (override / fallback)" and the rest of the tests still apply. Please
-> note in the issue which Roon version you are on.
+> If the list only ever shows the `manual` entries, Roon did not expose its storage
+> settings over the API. That is a known Roon limitation, not a bug - the manual path
+> is the supported fallback and the rest of the tests still apply. Please note in the
+> issue which Roon version you are on.
+>
+> The manual path accepts **several folders separated by a semicolon**, so multi-location
+> scanning works even when Roon reports nothing.
 
 ### Test B: Exclude a folder
 
@@ -252,56 +333,68 @@ sudo ./install.sh --uninstall --instance test
 
 ### Test C: A whole-album lossless copy is removed
 
-1. Pick an album you own where **every** track is FLAC (or WAV/AIFF/ALAC)
-2. Add it to the wishlist
-3. Run **Scan & clean now**
-4. **Verify:** it is removed, and the status message says
-   "removed 1 fully lossless album(s)"
+1. Confirm **Opeth - Blackwater Park** is on the wishlist
+2. Run **Clear & rebuild low-quality albums** (Settings -> Danger Zone)
+3. **Verify:** it is removed, and the status message says
+   "Removed N fully lossless album(s)"
 
 ### Test D: A lossy album is kept, and says so
 
-1. Pick an album you own only as MP3
-2. Add it to the wishlist
-3. Run **Scan & clean now**
-4. **Verify:** it is **still on the wishlist**
-5. **Verify:** the message includes "kept (lossy only)"
+1. **Portishead - Dummy** exists only as MP3
+2. Run **Clear & rebuild low-quality albums** (Settings -> Danger Zone)
+3. **Verify:** it is **still on the wishlist**
+4. **Verify:** the message includes "Kept 1 found only in a lossy format"
 
 ### Test E: A part-lossless album is kept, not silently removed
 
 This is the main correctness fix.
 
-1. Find (or make) an album folder with a mix, e.g. 9 × `.mp3` and 1 × `.flac`
-2. Add it to the wishlist
-3. Run **Scan & clean now**
-4. **Verify:** it is **still on the wishlist** — the old behaviour would have deleted
-   it because it contained "a" lossless file
-5. **Verify:** the message includes "kept (only partly lossless)"
-6. **Verify:** the album row shows something like "1/10 lossless tracks - partly lossless"
+1. **Tool - Lateralus** is 9 x `.mp3` plus 1 x `.flac`
+2. Run **Clear & rebuild low-quality albums** (Settings -> Danger Zone)
+3. **Verify:** it is **still on the wishlist** - the old behaviour deleted it, because
+   the folder contained "a" lossless file
+4. **Verify:** the message includes "Kept 1 only partly lossless"
+5. **Verify:** the album row shows "1/10 lossless tracks"
 
 ### Test F: Non-FLAC lossless formats count
 
-1. Find an album you own entirely as WAV, AIFF, ALAC or DSD
-2. Add it to the wishlist
-3. Run **Scan & clean now**
-4. **Verify:** it is removed. Previously only FLAC counted, so this album would have
-   been wrongly kept and offered for purchase.
+Previously only `.flac` counted, so these albums were wrongly kept and offered for
+purchase even though you already own them properly.
+
+1. **Miles Davis - Kind of Blue** (WAV), **Nils Frahm - Spaces** (AIFF) and
+   **Pink Floyd - Wish You Were Here** (DSD)
+2. Run **Clear & rebuild low-quality albums** (Settings -> Danger Zone)
+3. **Verify:** all three are removed
 
 ### Test G: Same album in two places
 
-Only relevant if Roon reports more than one storage location.
+**Radiohead - In Rainbows** exists as MP3 in `libA` and as FLAC in `libB`.
 
-1. Ensure the same album exists as MP3 in one location and FLAC in another
-2. Add it to the wishlist
-3. Run **Scan & clean now**
-4. **Verify:** it is removed — owning a proper copy anywhere means you own it
-5. Run **Scan low-quality albums now**
-6. **Verify:** it is **not** re-added as a low-quality album
+1. Run **Clear & rebuild low-quality albums** (Settings -> Danger Zone)
+2. **Verify:** it is removed - owning a proper copy in *any* location means you own it
+3. Run **Scan low-quality albums now**
+4. **Verify:** it is **not** re-added as a low-quality album
+
+### Test G2: An unreachable location does not look like an empty library
+
+This matters because "the NAS is not mounted" must never be mistaken for "you own
+nothing", which for the clean action would be harmless but for your trust in the
+result would not.
+
+1. In **Settings**, append `; /mnt/definitely-not-mounted` to the library path and save
+2. **Verify:** the storage locations panel flags it as unreadable / "Does not exist"
+3. Run **Clear & rebuild low-quality albums** (Settings -> Danger Zone)
+4. **Verify:** the scan still runs against the remaining good location rather than
+   failing or reporting that nothing is owned
+5. Remove the bogus path again
 
 ### Test H: The main install is undisturbed
 
-1. Open `http://<server-ip>:3141`
+1. Open `http://192.168.1.100:3141`
 2. **Verify:** it still loads and still says "Paired"
-3. **Verify:** Roon → Settings → Extensions lists **both** "Wishlist" and
+3. **Verify:** its wishlist is unchanged - the test instance has its own separate data
+   directory and never writes to the production one
+4. **Verify:** Roon -> Settings -> Extensions lists **both** "Wishlist" and
    "Wishlist (test)"
 
 ### What to report
@@ -314,17 +407,18 @@ version for Test A.
 
 ## Understanding the two scan actions
 
-These are frequently confused during testing. They are **separate, opposite** actions:
+These are frequently confused during testing. They are **not** the same thing:
 
-| Action | Direction | What it does |
-|---|---|---|
-| **Scan & clean now** | Removes | Removes an album from the wishlist when the library holds a **complete lossless** copy of it |
-| **Scan low-quality albums now** | Adds | Scans the library and **adds** albums that are *not* fully lossless |
+| Action | What it does |
+|---|---|
+| **Scan low-quality albums now** | Scans the library and **adds** albums that are *not* fully lossless. Purely additive - it never removes anything. |
+| **Clear & rebuild low-quality albums** | A full rebuild, in three steps: empties the existing low-quality entries, then **removes** any wishlist album the library holds a **complete lossless** copy of, then re-runs the low-quality scan to **add** them back from scratch. |
 
-So "Scan & clean now" will never add anything, and it will never remove a low-quality
-album — a low-quality album is by definition not fully lossless, which is exactly why
-it stays. A clean that removes nothing is normal when your wishlist contains only
-low-quality entries; since issue #15 the result message says so explicitly.
+The important consequence: the rebuild will never remove a low-quality album *for
+being low quality* - a low-quality album is by definition not fully lossless, which is
+exactly why it stays on the wishlist. If your wishlist contains only low-quality
+entries, a rebuild that removes nothing is the correct result, and since issue #15 the
+result message says so explicitly instead of leaving you guessing.
 
 Whether these two should be merged into one button is an open design question tracked
 in [issue #28](https://github.com/Zesseth/RoonWishlist/issues/28), not here.

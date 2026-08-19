@@ -177,7 +177,7 @@ function make_layout(settings) {
     type: "string",
     title: "Music library path (override / fallback)",
     subtitle:
-      "Used when Roon does not report a storage location, and always scanned in addition to the ones it does report. Leave empty to rely on Roon alone.",
+      "Used when Roon does not report a storage location, and always scanned in addition to the ones it does report. Separate several folders with a semicolon. Leave empty to rely on Roon alone.",
     setting: "music_library_path",
   });
 
