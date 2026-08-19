@@ -558,6 +558,27 @@ async function runLosslessClean() {
 }
 
 /**
+ * Builds the "is this album worth a store lookup?" test used during a sync.
+ *
+ * An album already held in full lossless needs no buy links — the user is not going to
+ * buy it again — so scraping Bandcamp and Qobuz for it is pure cost: outbound requests
+ * on every sync, on a box that is also serving music.
+ */
+function wantsBuyLinks() {
+  const owned = new Set(
+    wishlist
+      .getAll()
+      .filter((entry) => entry && entry.ownedLossless === true)
+      .map((entry) => albumLookupKey(entry.artist, entry.title)),
+  );
+  return (album) => !owned.has(albumLookupKey(album && album.artist, album && album.title));
+}
+
+function albumLookupKey(artist, title) {
+  return `${String(artist || "").trim().toLowerCase()}||${String(title || "").trim().toLowerCase()}`;
+}
+
+/**
  * Re-checks the Roon-tagged entries against the library and flags the ones already held
  * in full lossless. Runs after a tag sync so a freshly tagged album the user already
  * owns never shows up as wanted. A library problem must not fail the sync itself, so
@@ -863,6 +884,7 @@ const server = http.createServer(async (req, res) => {
           searchAll,
           tagName: ROON_WISHLIST_TAG,
           onProgress,
+          shouldFindLinks: wantsBuyLinks(),
         });
         return { ...result, ownedCheck: await flagOwnedTaggedAlbums() };
       },
@@ -888,6 +910,7 @@ const server = http.createServer(async (req, res) => {
           searchAll,
           tagName: ROON_WISHLIST_TAG,
           onProgress,
+          shouldFindLinks: wantsBuyLinks(),
         });
         return { ...result, ownedCheck: await flagOwnedTaggedAlbums() };
       },

@@ -84,9 +84,11 @@ describe("getStorageLocationsDetailed()", () => {
     const { locations, diagnostic } = await getStorageLocationsDetailed(browse);
     assert.deepStrictEqual(locations, []);
     assert.strictEqual(diagnostic.outcome, "not-exposed");
-    // The entries Roon *did* offer are reported, so the cause is diagnosable
-    // without access to the service log.
-    assert.deepStrictEqual(diagnostic.settingsEntries, ["Audio", "Setup"]);
+    // How much was looked at is reported, so the cause is diagnosable without
+    // access to the service log — but never *what* it was called.
+    assert.strictEqual(diagnostic.settingsEntryCount, 2);
+    assert.strictEqual(diagnostic.settingsEntries, undefined);
+    assert.doesNotMatch(diagnostic.detail, /Audio|Setup/);
   });
 
   it("distinguishes an exposed but empty storage list from one that was never found", async () => {
@@ -156,10 +158,13 @@ describe("getStorageLocationsDetailed() — searching one level down", () => {
     const { locations, diagnostic } = await getStorageLocationsDetailed(browse);
     assert.deepStrictEqual(locations, []);
     assert.strictEqual(diagnostic.outcome, "not-exposed");
-    // The user must be able to read the evidence, not just the verdict.
-    assert.match(diagnostic.detail, /Profile \(Jesse\)/);
-    assert.match(diagnostic.detail, /Display Settings \(Theme\)/);
-    assert.strictEqual(diagnostic.settingsTree.length, 2);
+    // The user must be able to read the evidence, but the evidence must not name
+    // them: Roon's settings titles include the profile name, so the diagnostic
+    // counts what it saw instead of quoting it.
+    assert.strictEqual(diagnostic.settingsEntryCount, 2);
+    assert.strictEqual(diagnostic.nestedEntryCount, 2);
+    assert.doesNotMatch(diagnostic.detail, /Jesse|Profile|Theme|Display Settings/);
+    assert.strictEqual(diagnostic.settingsTree, undefined);
   });
 
   it("records an entry it could not open instead of failing the whole lookup", async () => {
@@ -170,6 +175,9 @@ describe("getStorageLocationsDetailed() — searching one level down", () => {
 
     const { diagnostic } = await getStorageLocationsDetailed(browse);
     assert.strictEqual(diagnostic.outcome, "not-exposed");
-    assert.ok(diagnostic.settingsTree[0].error, "the failure to open should be recorded");
+    // The lookup survives an entry it cannot open, and still says nothing about
+    // what that entry was called.
+    assert.strictEqual(diagnostic.settingsEntryCount, 1);
+    assert.doesNotMatch(diagnostic.detail, /Profile/);
   });
 });

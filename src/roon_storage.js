@@ -179,9 +179,15 @@ async function getStorageLocationsDetailed(browseService) {
     }
 
     if (!storageItem || !storageItem.item_key) {
-      const shown = (settingsTree || [])
-        .map((entry) => (entry.children.length ? `${entry.title} (${entry.children.join(", ")})` : entry.title))
-        .join("; ");
+      // Deliberately count rather than name. Roon's settings titles include the
+      // profile name, so echoing them into the UI or the HTTP API would publish
+      // who the user is to answer a question about folders. The counts carry the
+      // same evidence — we looked, at both levels, and found no Storage entry.
+      const sectionCount = (settingsTree || []).length || rootTitles.length;
+      const nestedCount = (settingsTree || []).reduce(
+        (total, entry) => total + entry.children.length,
+        0,
+      );
       return {
         locations: [],
         diagnostic: {
@@ -189,10 +195,11 @@ async function getStorageLocationsDetailed(browseService) {
           detail:
             "Roon does expose your storage folders in its own app, but not to extensions: " +
             "the Browse API's settings hierarchy has no Storage entry, at the top level or one level down. " +
-            `Everything Roon offered was: ${shown || rootTitles.join(", ") || "nothing at all"}. ` +
-            "The music library path is used instead — that is not a fault you can fix in Roon.",
-          settingsEntries: rootTitles,
-          settingsTree: settingsTree || null,
+            `Roon offered ${sectionCount} settings section${sectionCount === 1 ? "" : "s"} ` +
+            `and ${nestedCount} entr${nestedCount === 1 ? "y" : "ies"} inside them, none of them storage. ` +
+            "The music folders you configure here are used instead — that is not a fault you can fix in Roon.",
+          settingsEntryCount: sectionCount,
+          nestedEntryCount: nestedCount,
         },
       };
     }
@@ -219,9 +226,8 @@ async function getStorageLocationsDetailed(browseService) {
       diagnostic: {
         outcome: locations.length ? "ok" : "empty",
         detail: locations.length
-          ? `Roon reported ${locations.length} storage entr${locations.length === 1 ? "y" : "ies"} under "${storageItem.title}".`
-          : `Roon exposed "${storageItem.title}" but it listed no storage entries.`,
-        settingsEntry: storageItem.title,
+          ? `Roon reported ${locations.length} storage entr${locations.length === 1 ? "y" : "ies"}.`
+          : "Roon exposed a storage settings entry, but it listed no storage locations.",
       },
     };
   } catch (err) {

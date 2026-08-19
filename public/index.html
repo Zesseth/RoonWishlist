@@ -790,7 +790,27 @@
       ul.innerHTML = "";
       $("owned-count").textContent = items.length + (items.length === 1 ? " album" : " albums");
       if (!items.length) return;
-      renderWishlistItems(ul, items, false, false);
+      // No store search here: you already own these, so buy links would be noise.
+      renderWishlistItems(ul, items, false, false, { showStores: false });
+      showUntagSupport();
+    }
+
+    // Can the extension drop the Wishlist tag for you, or must you do it in Roon? That
+    // is a question about your Roon, not a thing to assert in a paragraph, so ask it
+    // once and report what came back.
+    let untagSupportChecked = false;
+    async function showUntagSupport() {
+      const note = $("owned-untag-note");
+      if (!note || untagSupportChecked) return;
+      untagSupportChecked = true;
+      try {
+        const support = await api("/roon-tag/write-support");
+        note.textContent = support && support.supported
+          ? "Roon appears to allow tag editing from an extension, so an \u201cUntag in Roon\u201d button is possible \u2014 see issue #32."
+          : "Roon does not let extensions change tags, so the Wishlist tag has to be removed in Roon itself. Checked against your Core just now.";
+      } catch (e) {
+        note.textContent = "Could not check whether Roon allows tag editing: " + e.message;
+      }
     }
 
     function renderRoonTagWishlist(items) {
@@ -815,7 +835,8 @@
       renderWishlistItems(ul, items, true, true);
     }
 
-    function renderWishlistItems(ul, items, showIgnore, allowRemove) {
+    function renderWishlistItems(ul, items, showIgnore, allowRemove, options) {
+      const showStores = !options || options.showStores !== false;
       // Newest first.
       const sorted = items.slice().sort((a, b) => String(b.addedAt || "").localeCompare(String(a.addedAt || "")));
       for (const a of sorted) {
@@ -839,18 +860,21 @@
             '<div class="results" data-results></div>' +
           '</div>' +
           '<div class="album-actions">' +
-            '<button class="secondary small" data-search>Find in stores</button>' +
+            (showStores ? '<button class="secondary small" data-search>Find in stores</button>' : '') +
             ignoreButton +
             removeButton +
           '</div>';
-        if (Array.isArray(a.buyLinks) && a.buyLinks.length) {
+        if (showStores && Array.isArray(a.buyLinks) && a.buyLinks.length) {
           renderStoreResults(li.querySelector("[data-results]"), a.buyLinks, false);
         }
         const removeBtn = li.querySelector("[data-remove]");
         if (removeBtn) {
           removeBtn.addEventListener("click", () => removeAlbum(a, li));
         }
-        li.querySelector("[data-search]").addEventListener("click", (ev) => searchInto(li.querySelector("[data-results]"), a.artist, a.title, ev.target));
+        const searchBtn = li.querySelector("[data-search]");
+        if (searchBtn) {
+          searchBtn.addEventListener("click", (ev) => searchInto(li.querySelector("[data-results]"), a.artist, a.title, ev.target));
+        }
         const ignoreBtn = li.querySelector("[data-ignore]");
         if (ignoreBtn) {
           ignoreBtn.addEventListener("click", () => ignoreLowQuality(a, li));

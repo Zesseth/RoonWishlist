@@ -375,7 +375,12 @@ async function checkAndClean(locations, wishlistModule) {
         // the next sync add it straight back. Flag it instead and let the UI list it
         // apart, with the advice to drop the tag in Roon. See issue #32.
         if (item.ownedLossless !== true) {
-          wishlistModule.upsert({ artist: item.artist, title: item.title, ownedLossless: true });
+          wishlistModule.upsert({
+            artist: item.artist,
+            title: item.title,
+            ownedLossless: true,
+            buyLinks: [],
+          });
         }
         alreadyOwned.push({ ...details, reason });
         persistLastCheck(wishlistModule, item, { status, reason, details });
@@ -636,7 +641,13 @@ async function markOwnedTaggedAlbums(locations, wishlistModule) {
 
     if (isOwned !== wasOwned) {
       try {
-        wishlistModule.upsert({ artist: item.artist, title: item.title, ownedLossless: isOwned });
+        // Buy links are dropped along with the flag: an album you already own is not
+        // going to be bought, so keeping shop links on it is only clutter.
+        wishlistModule.upsert(
+          isOwned
+            ? { artist: item.artist, title: item.title, ownedLossless: true, buyLinks: [] }
+            : { artist: item.artist, title: item.title, ownedLossless: false },
+        );
       } catch (err) {
         console.warn(`Could not flag ${item.artist} — ${item.title} as owned: ${err.message}`);
       }

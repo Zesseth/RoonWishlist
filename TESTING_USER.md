@@ -373,6 +373,11 @@ Test 14.
 3. **Expect:** it does **not** appear in the main wishlist. A second panel, *Already
    owned in lossless*, appears below it and lists the album.
 4. **Expect:** the message after the sync mentions `already owned 1`
+5. **Expect:** the album in that panel has **no *Find in stores* button and no buy
+   links** — you already own it, so there is nothing to shop for. Any links it had are
+   dropped when it moves there, and later syncs stop looking up stores for it.
+6. **Expect:** under the panel, a line saying whether Roon lets the extension remove the
+   tag for you. It is measured against your Core, not assumed.
 
 *Nachtmystium — The World We Left Behind* is the exact case to try, since that is the one
 that failed. Its folder is named `Nachtmystium/Nachtmystium - The World We Left Behind`,
@@ -407,6 +412,12 @@ is not owning it.
 3. **Expect:** the *Already owned in lossless* panel disappears (or loses that album)
 
 ### Test 18 — Can the extension untag albums in Roon for you?
+
+**Measured on your Core, 2026-08-19:** `supported: false` — Roon offered only *Shuffle*
+and *Start Radio*, no tag editing. One flaw in that first measurement has since been
+fixed (it had opened the tag's own *Play Tag* row instead of an album), so please re-run
+it once after this upgrade to confirm the verdict on a real album.
+
 
 You asked for a button that removes the tag in Roon for albums you already own. Roon's
 documented Browse API has no tag-writing method, so the honest answer so far is "no" —

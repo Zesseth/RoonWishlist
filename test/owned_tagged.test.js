@@ -99,6 +99,22 @@ describe("already-owned Roon-tagged albums (#32)", () => {
       assert.strictEqual(wishlist._state[0].ownedLossless, true);
     });
 
+    it("drops the buy links when an album turns out to be owned", async () => {
+      // Shop links on an album you already have are clutter: there is nothing to buy.
+      const wishlist = makeWishlistStub([
+        {
+          artist: "Katatonia",
+          title: "The World We Left Behind",
+          source: "roon-tag",
+          buyLinks: [{ store: "Bandcamp", url: "https://example.test/x", artist: "", title: "" }],
+        },
+      ]);
+      await lossless.markOwnedTaggedAlbums(lib(), wishlist);
+
+      assert.strictEqual(wishlist._state[0].ownedLossless, true);
+      assert.deepStrictEqual(wishlist._state[0].buyLinks, []);
+    });
+
     it("leaves a tagged album alone when only a lossy copy exists", async () => {
       const wishlist = makeWishlistStub([
         { artist: "Opeth", title: "Blackwater Park", source: "roon-tag" },

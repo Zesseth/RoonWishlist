@@ -30,6 +30,9 @@ const NON_ALBUM_ACTION_TITLES = new Set([
   "queue tag",
   "start radio",
   "play now",
+  // Roon 2.71 offers these bare titles next to a tag's albums.
+  "shuffle",
+  "play",
 ]);
 
 function findByAliases(items, aliases) {
@@ -300,13 +303,19 @@ async function listTaggedAlbums(browseService, tagName) {
   return albums;
 }
 
-async function buildTaggedWishlist({ browseService, searchAll, tagName, onProgress }) {
+/**
+ * @param {Function} [options.shouldFindLinks] Asked before each store lookup. Albums the
+ *   user already owns in lossless need no buy links, so scraping stores for them would
+ *   be work done to answer a question nobody asked.
+ */
+async function buildTaggedWishlist({ browseService, searchAll, tagName, onProgress, shouldFindLinks }) {
   const wantedTag = String(tagName || ROON_WISHLIST_TAG).trim() || ROON_WISHLIST_TAG;
   const { albums, tagFound } = await listTaggedAlbumsDetailed(browseService, wantedTag);
 
   let withLinks = 0;
   let withoutLinks = 0;
   let lookupErrors = 0;
+  let skippedLinks = 0;
   const wishlistAlbums = [];
 
   for (let i = 0; i < albums.length; i += 1) {
@@ -316,13 +325,19 @@ async function buildTaggedWishlist({ browseService, searchAll, tagName, onProgre
     }
 
     let next = { artist: album.artist, title: album.title, source: "roon-tag" };
-    try {
-      const buyLinks = await searchAll(album.artist, album.title);
-      next.buyLinks = buyLinks;
-      if (buyLinks.length) withLinks += 1;
-      else withoutLinks += 1;
-    } catch {
-      lookupErrors += 1;
+    const wantLinks =
+      typeof shouldFindLinks === "function" ? shouldFindLinks(album) !== false : true;
+    if (!wantLinks) {
+      skippedLinks += 1;
+    } else {
+      try {
+        const buyLinks = await searchAll(album.artist, album.title);
+        next.buyLinks = buyLinks;
+        if (buyLinks.length) withLinks += 1;
+        else withoutLinks += 1;
+      } catch {
+        lookupErrors += 1;
+      }
     }
 
     wishlistAlbums.push(next);
@@ -336,6 +351,7 @@ async function buildTaggedWishlist({ browseService, searchAll, tagName, onProgre
     withLinks,
     withoutLinks,
     lookupErrors,
+    skippedLinks,
   };
 }
 
@@ -349,8 +365,8 @@ async function buildTaggedWishlist({ browseService, searchAll, tagName, onProgre
  * Entries the user added by hand are left alone. They were never derived from the tag,
  * so the tag has no authority to delete them.
  */
-async function syncTaggedAlbums({ browseService, wishlist, searchAll, tagName, onProgress }) {
-  const prepared = await buildTaggedWishlist({ browseService, searchAll, tagName, onProgress });
+async function syncTaggedAlbums({ browseService, wishlist, searchAll, tagName, onProgress, shouldFindLinks }) {
+  const prepared = await buildTaggedWishlist({ browseService, searchAll, tagName, onProgress, shouldFindLinks });
 
   let added = 0;
   let updated = 0;
@@ -383,6 +399,7 @@ async function syncTaggedAlbums({ browseService, wishlist, searchAll, tagName, o
     withLinks: prepared.withLinks,
     withoutLinks: prepared.withoutLinks,
     lookupErrors: prepared.lookupErrors,
+    skippedLinks: prepared.skippedLinks,
   };
 }
 
@@ -392,8 +409,8 @@ function albumKey(album) {
   ).trim().toLowerCase()}`;
 }
 
-async function rebuildTaggedAlbums({ browseService, wishlist, searchAll, tagName, onProgress }) {
-  const prepared = await buildTaggedWishlist({ browseService, searchAll, tagName, onProgress });
+async function rebuildTaggedAlbums({ browseService, wishlist, searchAll, tagName, onProgress, shouldFindLinks }) {
+  const prepared = await buildTaggedWishlist({ browseService, searchAll, tagName, onProgress, shouldFindLinks });
   const previousWishlistCount = wishlist.getAll().length;
   const rebuilt = wishlist.replaceAll(prepared.wishlistAlbums);
 
@@ -454,7 +471,14 @@ async function probeTagWriteSupport(browseService, tagName) {
   }
 
   const albumLevel = await openAlbumLevelFromTag(browseService, tagLevel, sessionKey);
-  const album = (albumLevel.items || []).find((item) => item && item.item_key && item.hint !== "header");
+  // "Play Tag" and friends sit alongside the albums. Opening one of those and finding
+  // no tag editing would prove nothing, so they are skipped: the probe must land on a
+  // real album or say it could not.
+  const isCandidate = (item) => item && item.item_key && item.hint !== "header" && !isTagAction(item);
+  const albumItems = (albumLevel.items || []).filter(isCandidate);
+  // Roon marks playable rows as actions and browsable ones as lists, so prefer a list
+  // row; a bare title match is only the fallback for versions that set no hint.
+  const album = albumItems.find((item) => item.hint && item.hint !== "action") || albumItems[0];
   if (!album) {
     return { tagFound: true, supported: false, reason: "No album could be opened from the tag.", offered: [] };
   }
@@ -477,7 +501,7 @@ async function probeTagWriteSupport(browseService, tagName) {
     offered,
     reason: matched
       ? `Roon offers "${matched.title}" on an album, so tag editing may be possible.`
-      : "Roon offered no tag-editing action on the album, confirming tags are read-only over the Browse API.",
+      : "Roon offered no tag-editing action on the album, so tags cannot be changed over the Browse API.",
   };
 }
 

@@ -178,6 +178,33 @@ describe("syncTaggedAlbums() - Roon is the master", () => {
     assert.strictEqual(wishlist._state.length, 1);
   });
 
+  it("does not shop for an album you already own", async () => {
+    // Buy links for an album already in the library are work done to answer a question
+    // nobody asked, and it is outbound scraping on every single sync.
+    const searched = [];
+    const searchAll = async (artist, title) => {
+      searched.push(`${artist} — ${title}`);
+      return [];
+    };
+    const wishlist = makeWishlist([]);
+
+    const result = await tagSync.syncTaggedAlbums({
+      browseService: browseWithTag([
+        { artist: "Opeth", title: "Blackwater Park" },
+        { artist: "Tool", title: "Lateralus" },
+      ]),
+      wishlist,
+      searchAll,
+      tagName: "Wishlist",
+      shouldFindLinks: (album) => album.title !== "Lateralus",
+    });
+
+    assert.deepStrictEqual(searched, ["Opeth — Blackwater Park"]);
+    assert.strictEqual(result.skippedLinks, 1);
+    // Skipping the lookup must not skip the album itself.
+    assert.strictEqual(result.added, 2);
+  });
+
   it("removes an album that was untagged in Roon", async () => {
     // The bug this covers: sync was upsert-only, so untagging in Roon left the album
     // on the wishlist forever and the two silently drifted apart.
@@ -316,15 +343,23 @@ describe("reconcileOnStartup() - Roon is the master", () => {
 
 describe("probeTagWriteSupport()", () => {
   /** Browse tree whose album page offers the given action titles. */
-  function browseWithAlbumActions(actionTitles) {
-    return fakeBrowse({
+  function browseWithAlbumActions(actionTitles, tagLevelActions = []) {
+    const levels = {
       root: [{ item_key: "lib", title: "Library" }],
       lib: [{ item_key: "tags", title: "Tags" }],
       tags: [{ item_key: "tag", title: "Wishlist" }],
       tag: [{ item_key: "albums", title: "Albums" }],
-      albums: [{ item_key: "a0", title: "Lateralus", subtitle: "Tool", hint: "list" }],
+      albums: [
+        // Roon lists the tag's own actions alongside the albums it holds.
+        ...tagLevelActions.map((title, i) => ({ item_key: `tagact${i}`, title, hint: "action" })),
+        { item_key: "a0", title: "Lateralus", subtitle: "Tool", hint: "list" },
+      ],
       a0: actionTitles.map((title, i) => ({ item_key: `act${i}`, title, hint: "action" })),
-    });
+    };
+    for (const [i, title] of tagLevelActions.entries()) {
+      levels[`tagact${i}`] = [{ item_key: `tagsub${i}`, title: `${title} sub`, hint: "action" }];
+    }
+    return fakeBrowse(levels);
   }
 
   it("reports the actions Roon offers on an album", async () => {
@@ -343,7 +378,15 @@ describe("probeTagWriteSupport()", () => {
       "Wishlist",
     );
     assert.strictEqual(result.supported, false);
-    assert.match(result.reason, /read-only/i);
+    assert.match(result.reason, /cannot be changed/i);
+  });
+
+  it("looks past 'Play Tag' and lands on a real album", async () => {
+    // Opening "Play Tag" and finding no tag editing there would prove nothing about
+    // whether albums can be untagged, so the probe must skip the tag's own actions.
+    const browse = browseWithAlbumActions(["Play Album"], ["Play Tag", "Shuffle"]);
+    const result = await tagSync.probeTagWriteSupport(browse, "Wishlist");
+    assert.strictEqual(result.album, "Lateralus");
   });
 
   it("detects a tag action if Roon ever offers one", async () => {

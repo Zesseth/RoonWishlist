@@ -13,7 +13,7 @@ npm test          # node --test
 npm run test:watch
 ```
 
-**150 tests total**, roughly 1–2 seconds.
+**153 tests total**, roughly 1–2 seconds.
 
 ### `test/wishlist.test.js` — 26 tests
 
@@ -43,18 +43,18 @@ Pure unit tests against temporary fixture directories; no network, no Roon.
 | persisted `lastCheck` | 4 | status written to the entry, no write when unchanged, survives a module without `upsert()` |
 | `scanLowQualityAlbums()` | 4 | what gets added, the ignore list, recorded quality |
 
-### `test/roon_tag_sync.test.js` — 21 tests
+### `test/roon_tag_sync.test.js` — 23 tests
 
 Stubbed Roon browse tree (Library -> Tags -> Wishlist -> Albums); no Roon core.
 
 | Group | Tests | Covers |
 |---|---|---|
 | `listTaggedAlbumsDetailed()` | 7 | all three shapes of an empty tag read as empty; a missing browse service still throws |
-| `syncTaggedAlbums()` | 6 | adds, removes on untag, clears an emptied tag, never touches manual entries |
+| `syncTaggedAlbums()` | 7 | adds, removes on untag, clears an emptied tag, never touches manual entries, skips store lookups for albums already owned |
 | `reconcileOnStartup()` | 3 | the same removal rule on startup, and no action without browse |
-| `probeTagWriteSupport()` | 5 | reports the actions Roon offers on an album, spots a tag action if one ever appears, never guesses |
+| `probeTagWriteSupport()` | 6 | reports the actions Roon offers on an album, lands on a real album rather than the tag's own *Play Tag* row, spots a tag action if one ever appears, never guesses |
 
-### `test/owned_tagged.test.js` — 15 tests
+### `test/owned_tagged.test.js` — 16 tests
 
 Tagged albums the user already owns in lossless (issue #32). Temporary fixture
 directories, no Roon.
@@ -62,7 +62,7 @@ directories, no Roon.
 | Group | Tests | Covers |
 |---|---|---|
 | `classifyWantedAlbums()` | 3 | only the wanted folders are opened, absent albums, nothing wanted |
-| `markOwnedTaggedAlbums()` | 9 | flags a fully lossless copy, ignores lossy and mixed, clears a stale flag, skips non-tag entries, never deletes, refuses to conclude anything with no readable location, matches an `Artist - Album` folder |
+| `markOwnedTaggedAlbums()` | 10 | flags a fully lossless copy, ignores lossy and mixed, clears a stale flag, drops buy links when an album becomes owned, skips non-tag entries, never deletes, refuses to conclude anything with no readable location, matches an `Artist - Album` folder |
 | `checkAndClean()` with tags | 3 | a tagged album is flagged not removed, a scanned one is still removed, stale flags cleared |
 
 ### `test/scan_locations.test.js` — 35 tests
