@@ -8,10 +8,13 @@ A Roon Extension — a wishlist for albums you don't yet own in lossless quality
 - **Web UI**: A simple browser interface to view, add, remove and search albums
 - **Roon tag sync**: Import albums tagged `Wishlist` from Roon into the app wishlist
 - **Search**: Looks up the album on Bandcamp and Qobuz
-- **Low-quality scan**: Finds local albums that are not fully FLAC and adds them to
-  the wishlist
-- **Auto-clean**: When a wishlist album is fully FLAC in your local library, it is
-  automatically removed from the wishlist
+- **Low-quality scan**: Finds local albums that are not fully lossless and adds them
+  to the wishlist
+- **Auto-clean**: When you own a **complete lossless copy** of a wishlist album, it is
+  automatically removed from the wishlist. An album that is only partly lossless is
+  kept, and the result says why.
+- **Storage locations from Roon**: The folders to scan are read from Roon where
+  possible, so there is usually no path to type. Individual folders can be excluded.
 
 > **Where is the UI in Roon?** Roon's public extension API only lets an extension draw
 > a UI on its **Settings** screen — it does **not** allow extensions to add their own
@@ -143,8 +146,10 @@ existing install and restarts the service.
 After either option, on any device with Roon open:
 
 1. Go to **Settings → Extensions**. You should see **Wishlist** listed and paired.
-2. Click its **Settings**. Set the **Music library path** (the folder where your
-   music files live on that machine, e.g. `/mnt/music`).
+2. Click its **Settings**. The **Music storage locations** list shows the folders the
+   extension will scan, read from Roon where possible. If Roon does not report any,
+   set the **Music library path** yourself (e.g. `/mnt/music`). You can exclude any
+   listed folder from scanning.
 3. Use the **Action** menu to add/remove albums, run *Refresh & clean*, or run the
    low-quality scan. The menu is drawn by Roon itself — pick an action, fill the
    fields if they appear, press **Save**.
@@ -157,10 +162,11 @@ and low-quality scan section), **Add an album** (add/search), and **Settings** (
 path + scan/clean). From the browser you can view the list, add/remove albums,
 **search Bandcamp/Qobuz and add straight from the results**, **sync albums tagged
 `Wishlist` from Roon**, set the **music library path**, run a **library scan & clean**,
-run a **low-quality scan** that adds albums which are not fully FLAC, and see whether
-the extension is **paired** with your Roon Core. The Wishlist view also shows the
-stored buy links for synced albums and, for low-quality finds, the current **FLAC x/y**
-track count plus an **Ignore** action so that a special version is not re-added on the
+run a **low-quality scan** that adds albums which are not fully lossless, and see
+whether the extension is **paired** with your Roon Core. The **Settings** view also
+lists the **music storage locations** being scanned and lets you exclude any of them.
+The Wishlist view shows the stored buy links for synced albums and, for low-quality
+finds, the current **x/y lossless tracks** count plus an **Ignore** action so that a special version is not re-added on the
 next scan. The **Settings** view also includes a **Danger Zone** action that clears the
 whole wishlist and rebuilds it from scratch using only albums currently tagged
 `Wishlist` in Roon.
@@ -291,7 +297,8 @@ Leave this window open — the extension runs as long as this command runs. Pres
 
 1. Open Roon → **Settings → Extensions → Wishlist** (it should appear and pair
    automatically).
-2. Open its **Settings**, set the **Music library path** (e.g. `D:\Music` on Windows,
+2. Open its **Settings** and check the **Music storage locations** list. If it is
+   empty, set the **Music library path** (e.g. `D:\Music` on Windows,
    `/Users/you/Music` on macOS).
 3. Use the **Action** menu to add/remove albums or run *Refresh & clean* — pick an
    action, fill the fields if shown, press **Save**.
@@ -307,10 +314,31 @@ Leave this window open — the extension runs as long as this command runs. Pres
 | `ROON_WISHLIST_DATA_DIR` | `<repo>/data` | Where `wishlist.json` is stored. |
 | `ROON_WISHLIST_HTTP_HOST` | `127.0.0.1` | HTTP API bind address. Set to `0.0.0.0` to expose it on the LAN (⚠️ this makes the control API reachable by other machines — use with care). |
 | `ROON_WISHLIST_HTTP_PORT` | `3141` | HTTP API port. |
+| `ROON_WISHLIST_EXTENSION_ID` | `com.zesseth.roon-wishlist` | How Roon identifies this extension. Change it **only** to run a second instance beside the first — two processes sharing an id fight over the pairing. `install.sh --instance NAME` sets this for you. |
+| `ROON_WISHLIST_DISPLAY_NAME` | `Wishlist` | Name shown in Roon's extension list and in the web UI header. |
 
 > Note: the Roon pairing token is stored in `config.json` in the service's working
 > directory, so the service user must own the install directory (the script handles
 > this).
+
+### Running a second instance
+
+To try a branch without disturbing the install you rely on, install it under an
+instance name:
+
+```bash
+sudo ./install.sh --web --instance test
+```
+
+Each named instance gets its own systemd service, install directory, data directory,
+default port (3142) and Roon extension id, so both appear separately in Roon's
+extension list and neither disturbs the other. Remove it again with:
+
+```bash
+sudo ./install.sh --uninstall --instance test
+```
+
+The data directory is deliberately left behind so nothing is lost.
 
 You can override the install location and these settings by passing them to either
 script:

@@ -11,6 +11,7 @@ const lowQualityIgnore = require("./src/ignored_low_quality");
 const { ROON_WISHLIST_TAG, SyncError, syncTaggedAlbums, rebuildTaggedAlbums } = require("./src/roon_tag_sync");
 const { reconcileOnStartup, trackSyncHealth } = require("./src/roon_reconciliation");
 const { getStorageLocations } = require("./src/roon_storage");
+const scanLocations = require("./src/scan_locations");
 
 let roon, mysettings, svc_status;
 let pairedCore = null;
@@ -22,10 +23,19 @@ let reconciliationInProgress = false;
 let lastLowQualityScan = null;
 let lastReconciliation = null;
 let roonStorageLocations = [];
+// Last resolved view of where scans will run, cached so the settings screen can show
+// it without re-querying Roon on every render.
+let resolvedScanLocations = { locations: [], active: [], excluded: [], usedFallback: false };
+
+// Roon identifies an extension by `extension_id`. Two processes sharing one id fight
+// over the pairing, so a test build must announce itself as a different extension.
+// Both default to the production values, so a normal install is unaffected.
+const EXTENSION_ID = process.env.ROON_WISHLIST_EXTENSION_ID || "com.zesseth.roon-wishlist";
+const DISPLAY_NAME = process.env.ROON_WISHLIST_DISPLAY_NAME || "Wishlist";
 
 const roonApp = new RoonApi({
-  extension_id: "com.zesseth.roon-wishlist",
-  display_name: "Wishlist",
+  extension_id: EXTENSION_ID,
+  display_name: DISPLAY_NAME,
   display_version: "0.1.0",
   publisher: "Zesseth",
   email: "",
@@ -40,6 +50,11 @@ const roonApp = new RoonApi({
     triggerReconciliation().catch((err) => {
       console.warn("Reconciliation after pairing failed:", err.message);
     });
+
+    // Roon can only tell us about storage locations once paired.
+    resolveActiveScanLocations().catch((err) => {
+      console.warn("Could not resolve scan locations after pairing:", err.message);
+    });
   },
 
   core_unpaired(core) {
@@ -51,11 +66,39 @@ const roonApp = new RoonApi({
 
 mysettings = roonApp.load_config("settings") || {
   music_library_path: "",
+  excluded_storage_locations: [],
 };
+if (!Array.isArray(mysettings.excluded_storage_locations)) {
+  mysettings.excluded_storage_locations = [];
+}
 
 function renderWishlist(items) {
   if (!items.length) return "Wishlist is empty.";
   return items.map((a, i) => `${i + 1}. ${a.artist} — ${a.title}`).join("\n");
+}
+
+// Read-only summary of where scans will look. Roon has no table widget, so this is
+// rendered as a plain multi-line label.
+function renderScanLocations() {
+  const { locations, active } = resolvedScanLocations;
+  if (!locations.length) {
+    return (
+      "No storage location detected yet.\n" +
+      "Roon did not report one (its Browse API does not expose storage on every " +
+      "version), so set the music library path below."
+    );
+  }
+
+  const lines = locations.map((entry) => {
+    const origin = entry.sources.includes("roon")
+      ? (entry.sources.includes("manual") ? "from Roon + manual" : "from Roon")
+      : "manual";
+    const state = entry.excluded ? "EXCLUDED" : "scanned";
+    return `• ${entry.path}  [${state}, ${origin}]`;
+  });
+
+  lines.push("", `${active.length} of ${locations.length} location(s) will be scanned.`);
+  return lines.join("\n");
 }
 
 // Builds the native Roon settings layout. Roon renders this UI itself, so we get a
@@ -87,6 +130,7 @@ function make_layout(settings) {
         { title: "Remove album from wishlist", value: "remove" },
         { title: "Refresh & clean (scan library)", value: "clean" },
         { title: "Scan low-quality albums into wishlist", value: "low_quality" },
+        { title: "Refresh storage locations from Roon", value: "refresh_locations" },
       ],
       setting: "action",
     },
@@ -97,12 +141,47 @@ function make_layout(settings) {
   }
   l.layout.push({ type: "group", title: "Actions", items: actionItems });
 
-  l.layout.push({
+  // --- Storage locations (issue #15) ---
+  const includedLocations = resolvedScanLocations.locations.filter((entry) => !entry.excluded);
+  const excludedLocations = resolvedScanLocations.locations.filter((entry) => entry.excluded);
+
+  const storageItems = [{ type: "label", title: renderScanLocations() }];
+
+  if (includedLocations.length) {
+    storageItems.push({
+      type: "dropdown",
+      title: "Exclude a location from scans",
+      subtitle: "Pick a folder to stop scanning, then press Save.",
+      values: [
+        { title: "— none —", value: "" },
+        ...includedLocations.map((entry) => ({ title: entry.path, value: entry.path })),
+      ],
+      setting: "exclude_location",
+    });
+  }
+
+  if (excludedLocations.length) {
+    storageItems.push({
+      type: "dropdown",
+      title: "Re-include an excluded location",
+      subtitle: "Pick a folder to start scanning again, then press Save.",
+      values: [
+        { title: "— none —", value: "" },
+        ...excludedLocations.map((entry) => ({ title: entry.path, value: entry.path })),
+      ],
+      setting: "include_location",
+    });
+  }
+
+  storageItems.push({
     type: "string",
-    title: "Music library path (FLAC detection)",
-    subtitle: "Local path where albums are scanned. Fully FLAC albums are cleaned from the wishlist; partial/non-FLAC albums can be added to it.",
+    title: "Music library path (override / fallback)",
+    subtitle:
+      "Used when Roon does not report a storage location, and always scanned in addition to the ones it does report. Leave empty to rely on Roon alone.",
     setting: "music_library_path",
   });
+
+  l.layout.push({ type: "group", title: "Music storage locations", items: storageItems });
 
   return l;
 }
@@ -123,12 +202,18 @@ async function performAction(values) {
       : "Album not found on wishlist";
   }
   if (action === "clean") {
-    const removed = await runLosslessClean();
-    return `Refresh & clean done: removed ${removed.length} album(s) that are already fully FLAC`;
+    return summarizeCleanResult(await runLosslessClean());
   }
   if (action === "low_quality") {
     const result = await runLowQualityScan();
     return `Low-quality scan done: added ${result.added}, already on wishlist ${result.alreadyPresent}, ignored ${result.ignored}`;
+  }
+  if (action === "refresh_locations") {
+    const resolved = await resolveActiveScanLocations();
+    if (!resolved.locations.length) {
+      return "No storage location reported by Roon. Set the music library path instead.";
+    }
+    return `Storage locations refreshed: ${resolved.active.length} of ${resolved.locations.length} will be scanned`;
   }
   return "Settings saved";
 }
@@ -151,23 +236,41 @@ const svc_settings = new RoonApiSettings(roonApp, {
     req.send_complete(l.has_error ? "NotValid" : "Success", { settings: l });
 
     if (!isdryrun && !l.has_error) {
-      // Persist only durable config; action/artist/title are transient.
+      // Persist only durable config; action/artist/title and the location pickers are
+      // transient and get cleared after the save completes.
+      let excluded = mysettings.excluded_storage_locations || [];
+      const toExclude = (settings.values.exclude_location || "").trim();
+      const toInclude = (settings.values.include_location || "").trim();
+      if (toExclude) excluded = scanLocations.toggleExclusion(excluded, toExclude, true);
+      if (toInclude) excluded = scanLocations.toggleExclusion(excluded, toInclude, false);
+
       mysettings = Object.assign({}, mysettings, {
         music_library_path: settings.values.music_library_path || "",
+        excluded_storage_locations: excluded,
       });
       roonApp.save_config("settings", mysettings);
+
+      // Recompute from the cached Roon list so the layout pushed below already
+      // reflects the exclusion the user just made.
+      resolveActiveScanLocations({ refresh: false }).catch(() => {});
 
       // A library scan can take a while; show immediate feedback and run it without
       // blocking this callback. Errors are reported via status, not send_complete
       // (which has already been called above).
-      if (action === "clean") svc_status.set_status("Scanning library for all-FLAC albums...", false);
+      if (action === "clean") svc_status.set_status("Scanning library for fully lossless albums...", false);
       if (action === "low_quality") svc_status.set_status("Scanning library for low-quality albums...", false);
 
       Promise.resolve()
         .then(() => performAction(settings.values))
         .then((statusMsg) => {
           // Push a refreshed layout with the updated wishlist and cleared transient fields.
-          const cleared = Object.assign({}, mysettings, { action: "none", artist: "", title: "" });
+          const cleared = Object.assign({}, mysettings, {
+            action: "none",
+            artist: "",
+            title: "",
+            exclude_location: "",
+            include_location: "",
+          });
           svc_settings.update_settings(make_layout(cleared));
           svc_status.set_status(statusMsg, false);
         })
@@ -301,6 +404,57 @@ async function getStorageLocationsFromRoon() {
   }
 }
 
+/**
+ * Works out where the next scan will actually look: Roon's storage locations, minus
+ * anything the user excluded, with the manual path as an override/fallback. Refreshing
+ * from Roon is best-effort — if Roon is unreachable we still fall back to the last
+ * known list and the typed path rather than failing the scan outright.
+ */
+async function resolveActiveScanLocations({ refresh = true } = {}) {
+  if (refresh) {
+    await getStorageLocationsFromRoon();
+  }
+
+  resolvedScanLocations = scanLocations.resolveScanLocations({
+    roonLocations: roonStorageLocations,
+    manualPath: mysettings.music_library_path,
+    excluded: mysettings.excluded_storage_locations,
+  });
+
+  return resolvedScanLocations;
+}
+
+/**
+ * Same as above, but additionally drops anything unreadable and refuses to continue if
+ * that leaves nothing. Silently scanning zero folders would look like "you own no
+ * albums", which for the clean action means wrongly keeping the whole wishlist.
+ */
+async function getScanRoots() {
+  const resolved = await resolveActiveScanLocations();
+  if (!resolved.active.length) {
+    throw makeHttpError(
+      400,
+      resolved.locations.length
+        ? "Every storage location is excluded. Re-enable one in Settings, or set a music library path."
+        : "No music storage location is available. Roon did not report one — set a music library path in Settings.",
+    );
+  }
+
+  const { usable, unreadable } = await scanLocations.validateLocations(resolved.active);
+  if (!usable.length) {
+    const detail = unreadable.map((entry) => `${entry.path} (${entry.reason})`).join(", ");
+    throw makeHttpError(400, `No readable storage location: ${detail}`);
+  }
+
+  return { roots: usable, unreadable, resolved };
+}
+
+function describeScanScope(roots, unreadable) {
+  const parts = [`${roots.length} location(s)`];
+  if (unreadable && unreadable.length) parts.push(`${unreadable.length} unreadable`);
+  return parts.join(", ");
+}
+
 function makeHttpError(statusCode, message) {
   const error = new Error(message);
   error.statusCode = statusCode;
@@ -308,19 +462,18 @@ function makeHttpError(statusCode, message) {
 }
 
 async function runLibraryScanAction(task, { startStatus, successStatus, action }) {
-  const libraryPath = (mysettings.music_library_path || "").trim();
-  if (!libraryPath) {
-    throw makeHttpError(400, "Music library path is not set. Set it in Settings first.");
-  }
   if (scanInProgress) {
     throw makeHttpError(409, "A library scan is already running");
   }
 
+  const { roots, unreadable } = await getScanRoots();
+
   scanInProgress = true;
   scanActivity = task;
-  svc_status.set_status(startStatus, false);
+  svc_status.set_status(`${startStatus} (${describeScanScope(roots, unreadable)})`, false);
   try {
-    const result = await action(libraryPath);
+    const result = await action(roots);
+    if (unreadable.length) result.unreadableLocations = unreadable;
     try { svc_settings.update_settings(make_layout(mysettings)); } catch {}
     svc_status.set_status(successStatus(result), false);
     return result;
@@ -333,14 +486,30 @@ async function runLibraryScanAction(task, { startStatus, successStatus, action }
   }
 }
 
+/** Turns a clean result into a one-line summary that says what was kept and why. */
+function summarizeCleanResult(result) {
+  const keptByReason = new Map();
+  for (const entry of result.kept) {
+    keptByReason.set(entry.status, (keptByReason.get(entry.status) || 0) + 1);
+  }
+
+  const parts = [`removed ${result.removed.length} fully lossless album(s)`];
+  const lossy = keptByReason.get("owned-lossy") || 0;
+  const mixed = keptByReason.get("owned-mixed") || 0;
+  const notFound = keptByReason.get("not-found") || 0;
+  if (lossy) parts.push(`${lossy} kept (lossy only)`);
+  if (mixed) parts.push(`${mixed} kept (only partly lossless)`);
+  if (notFound) parts.push(`${notFound} not in library`);
+
+  return `Refresh & clean done: ${parts.join(", ")}`;
+}
+
 async function runLosslessClean() {
   return runLibraryScanAction("clean", {
-    startStatus: "Scanning library for all-FLAC albums...",
-    successStatus(removed) {
-      return `Refresh & clean done: removed ${removed.length} album(s) that are already fully FLAC`;
-    },
-    action(libraryPath) {
-      return lossless.checkAndClean(libraryPath, wishlist);
+    startStatus: "Scanning library for fully lossless albums...",
+    successStatus: summarizeCleanResult,
+    action(roots) {
+      return lossless.checkAndClean(roots, wishlist);
     },
   });
 }
@@ -352,8 +521,8 @@ async function runLowQualityScan() {
     successStatus(summary) {
       return `Low-quality scan done: added ${summary.added}, already on wishlist ${summary.alreadyPresent}, ignored ${summary.ignored}`;
     },
-    action(libraryPath) {
-      return lossless.scanLowQualityAlbums(libraryPath, wishlist, lowQualityIgnore);
+    action(roots) {
+      return lossless.scanLowQualityAlbums(roots, wishlist, lowQualityIgnore);
     },
   });
 
@@ -421,6 +590,11 @@ const server = http.createServer(async (req, res) => {
     "/rebuild-from-roon-tag",
     "/settings",
     "/status",
+    // GET /storage-locations was previously missing here, so it fell through to the
+    // static file handler and always answered 404.
+    "/storage-locations",
+    "/storage-locations/exclude",
+    "/reconcile",
   ];
   if (req.method === "GET" && !apiPaths.includes(url.pathname)) {
     serveStatic(res, url.pathname);
@@ -495,18 +669,23 @@ const server = http.createServer(async (req, res) => {
         }
       }
       
-      // Second: remove FLAC albums from wishlist
-      const removed = await runLosslessClean();
-      
-      // Third: scan for new low-quality albums
+      // Second: remove albums that exist as a complete lossless copy
+      const cleanResult = await runLosslessClean();
+
+      // Third: scan for new low-quality albums. The clean step already proved at least
+      // one storage location is readable, so this no longer depends on a typed path.
       let lowQualityResult = null;
-      if (mysettings.music_library_path && mysettings.music_library_path.trim()) {
+      try {
         lowQualityResult = await runLowQualityScan();
+      } catch (e) {
+        if (e.statusCode !== 400) throw e;
       }
-      
-      res.end(JSON.stringify({ 
+
+      res.end(JSON.stringify({
         clearedLowQuality,
-        removedFromWishlist: removed,
+        removedFromWishlist: cleanResult.removed,
+        keptOnWishlist: cleanResult.kept,
+        scanLocations: cleanResult.locations,
         lowQualityScan: lowQualityResult
       }));
     } catch (e) {
@@ -642,8 +821,13 @@ const server = http.createServer(async (req, res) => {
       lastLowQualityScan,
       libraryPath: mysettings.music_library_path || "",
       storageLocations: roonStorageLocations,
+      scanLocations: resolvedScanLocations.locations,
+      activeScanLocations: resolvedScanLocations.active,
+      excludedScanLocations: resolvedScanLocations.excluded,
       count: wishlist.getAll().length,
       version: "0.1.0",
+      extensionId: EXTENSION_ID,
+      displayName: DISPLAY_NAME,
     }));
     return;
   }
@@ -667,12 +851,21 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // Get storage locations from Roon
+  // Get storage locations from Roon, together with how they resolve into scan roots.
   if (req.method === "GET" && url.pathname === "/storage-locations") {
-    getStorageLocationsFromRoon()
-      .then((locations) => {
-        res.end(JSON.stringify({ locations }));
-      })
+    resolveActiveScanLocations()
+      .then((resolved) => scanLocations
+        .validateLocations(resolved.active)
+        .then(({ unreadable }) => {
+          res.end(JSON.stringify({
+            locations: roonStorageLocations,
+            resolved: resolved.locations,
+            active: resolved.active,
+            excluded: resolved.excluded,
+            usedFallback: resolved.usedFallback,
+            unreadable,
+          }, null, 2));
+        }))
       .catch((err) => {
         res.statusCode = 502;
         res.end(JSON.stringify({ error: err.message }));
@@ -680,9 +873,48 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // Read the durable settings (currently just the music library path).
+  // Exclude or re-include a storage location from the web UI.
+  if (req.method === "POST" && url.pathname === "/storage-locations/exclude") {
+    readJsonBody(req, res, (data) => {
+      const target = typeof data.path === "string" ? data.path.trim() : "";
+      if (!target) {
+        res.statusCode = 400;
+        res.end(JSON.stringify({ error: "A 'path' is required." }));
+        return;
+      }
+      const shouldExclude = data.excluded !== false;
+      mysettings = Object.assign({}, mysettings, {
+        excluded_storage_locations: scanLocations.toggleExclusion(
+          mysettings.excluded_storage_locations,
+          target,
+          shouldExclude,
+        ),
+      });
+      roonApp.save_config("settings", mysettings);
+
+      resolveActiveScanLocations({ refresh: false })
+        .then((resolved) => {
+          try { svc_settings.update_settings(make_layout(mysettings)); } catch {}
+          res.end(JSON.stringify({
+            excluded: mysettings.excluded_storage_locations,
+            active: resolved.active,
+            resolved: resolved.locations,
+          }, null, 2));
+        })
+        .catch((err) => {
+          res.statusCode = 500;
+          res.end(JSON.stringify({ error: err.message }));
+        });
+    });
+    return;
+  }
+
+  // Read the durable settings.
   if (req.method === "GET" && url.pathname === "/settings") {
-    res.end(JSON.stringify({ music_library_path: mysettings.music_library_path || "" }));
+    res.end(JSON.stringify({
+      music_library_path: mysettings.music_library_path || "",
+      excluded_storage_locations: mysettings.excluded_storage_locations || [],
+    }));
     return;
   }
 
@@ -693,6 +925,7 @@ const server = http.createServer(async (req, res) => {
       const p = typeof data.music_library_path === "string" ? data.music_library_path.trim() : "";
       mysettings = Object.assign({}, mysettings, { music_library_path: p });
       roonApp.save_config("settings", mysettings);
+      resolveActiveScanLocations({ refresh: false }).catch(() => {});
       const cleared = Object.assign({}, mysettings, { action: "none", artist: "", title: "" });
       try { svc_settings.update_settings(make_layout(cleared)); } catch {}
       res.end(JSON.stringify({ music_library_path: mysettings.music_library_path }));
@@ -712,4 +945,7 @@ const HTTP_HOST = process.env.ROON_WISHLIST_HTTP_HOST || "127.0.0.1";
 server.listen(HTTP_PORT, HTTP_HOST, () => {
   console.log(`Wishlist web UI + API listening on http://${HTTP_HOST}:${HTTP_PORT}`);
   svc_status.set_status(`Running — web UI on http://${HTTP_HOST}:${HTTP_PORT}`, false);
+  // Seed the location view from saved settings so the settings screen is populated
+  // before Roon pairs. Refreshing from Roon happens on pairing.
+  resolveActiveScanLocations({ refresh: false }).catch(() => {});
 });

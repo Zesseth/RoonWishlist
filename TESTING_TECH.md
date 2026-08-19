@@ -13,7 +13,7 @@ npm test          # node --test
 npm run test:watch
 ```
 
-**35 tests total**, roughly 1–2 seconds.
+**86 tests total**, roughly 1–2 seconds.
 
 ### `test/wishlist.test.js` — 26 tests
 
@@ -27,6 +27,30 @@ Pure unit tests, no network. ~20 ms.
 | `upsert()` | 4 | update-or-insert logic |
 | `replaceAll()` | 6 | bulk replace, deduplication |
 | persistence | 2 | file I/O and recovery |
+
+### `test/lossless_checker.test.js` — 29 tests
+
+Pure unit tests against temporary fixture directories; no network, no Roon.
+
+| Group | Tests | Covers |
+|---|---|---|
+| format detection | 4 | every lossless container counts, `.m4a` stays lossy, case insensitivity |
+| `classifyAlbumFolder()` | 6 | `owned-lossless` / `owned-mixed` / `owned-lossy` / `not-audio` |
+| `normalizeLocations()` | 3 | strings, Roon objects, blanks and duplicates |
+| `scanLibraries()` | 3 | multiple roots, per-location counts, a missing root |
+| `mergeAlbumsAcrossLocations()` | 2 | best copy wins, duplicates collapse |
+| `checkAndClean()` | 7 | removal rules and the kept-with-reason reporting |
+| `scanLowQualityAlbums()` | 4 | what gets added, the ignore list, recorded quality |
+
+### `test/scan_locations.test.js` — 22 tests
+
+| Group | Tests | Covers |
+|---|---|---|
+| `looksLikeFilesystemPath()` | 3 | POSIX, Windows and UNC paths; display-only labels rejected |
+| `extractRoonPaths()` | 4 | path in subtitle or title, unusable entries skipped |
+| `resolveScanLocations()` | 7 | Roon locations, manual fallback, dedupe, exclusions |
+| `toggleExclusion()` | 4 | add, remove, no duplicates, blank input |
+| `validateLocations()` | 4 | readable dir, missing dir, a file, mixed input |
 
 ### `test/search.test.js` — 9 tests
 
@@ -56,12 +80,17 @@ ROON_WISHLIST_HTTP_PORT=3141
 
 # Qobuz app ID for search (optional; built-in fallbacks are used if unset)
 ROON_WISHLIST_QOBUZ_APP_ID="your_app_id"
+
+# Roon extension identity. Change these ONLY to run a second, parallel instance --
+# two processes sharing one extension id fight over the Roon pairing.
+ROON_WISHLIST_EXTENSION_ID="com.zesseth.roon-wishlist"
+ROON_WISHLIST_DISPLAY_NAME="Wishlist"
 ```
 
 That is the complete list. There is currently **no** log-level or music-path
 environment variable — configurable logging is tracked in
 [issue #8](https://github.com/Zesseth/RoonWishlist/issues/8), and the music library
-path is set in Settings, not via the environment.
+path comes from Roon or from Settings, not from the environment.
 
 ---
 
@@ -72,7 +101,7 @@ path is set in Settings, not via the environment.
 | Tag write-back (wishlist → Roon) | Not possible; the Roon Browse API is read-only. See [`ROON_API_LIMITATIONS.md`](./ROON_API_LIMITATIONS.md) |
 | Track-level tagging | Roon exposes album-level browse only |
 | Multiple Roon Cores | The extension pairs with a single Core |
-| `lossless_checker.js` | No mocked-filesystem tests yet |
+| Reading storage locations from Roon | `src/roon_storage.js` needs a live Browse service; only the parsing of its output is unit tested |
 
 ---
 
@@ -408,6 +437,136 @@ curl http://localhost:3141/wishlist | jq '[.[] | select(.source == "manual")] | 
 
 ---
 
+## Test 9: Storage locations & lossless rules (issue #15)
+
+These exercise the API surface added on `feat/roon-storage-locations`. They need no
+Roon core: with no Roon pairing the extension falls back to the manual path, which is
+exactly the fallback path we want covered.
+
+### 9a. Build a fixture library
+
+```bash
+BASE=/tmp/rw-fixture
+rm -rf "$BASE"; mkdir -p "$BASE"/{libA,libB}
+
+# Fully lossless -> must be removed from the wishlist
+mkdir -p "$BASE/libA/Opeth/Blackwater Park"
+touch "$BASE/libA/Opeth/Blackwater Park"/0{1,2}.flac
+
+# Lossless but not FLAC -> must also be removed
+mkdir -p "$BASE/libA/Miles Davis/Kind of Blue"
+touch "$BASE/libA/Miles Davis/Kind of Blue"/01.wav "$BASE/libA/Miles Davis/Kind of Blue"/02.aiff
+
+# Fully lossy -> must stay
+mkdir -p "$BASE/libA/Portishead/Dummy"
+touch "$BASE/libA/Portishead/Dummy"/0{1,2}.mp3
+
+# Part lossless -> must stay (the key regression this issue fixes)
+mkdir -p "$BASE/libA/Tool/Lateralus"
+touch "$BASE/libA/Tool/Lateralus"/01.flac "$BASE/libA/Tool/Lateralus"/02.mp3
+
+# Second location holding a lossless copy of the lossy album above
+mkdir -p "$BASE/libB/Portishead/Dummy"
+touch "$BASE/libB/Portishead/Dummy"/0{1,2}.flac
+```
+
+### 9b. Point the extension at it
+
+```bash
+API=http://localhost:3142      # the test instance; use 3141 for a normal install
+
+curl -s -X POST $API/settings -H 'Content-Type: application/json' \
+  -d '{"music_library_path":"/tmp/rw-fixture/libA"}' | jq
+
+curl -s $API/storage-locations | jq
+```
+
+**Expect:** `active` contains `/tmp/rw-fixture/libA`, `usedFallback` is `true` (no Roon
+location), and `unreadable` is empty.
+
+### 9c. Refuse to scan when there is nothing to scan
+
+```bash
+curl -s -X POST $API/settings -H 'Content-Type: application/json' \
+  -d '{"music_library_path":""}' | jq
+curl -s -X POST $API/check-lossless | jq
+```
+
+**Expect:** HTTP 400 with a message saying no storage location is available — **not**
+an empty successful scan. An empty scan would report "you own nothing", which for the
+clean action silently keeps everything.
+
+Restore the path afterwards with the command from 9b.
+
+### 9d. The removal rule
+
+```bash
+for a in "Opeth|Blackwater Park" "Miles Davis|Kind of Blue" \
+         "Portishead|Dummy" "Tool|Lateralus" "Nobody|Nothing"; do
+  curl -s -X POST $API/wishlist/add -H 'Content-Type: application/json' \
+    -d "{\"artist\":\"${a%%|*}\",\"title\":\"${a##*|}\"}" > /dev/null
+done
+
+curl -s -X POST $API/check-lossless | jq '{
+  removed: [.removedFromWishlist[] | {artist, title}],
+  kept:    [.keptOnWishlist[]      | {artist, status, reason}]
+}'
+```
+
+**Expect:**
+
+| Album | Outcome | Why |
+|---|---|---|
+| Opeth — Blackwater Park | removed | every track FLAC |
+| Miles Davis — Kind of Blue | removed | every track WAV/AIFF, still lossless |
+| Portishead — Dummy | kept, `owned-lossy` | no lossless tracks |
+| Tool — Lateralus | kept, `owned-mixed` | only partly lossless |
+| Nobody — Nothing | kept, `not-found` | not in the library |
+
+### 9e. Exclusions
+
+```bash
+curl -s -X POST $API/storage-locations/exclude -H 'Content-Type: application/json' \
+  -d '{"path":"/tmp/rw-fixture/libA","excluded":true}' | jq '{excluded, active}'
+
+curl -s -X POST $API/check-lossless | jq
+```
+
+**Expect:** `active` becomes empty, and the scan returns HTTP 400 "Every storage
+location is excluded…". Re-include it:
+
+```bash
+curl -s -X POST $API/storage-locations/exclude -H 'Content-Type: application/json' \
+  -d '{"path":"/tmp/rw-fixture/libA","excluded":false}' | jq '{excluded, active}'
+```
+
+### 9f. Two locations, best copy wins
+
+```bash
+curl -s -X POST $API/settings -H 'Content-Type: application/json' \
+  -d '{"music_library_path":"/tmp/rw-fixture/libB"}' > /dev/null
+
+curl -s -X POST $API/wishlist/add -H 'Content-Type: application/json' \
+  -d '{"artist":"Portishead","title":"Dummy"}' > /dev/null
+
+curl -s -X POST $API/check-lossless | jq '[.removedFromWishlist[] | .artist]'
+```
+
+**Expect:** `["Portishead"]` — a lossless copy in *any* scanned location counts as
+owned, even though `libA` holds only MP3s.
+
+### 9g. Running two instances side by side
+
+```bash
+curl -s http://localhost:3141/status | jq '{extensionId, displayName}'
+curl -s http://localhost:3142/status | jq '{extensionId, displayName}'
+```
+
+**Expect:** different `extensionId` values. Identical ids mean the two processes will
+fight over the Roon pairing, and one of them will keep dropping out.
+
+---
+
 ## Clean Up
 
 ```bash
@@ -415,10 +574,10 @@ curl http://localhost:3141/wishlist | jq '[.[] | select(.source == "manual")] | 
 rm -rf data/wishlist.json data/ignored-low-quality.json
 
 # Optional: Remove test library
-rm -rf /tmp/test-library
+rm -rf /tmp/test-library /tmp/rw-fixture
 ```
 
 ---
 
 *Last updated: 2026-08-19*
-*Branch: `main`*
+*Branch: `main` (issue #15 tests: `feat/roon-storage-locations`)*
