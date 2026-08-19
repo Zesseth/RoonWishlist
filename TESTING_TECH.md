@@ -1,14 +1,86 @@
 # Technical Tests - RoonWishlist
 
-Automated/technical tests for verifying the source-based wishlist separation. Run these on a server to validate the backend changes.
+Automated unit tests plus API-level tests for verifying the source-based wishlist
+separation. Run these on a server to validate the backend.
 
 ---
 
-## Prerequisites
+## Automated unit tests
 
-1. **Use the correct branch:**
+```bash
+npm ci
+npm test          # node --test
+npm run test:watch
+```
+
+**35 tests total**, roughly 1–2 seconds.
+
+### `test/wishlist.test.js` — 26 tests
+
+Pure unit tests, no network. ~20 ms.
+
+| Group | Tests | Covers |
+|---|---|---|
+| `add()` | 7 | duplicate detection, normalization, `buyLinks` filtering |
+| `remove()` | 4 | case-insensitive removal |
+| `getAll()` | 3 | array isolation, retrieval |
+| `upsert()` | 4 | update-or-insert logic |
+| `replaceAll()` | 6 | bulk replace, deduplication |
+| persistence | 2 | file I/O and recovery |
+
+### `test/search.test.js` — 9 tests
+
+Covers `searchBandcamp()`, `searchQobuz()` and `searchAll()`: valid queries, empty
+input, artist-only input, and result combination.
+
+> **These are integration tests — they call the real Bandcamp and Qobuz APIs.**
+> They can fail for reasons unrelated to your change: rate limiting, throttling or a
+> provider outage. If they fail, wait a few minutes and retry before investigating.
+> Mocked HTTP tests are not implemented yet.
+
+---
+
+## Environment variables
+
+All are optional. Set them in the systemd unit or the shell that starts `node index.js`.
+
+```bash
+# Data directory (default: ./data/)
+ROON_WISHLIST_DATA_DIR="/var/lib/roon-wishlist"
+
+# HTTP bind address (default: 127.0.0.1; use 0.0.0.0 to expose on the LAN)
+ROON_WISHLIST_HTTP_HOST="0.0.0.0"
+
+# HTTP port (default: 3141)
+ROON_WISHLIST_HTTP_PORT=3141
+
+# Qobuz app ID for search (optional; built-in fallbacks are used if unset)
+ROON_WISHLIST_QOBUZ_APP_ID="your_app_id"
+```
+
+That is the complete list. There is currently **no** log-level or music-path
+environment variable — configurable logging is tracked in
+[issue #8](https://github.com/Zesseth/RoonWishlist/issues/8), and the music library
+path is set in Settings, not via the environment.
+
+---
+
+## Not covered by tests
+
+| Area | Why |
+|---|---|
+| Tag write-back (wishlist → Roon) | Not possible; the Roon Browse API is read-only. See [`ROON_API_LIMITATIONS.md`](./ROON_API_LIMITATIONS.md) |
+| Track-level tagging | Roon exposes album-level browse only |
+| Multiple Roon Cores | The extension pairs with a single Core |
+| `lossless_checker.js` | No mocked-filesystem tests yet |
+
+---
+
+## Prerequisites for the API tests below
+
+1. **Run from `main`:**
    ```bash
-   git checkout feat/ui-cleanup
+   git checkout main
    npm ci
    node index.js
    ```
@@ -348,5 +420,5 @@ rm -rf /tmp/test-library
 
 ---
 
-*Last updated: 2026-06-25*
-*Branch: feat/ui-cleanup*
+*Last updated: 2026-08-19*
+*Branch: `main`*

@@ -12,12 +12,12 @@ This guide helps you manually test the RoonWishlist extension features after the
 
 ```bash
 # Fully automatic - clones, installs, and runs everything
-curl -fsSL https://raw.githubusercontent.com/Zesseth/RoonWishlist/feat/ui-cleanup/bootstrap.sh \
-  | sudo REPO_BRANCH=feat/ui-cleanup bash
+curl -fsSL https://raw.githubusercontent.com/Zesseth/RoonWishlist/main/bootstrap.sh \
+  | sudo REPO_BRANCH=main bash
 
 # If you want the web UI accessible from other devices on your LAN:
-curl -fsSL https://raw.githubusercontent.com/Zesseth/RoonWishlist/feat/ui-cleanup/bootstrap.sh \
-  | sudo REPO_BRANCH=feat/ui-cleanup bash -s --web
+curl -fsSL https://raw.githubusercontent.com/Zesseth/RoonWishlist/main/bootstrap.sh \
+  | sudo REPO_BRANCH=main bash -s --web
 ```
 
 **OR manual installation:**
@@ -28,7 +28,7 @@ git clone https://github.com/Zesseth/RoonWishlist.git
 cd RoonWishlist
 
 # Switch to the UI cleanup branch
-git checkout feat/ui-cleanup
+git checkout main
 
 # Run the installer
 sudo ./install.sh          # Localhost only
@@ -174,58 +174,50 @@ The extension will be available at: http://localhost:3141 (or your server IP if 
 
 ---
 
-## Current Known Issues
+## Understanding the two scan actions
 
-### Issue #1: Scan & Clean vs Low-Quality Scan Clarification
+These are frequently confused during testing. They are **separate, opposite** actions:
 
-**Note from server testing (25/06/2026):**
-- User ran "Scan & clean now" expecting it to add low-quality albums
-- Result: "No fully FLAC albums matched the wishlist"
-- User observation: "Scan & clean now ei poistanut low quality albumeja listalta. Kun skannasin niin loytin vanhat vain. Ei siis lisannyt uusia."
-  (Translation: "Scan & clean now did not remove low quality albums from the list. When I scanned, I only found the old ones. So it did not add new ones.")
+| Action | Direction | What it does |
+|---|---|---|
+| **Scan & clean now** | Removes | Removes an album from the wishlist when the local library holds it as a **fully FLAC** album |
+| **Scan low-quality albums now** | Adds | Scans the library and **adds** albums that are *not* fully FLAC |
 
-**Analysis:**
-- "Scan & clean now" only removes albums from wishlist that ARE fully FLAC in library
-- It does NOT remove low-quality albums (those are non-FLAC by definition)
-- It does NOT add low-quality albums - that's what "Scan low-quality albums now" does
-- User seems to expect "Scan & clean now" to also add new low-quality albums
+So "Scan & clean now" will never add anything, and it will never remove a low-quality
+album — a low-quality album is non-FLAC by definition, which is exactly why it stays.
+Seeing "No fully FLAC albums matched the wishlist" after a clean is normal when your
+wishlist contains only low-quality entries.
 
-**Root Cause:** User confusion between two separate functions:
-1. **Scan & clean now** = Removes FLAC albums from wishlist (destructive)
-2. **Scan low-quality albums now** = Adds non-FLAC albums to wishlist (non-destructive)
-
-**Questions to resolve:**
-1. Should "Scan & clean now" also trigger a low-quality scan automatically?
-2. Or is current separation intentional and we need better button labeling?
-
-**Note:** The empty state message in Low-quality section now reads:
-"No low-quality albums on wishlist. Use Settings -> Library -> 'Scan low-quality albums now' to add albums here."
+Whether these two should be merged into one button is an open design question tracked
+in [issue #28](https://github.com/Zesseth/RoonWishlist/issues/28), not here.
 
 ---
 
 ## Success Criteria Checklist
 
+Tick these off during a test run.
+
 ### Wishlist Section
-- [x] Only Roon-tagged albums appear
-- [x] No "Ignore" button visible
-- [x] "Find in stores" button works
-- [x] "Remove" button works
-- [x] Empty state message is correct
+- [ ] Only Roon-tagged albums appear
+- [ ] No "Ignore" button visible
+- [ ] "Find in stores" button works
+- [ ] "Remove" button works
+- [ ] Empty state message is correct
 
 ### Low-Quality Albums Section
-- [x] Non-FLAC albums appear with track counts
-- [x] Fully FLAC albums are NOT added
-- [x] "Ignore" button visible and works
-- [x] "Find in stores" button works
-- [x] "Remove" button works
-- [x] Ignored albums don't reappear on rescan
-- [x] Empty state message is correct
+- [ ] Non-FLAC albums appear with track counts
+- [ ] Fully FLAC albums are NOT added
+- [ ] "Ignore" button visible and works
+- [ ] "Find in stores" button works
+- [ ] "Remove" button works
+- [ ] Ignored albums don't reappear on rescan
+- [ ] Empty state message is correct
 
 ### Navigation
-- [x] Menu has exactly 3 items
-- [x] "Add an album" NOT in menu
-- [x] Each menu item opens correct section
-- [x] Only one section active at a time
+- [ ] Menu has exactly 3 items
+- [ ] "Add an album" NOT in menu
+- [ ] Each menu item opens correct section
+- [ ] Only one section active at a time
 
 ---
 
@@ -247,11 +239,30 @@ Check internet connection. The search uses Bandcamp and Qobuz APIs.
 
 ### Albums not appearing after tagging
 1. Click "Sync Roon tag" in Web UI
-2. If still not appearing, check Roon browse API access:
+2. Verify the tag name is exactly `Wishlist` (case-sensitive)
+3. If still not appearing, check Roon browse API access:
    - Re-enable the extension in Roon after upgrading
+4. Force a sync from the command line:
+   `curl -X POST http://localhost:3141/reconcile`
+
+### The web UI is not reachable from another device
+By default the server binds to `127.0.0.1`, which only accepts local connections.
+Start it with `ROON_WISHLIST_HTTP_HOST=0.0.0.0` (or use `install.sh --web`) to expose
+it on the LAN, then browse to `http://<server-ip>:3141`.
+
+### "Permission denied" writing to the data directory
+- Linux: `sudo chown -R roon-wishlist:roon-wishlist /var/lib/roon-wishlist`
+- Check the service logs: `journalctl -u roon-wishlist -f`
 
 ---
 
-*Last updated: 2026-06-25*
-*Branch: feat/ui-cleanup*
-*Test session validated by user*
+## Reporting a problem
+
+Do **not** record findings in a file in the repository. Open or comment on a
+[GitHub issue](https://github.com/Zesseth/RoonWishlist/issues) instead — GitHub is
+the single source of truth for status and planning.
+
+---
+
+*Last updated: 2026-08-19*
+*Branch: `main`*
