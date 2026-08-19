@@ -13,7 +13,7 @@ npm test          # node --test
 npm run test:watch
 ```
 
-**144 tests total**, roughly 1–2 seconds.
+**147 tests total**, roughly 1–2 seconds.
 
 ### `test/wishlist.test.js` — 26 tests
 
@@ -54,7 +54,7 @@ Stubbed Roon browse tree (Library -> Tags -> Wishlist -> Albums); no Roon core.
 | `reconcileOnStartup()` | 3 | the same removal rule on startup, and no action without browse |
 | `probeTagWriteSupport()` | 5 | reports the actions Roon offers on an album, spots a tag action if one ever appears, never guesses |
 
-### `test/owned_tagged.test.js` — 12 tests
+### `test/owned_tagged.test.js` — 15 tests
 
 Tagged albums the user already owns in lossless (issue #32). Temporary fixture
 directories, no Roon.
@@ -62,7 +62,7 @@ directories, no Roon.
 | Group | Tests | Covers |
 |---|---|---|
 | `classifyWantedAlbums()` | 3 | only the wanted folders are opened, absent albums, nothing wanted |
-| `markOwnedTaggedAlbums()` | 6 | flags a fully lossless copy, ignores lossy and mixed, clears a stale flag, skips non-tag entries, never deletes |
+| `markOwnedTaggedAlbums()` | 9 | flags a fully lossless copy, ignores lossy and mixed, clears a stale flag, skips non-tag entries, never deletes, refuses to conclude anything with no readable location, matches an `Artist - Album` folder |
 | `checkAndClean()` with tags | 3 | a tagged album is flagged not removed, a scanned one is still removed, stale flags cleared |
 
 ### `test/scan_locations.test.js` — 35 tests

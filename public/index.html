@@ -1015,7 +1015,15 @@
           "links " + r.withLinks + "/" + r.totalTaggedAlbums,
         ];
         if (r.lookupErrors) parts.push("lookup errors " + r.lookupErrors);
-        toast(parts.join(" — "), "ok");
+        const owned = r.ownedCheck || {};
+        if (owned.error) {
+          // Say it out loud. A silent failure here leaves albums you already own sitting
+          // on the shopping list with nothing to explain why.
+          toast("Synced, but could not check what you already own: " + owned.error, "err");
+        } else {
+          if (owned.owned && owned.owned.length) parts.push("already owned " + owned.owned.length);
+          toast(parts.join(" — "), "ok");
+        }
         await loadWishlist();
         await loadStatus();
       } catch (e) {
@@ -1058,7 +1066,15 @@
           "links " + r.withLinks + "/" + r.totalTaggedAlbums,
         ];
         if (r.lookupErrors) parts.push("lookup errors " + r.lookupErrors);
-        toast(parts.join(" — "), "ok");
+        const owned = r.ownedCheck || {};
+        if (owned.error) {
+          // Say it out loud. A silent failure here leaves albums you already own sitting
+          // on the shopping list with nothing to explain why.
+          toast("Synced, but could not check what you already own: " + owned.error, "err");
+        } else {
+          if (owned.owned && owned.owned.length) parts.push("already owned " + owned.owned.length);
+          toast(parts.join(" — "), "ok");
+        }
         await loadWishlist();
         await loadStatus();
       } catch (e) {

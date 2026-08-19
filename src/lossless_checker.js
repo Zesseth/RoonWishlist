@@ -607,6 +607,14 @@ async function markOwnedTaggedAlbums(locations, wishlistModule) {
   }
 
   const { results, errors, locations: roots } = await classifyWantedAlbums(locations, items);
+
+  // Having nowhere to look is not the same as owning nothing. Concluding "not owned"
+  // from an empty scan would clear every flag and put albums the user already has back
+  // on the shopping list, silently. Refuse instead, and let the caller report it.
+  if (!roots.length) {
+    throw new Error("No storage location to check against, so ownership could not be determined.");
+  }
+
   const owned = [];
   const cleared = [];
 

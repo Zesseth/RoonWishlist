@@ -566,8 +566,10 @@ async function runLosslessClean() {
  */
 async function flagOwnedTaggedAlbums() {
   try {
-    const roots = await getScanRoots();
-    return await lossless.markOwnedTaggedAlbums(roots, wishlist);
+    const { roots, unreadable } = await getScanRoots();
+    const result = await lossless.markOwnedTaggedAlbums(roots, wishlist);
+    if (unreadable.length) result.unreadableLocations = unreadable;
+    return result;
   } catch (err) {
     return { owned: [], cleared: [], checked: 0, errors: 1, error: err.message };
   }
@@ -845,8 +847,11 @@ const server = http.createServer(async (req, res) => {
         const parts = [`added ${result.added}`, `updated ${result.updated}`];
         if (result.removed) parts.push(`removed ${result.removed}`);
         parts.push(`links ${result.withLinks}/${result.totalTaggedAlbums}`);
-        const owned = result.ownedCheck && result.ownedCheck.owned.length;
-        if (owned) parts.push(`already owned ${owned}`);
+        const ownedCheck = result.ownedCheck || {};
+        // An ownership check that could not run must say so. Staying quiet would leave
+        // albums the user already owns sitting on the shopping list with no explanation.
+        if (ownedCheck.error) parts.push(`ownership NOT checked: ${ownedCheck.error}`);
+        else parts.push(`already owned ${ownedCheck.owned ? ownedCheck.owned.length : 0}`);
         const missing = result.tagFound
           ? ""
           : ` (the tag "${result.tagName}" is not in Roon right now, so it was treated as empty)`;

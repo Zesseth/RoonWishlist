@@ -327,13 +327,19 @@ the point.
 An unmounted NAS must never look like "you own nothing", because that would delete
 nothing but would report your whole library as missing.
 
+> **Set the path back to `/music` before you go on.** Tests 10, 11 and 14 all change the
+> library path, and leaving a wrong one behind makes every later test look broken: nothing
+> is found in the library, so nothing can be recognised as already owned. This is exactly
+> what happened on your install — the path was left as `/mnt/music`, which does not
+> exist. A check that cannot run now says so instead of quietly reporting "not found".
+
 ---
 
 ## Part 4 — Albums you already own in lossless ([issue #32](https://github.com/Zesseth/RoonWishlist/issues/32))
 
-You tagged *The World We Left Behind* and it appeared on the wishlist even though you
-already own it as FLAC. That was wrong, and the cause was simple: the tag sync added
-every tagged album without ever looking at your library.
+You tagged *Nachtmystium — The World We Left Behind* and it appeared on the wishlist even
+though you already own it as FLAC. That was wrong, and the cause was simple: the tag sync
+added every tagged album without ever looking at your library.
 
 It now checks. A tagged album that already has a **complete lossless copy** is no longer
 listed as wanted — it moves to its own section, **Already owned in lossless**, on the
@@ -345,13 +351,30 @@ tag, and the tag lives in Roon.
 
 ### Test 15 — An album you already own moves out of the wishlist
 
+**Check the library path first:** Settings → it must say `/music`. See the warning under
+Test 14.
+
 1. In Roon, tag an album you **own as FLAC** (or any lossless format) with `Wishlist`
 2. In the web UI, press **Sync Roon tag**
 3. **Expect:** it does **not** appear in the main wishlist. A second panel, *Already
    owned in lossless*, appears below it and lists the album.
-4. **Expect:** the status line after the sync mentions `already owned 1`
+4. **Expect:** the message after the sync mentions `already owned 1`
 
-*The World We Left Behind* is the exact case to try, since that is the one that failed.
+*Nachtmystium — The World We Left Behind* is the exact case to try, since that is the one
+that failed. Its folder is named `Nachtmystium/Nachtmystium - The World We Left Behind`,
+with the artist repeated, and that layout is now covered by a test.
+
+### Test 15b — A check that cannot run says so
+
+The first time round this failed silently: the library path was pointing at a folder that
+does not exist, so nothing could be found, and the sync still reported plain success.
+
+1. In Settings, set the library path to `/mnt/not-a-real-folder`
+2. Press **Save path**, then press **Sync Roon tag**
+3. **Expect:** a red message — *"Synced, but could not check what you already own: no
+   readable storage location…"*. It must **not** claim success, and albums already marked
+   as owned must **not** move back onto the wishlist.
+4. Set the path back to `/music` and sync again
 
 ### Test 16 — An album you own only as MP3 is still wanted
 
@@ -449,6 +472,11 @@ needed to read tags.
 
 **The low-quality scan finds nothing.** Check the library path in Settings, and that the
 folders are laid out as `Artist/Album/tracks.*`.
+
+**An album I own is still on the wishlist.** Check the library path in Settings first —
+it should be `/music`. If the path is wrong, nothing can be found and nothing can be
+recognised as owned. Then press **Sync Roon tag** and read the message: if it says
+*"could not check what you already own"*, that is the reason.
 
 **Store search returns nothing.** It needs internet access; it queries Bandcamp and
 Qobuz.

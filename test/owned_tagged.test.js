@@ -53,6 +53,12 @@ describe("already-owned Roon-tagged albums (#32)", () => {
     makeAlbum("lib", "Opeth", "Blackwater Park", ["01.mp3", "02.mp3"]);
     // Owned, but only partly lossless.
     makeAlbum("lib", "Tool", "Lateralus", ["01.flac", "02.mp3"]);
+    // The real layout on the user's server: the album folder repeats the artist name.
+    makeAlbum("lib", "Nachtmystium", "Nachtmystium - The World We Left Behind", [
+      "01 - Nachtmystium - Intrusion.flac",
+      "02 - Nachtmystium - Fireheart.flac",
+      "folder.jpg",
+    ]);
   });
 
   after(() => fs.rmSync(root, { recursive: true, force: true }));
@@ -129,6 +135,34 @@ describe("already-owned Roon-tagged albums (#32)", () => {
 
       assert.strictEqual(result.checked, 0);
       assert.strictEqual(wishlist._state[0].ownedLossless, undefined);
+    });
+
+    it("refuses to conclude anything when there is nowhere to look", async () => {
+      const wishlist = makeWishlistStub([
+        { artist: "Katatonia", title: "The World We Left Behind", source: "roon-tag", ownedLossless: true },
+      ]);
+      // This is the shape a caller passing the wrong thing produces: no usable root.
+      await assert.rejects(() => lossless.markOwnedTaggedAlbums([], wishlist), /ownership could not be determined/i);
+      // The flag must survive: an empty scan is not evidence the album is gone.
+      assert.strictEqual(wishlist._state[0].ownedLossless, true);
+    });
+
+    it("does not silently treat a blank location as an empty library", async () => {
+      const wishlist = makeWishlistStub([
+        { artist: "Katatonia", title: "The World We Left Behind", source: "roon-tag" },
+      ]);
+      await assert.rejects(() => lossless.markOwnedTaggedAlbums(["", "  "], wishlist), /ownership could not be determined/i);
+      assert.strictEqual(wishlist._state[0].ownedLossless, undefined);
+    });
+
+    it("finds an album whose folder is named \"Artist - Album\"", async () => {
+      const wishlist = makeWishlistStub([
+        { artist: "Nachtmystium", title: "The World We Left Behind", source: "roon-tag" },
+      ]);
+      const result = await lossless.markOwnedTaggedAlbums(lib(), wishlist);
+
+      assert.strictEqual(result.owned.length, 1);
+      assert.strictEqual(wishlist._state[0].ownedLossless, true);
     });
 
     it("never deletes the entry — Roon stays the master", async () => {
