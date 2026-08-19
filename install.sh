@@ -254,13 +254,28 @@ fi
 info "Installing application to $INSTALL_DIR"
 mkdir -p "$INSTALL_DIR"
 # Copy the repo contents but never the local node_modules / .git / data.
+#
+# config.json must survive an upgrade: node-roon-api writes the Roon pairing token
+# there, inside the working directory. Without the exclusion below, `rsync --delete`
+# removes it on every upgrade and the extension silently falls back to unpaired,
+# forcing the user to re-enable it in Roon and losing the tag sync until they notice.
 if command -v rsync >/dev/null 2>&1; then
   rsync -a --delete \
     --exclude '.git' --exclude 'node_modules' --exclude 'data' \
+    --exclude 'config.json' \
     "$SRC_DIR"/ "$INSTALL_DIR"/
 else
+  PRESERVED_CONFIG=""
+  if [ -f "$INSTALL_DIR/config.json" ]; then
+    PRESERVED_CONFIG="$(mktemp)"
+    cp -a "$INSTALL_DIR/config.json" "$PRESERVED_CONFIG"
+  fi
   cp -a "$SRC_DIR"/. "$INSTALL_DIR"/
   rm -rf "$INSTALL_DIR/.git" "$INSTALL_DIR/node_modules" "$INSTALL_DIR/data"
+  if [ -n "$PRESERVED_CONFIG" ]; then
+    cp -a "$PRESERVED_CONFIG" "$INSTALL_DIR/config.json"
+    rm -f "$PRESERVED_CONFIG"
+  fi
 fi
 
 # --- Install production dependencies (https only, no SSH keys needed) ---------
