@@ -135,7 +135,7 @@ path comes from Roon or from Settings, not from the environment.
 | Tag write-back (wishlist → Roon) | Believed impossible; the Roon Browse API exposes no tag writes. `GET /roon-tag/write-support` measures this against the live Core instead of assuming it. See [`ROON_API_LIMITATIONS.md`](./ROON_API_LIMITATIONS.md) |
 | Track-level tagging | Roon exposes album-level browse only |
 | Multiple Roon Cores | The extension pairs with a single Core |
-| Reading storage locations from Roon | `src/roon_storage.js` needs a live Browse service; only the parsing of its output is unit tested |
+| Probing Roon for storage locations | `src/roon_storage.js` needs a live Browse service; only the parsing of its output is unit tested. Roon exposes no storage folders, so this probe is expected to come back empty |
 
 ---
 
@@ -519,8 +519,8 @@ curl -s -X POST $API/settings -H 'Content-Type: application/json' \
 curl -s $API/storage-locations | jq
 ```
 
-**Expect:** `active` contains `/tmp/rw-fixture/libA`, `usedFallback` is `true` (no Roon
-location), and `unreadable` is empty.
+**Expect:** `active` contains `/tmp/rw-fixture/libA`, `manualOnly` is `true` (folders
+come from the settings screen, which is the normal case), and `unreadable` is empty.
 
 ### 9c. Refuse to scan when there is nothing to scan
 

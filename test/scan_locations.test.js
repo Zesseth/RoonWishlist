@@ -99,7 +99,7 @@ describe("resolveScanLocations()", () => {
       roonLocations: [{ title: "Main", subtitle: "/mnt/music" }],
     });
     assert.deepStrictEqual(result.active, ["/mnt/music"]);
-    assert.strictEqual(result.usedFallback, false);
+    assert.strictEqual(result.manualOnly, false);
   });
 
   it("falls back to the manual path when Roon reports nothing usable", () => {
@@ -108,7 +108,7 @@ describe("resolveScanLocations()", () => {
       manualPath: "/mnt/manual",
     });
     assert.deepStrictEqual(result.active, ["/mnt/manual"]);
-    assert.strictEqual(result.usedFallback, true);
+    assert.strictEqual(result.manualOnly, true);
   });
 
   it("scans the manual path in addition to the Roon ones", () => {
@@ -124,7 +124,7 @@ describe("resolveScanLocations()", () => {
       manualPath: "/mnt/a; /mnt/b",
     });
     assert.deepStrictEqual(result.active, ["/mnt/a", "/mnt/b"]);
-    assert.strictEqual(result.usedFallback, true);
+    assert.strictEqual(result.manualOnly, true);
   });
 
   it("can exclude one of several manual paths", () => {

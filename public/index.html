@@ -312,21 +312,16 @@
     </section>
 
     <section class="card page" data-page="settings">
-      <h2>Music storage locations</h2>
-      <p class="hint">Folders that are scanned for albums you already own. Roon reports these automatically when it can; the path below is used as an override and as a fallback when it cannot.</p>
-      <div id="storage-locations">
-        <div class="empty">Loading storage locations…</div>
-      </div>
-      <div class="row" style="margin-top: 12px;">
-        <button type="button" class="secondary" id="refresh-locations-btn">Refresh from Roon</button>
-      </div>
-
-      <h2 style="margin-top: 24px;">Library path (override / fallback)</h2>
-      <p class="hint">Local folder where your music files live (on the machine running this extension). Separate several folders with a semicolon. Leave empty to rely on Roon alone.</p>
+      <h2>Music folders</h2>
+      <p class="hint">Folders on this machine that are scanned for albums you already own. Separate several folders with a semicolon.</p>
       <form id="lib-form" class="row" autocomplete="off">
-        <input type="text" id="lib-path" placeholder="/mnt/music; /mnt/music2" />
-        <button type="submit">Save path</button>
+        <input type="text" id="lib-path" placeholder="/music; /mnt/music2" />
+        <button type="submit">Save folders</button>
       </form>
+      <p class="hint" id="roon-storage-note">Roon does not give extensions the storage folders configured in its own settings, so these have to be set here. <a href="https://github.com/Zesseth/RoonWishlist/issues/15" target="_blank" rel="noopener">Why</a></p>
+      <div id="storage-locations" style="margin-top: 12px;">
+        <div class="empty">Loading music folders…</div>
+      </div>
       <div class="danger-zone">
         <h3>Danger Zone</h3>
         <p>These actions <strong>empty and rebuild</strong> their respective sections from scratch.</p>
@@ -641,9 +636,9 @@
 
       if (!locations.length) {
         box.innerHTML =
-          '<div class="empty">No storage location detected.' +
-          (diagnostic ? '<br>Roon: ' + esc(diagnostic.detail) : '') +
-          '<br>Set the library path below to tell the extension where to look.</div>';
+          '<div class="empty">No music folder configured yet — set one above.' +
+          (diagnostic ? '<br><span class="album-meta">Checked at pairing: ' + esc(diagnostic.detail) + '</span>' : '') +
+          '</div>';
         return;
       }
 
@@ -693,11 +688,12 @@
       html += '<div class="album-meta" style="margin-top:8px;">' +
         esc(active.length + " of " + locations.length + " location(s) will be scanned.") + '</div>';
 
-      // Say why nothing came from Roon, so a manual-only list is not mistaken for a
-      // broken lookup - or for Roon having no storage configured.
+      // Roon does not hand these over, so the folders above are the source. Keep the
+      // measurement available for the curious, but do not lead with it: a permanent
+      // "Roon reported nothing" line reads as a fault, and this is not one.
       if (!roonReported && diagnostic) {
-        html += '<div class="album-meta" style="margin-top:4px;">' +
-          esc("Roon: " + diagnostic.detail) + '</div>';
+        html += '<details style="margin-top:8px;"><summary class="album-meta">Why not from Roon?</summary>' +
+          '<div class="album-meta" style="margin-top:4px;">' + esc(diagnostic.detail) + '</div></details>';
       }
 
       box.innerHTML = html;
@@ -960,33 +956,6 @@
     });
 
     $("refresh-btn").addEventListener("click", () => { loadWishlist(); loadStatus(); });
-
-    $("refresh-locations-btn").addEventListener("click", async () => {
-      const btn = $("refresh-locations-btn");
-      btn.disabled = true;
-      btn.textContent = "Refreshing...";
-      try {
-        // Say what Roon actually answered. Reporting a bare "refreshed" when Roon
-        // returned nothing makes a working button look broken.
-        const data = await api("/storage-locations");
-        renderStorageLocations(data);
-        await loadStatus();
-
-        const fromRoon = (data && data.locations || []).length;
-        if (fromRoon) {
-          toast("Roon reported " + fromRoon + " storage location(s).", "ok");
-        } else {
-          // The full explanation is rendered in the panel above and stays there; a toast
-          // that scrolls away is the wrong place for evidence the user needs to read.
-          toast("Roon exposed no storage locations to the extension — see the panel above for exactly what it did offer.", "err");
-        }
-      } catch (e) {
-        toast("Could not refresh storage locations: " + e.message, "err");
-      } finally {
-        btn.disabled = false;
-        btn.textContent = "Refresh from Roon";
-      }
-    });
 
     $("sync-roon-btn").addEventListener("click", async () => {
       const btn = $("sync-roon-btn");

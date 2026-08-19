@@ -13,8 +13,11 @@ A Roon Extension — a wishlist for albums you don't yet own in lossless quality
 - **Auto-clean**: When you own a **complete lossless copy** of a wishlist album, it is
   automatically removed from the wishlist. An album that is only partly lossless is
   kept, and the result says why.
-- **Storage locations from Roon**: The folders to scan are read from Roon where
-  possible, so there is usually no path to type. Individual folders can be excluded.
+- **Music folders you configure**: You tell the extension which folders to scan.
+  Several folders can be given, separated by a semicolon, and any of them excluded.
+  Roon does **not** hand its storage folders to extensions — measured on Roon 2.71, and
+  the SDK registers no service that could carry them — so this is set here, not read
+  from Roon. See [issue #15](https://github.com/Zesseth/RoonWishlist/issues/15).
 
 > **Where is the UI in Roon?** Roon's public extension API only lets an extension draw
 > a UI on its **Settings** screen — it does **not** allow extensions to add their own
@@ -146,11 +149,10 @@ existing install and restarts the service.
 After either option, on any device with Roon open:
 
 1. Go to **Settings → Extensions**. You should see **Wishlist** listed and paired.
-2. Click its **Settings**. The **Music storage locations** list shows the folders the
-   extension will scan, read from Roon where possible. If Roon does not report any,
-   set the **Music library path** yourself (e.g. `/mnt/music`). You can exclude any
-   listed folder from scanning.
-3. Use the **Action** menu to add/remove albums, run *Refresh & clean*, or run the
+2. Click its **Settings**. Set the **Music library path** to where your music lives
+   (e.g. `/music`), separating several folders with a semicolon. The list above it
+   shows what will actually be scanned, and any folder can be excluded.
+3. Use the **Action** menu to remove an album, run *Refresh & clean*, or run the
    low-quality scan. The menu is drawn by Roon itself — pick an action, fill the
    fields if they appear, press **Save**.
 
@@ -160,14 +162,13 @@ The extension also serves a small **web interface** — this is the easiest way 
 the wishlist. The top-left menu has three views: **Wishlist** (home, current wishlist
 and low-quality scan section), **Add an album** (add/search), and **Settings** (library
 path + scan/clean). From the browser you can view the list, add/remove albums,
-**search Bandcamp/Qobuz and add straight from the results**, **sync albums tagged
-`Wishlist` from Roon**, set the **music library path**, rebuild the **low-quality
+**search Bandcamp/Qobuz for buy links**, **sync albums tagged
+`Wishlist` from Roon**, set your **music folders**, rebuild the **low-quality
 albums** list,
 run a **low-quality scan** that adds albums which are not fully lossless, and see
-whether the extension is **paired** with your Roon Core. The **Settings** view also
-lists the **music storage locations** being scanned and lets you exclude any of them.
-The library path is only an override and a fallback for setups where Roon does not
-report its storage folders; it accepts **several folders separated by a semicolon**.
+whether the extension is **paired** with your Roon Core. The **Settings** view is where
+you configure the **music folders** to scan; it accepts **several folders separated by a
+semicolon**, and each one can be excluded without deleting it.
 The Wishlist view shows the stored buy links for synced albums and, for low-quality
 finds, the current **x/y lossless tracks** count plus an **Ignore** action so that a special version is not re-added on the
 next scan. The **Settings** view also includes a **Danger Zone** action that clears the
@@ -300,10 +301,10 @@ Leave this window open — the extension runs as long as this command runs. Pres
 
 1. Open Roon → **Settings → Extensions → Wishlist** (it should appear and pair
    automatically).
-2. Open its **Settings** and check the **Music storage locations** list. If it is
-   empty, set the **Music library path** (e.g. `D:\Music` on Windows,
-   `/Users/you/Music` on macOS).
-3. Use the **Action** menu to add/remove albums or run *Refresh & clean* — pick an
+2. Open its **Settings** and set the **Music library path** (e.g. `D:\Music` on
+   Windows, `/Users/you/Music` on macOS). Roon does not supply this, so it has to be
+   set here.
+3. Use the **Action** menu to remove an album or run *Refresh & clean* — pick an
    action, fill the fields if shown, press **Save**.
 
 ---
@@ -404,7 +405,7 @@ src/
   lossless_checker.js ← Library check, auto-remove
   roon_tag_sync.js    ← Sync albums from Roon's "Wishlist" tag
   roon_reconciliation.js ← Auto-sync on startup, sync health tracking
-  roon_storage.js     ← Read storage locations from Roon
+  roon_storage.js     ← Probe: does this Roon expose storage folders? (it does not)
 deploy/
   roon-wishlist.service ← systemd unit template (manual installs)
 bootstrap.sh          ← one-command Linux installer (installs git/Node, clones, runs install.sh)

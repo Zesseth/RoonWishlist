@@ -132,11 +132,11 @@ that list is local data, not a mirror of Roon.)
 ### Test 4 — Settings page
 
 1. Go to **Settings**
-2. **Expect:** a **Music storage locations** panel, a **Library path** field with a
-   **Save path** button, and a **Scan low-quality albums now** button
+2. **Expect:** a **Music folders** panel at the top with a path field and a
+   **Save folders** button, and a **Scan low-quality albums now** button
 3. **Expect:** a **Danger Zone** with **Clear & rebuild from Roon tag** and
    **Clear & rebuild low-quality albums**
-4. Change the library path, press **Save path**, reload the page
+4. Change the folder path, press **Save folders**, reload the page
 5. **Expect:** the path you typed is still there
 
 ### Test 5 — Empty states
@@ -198,8 +198,7 @@ onto the wishlist any more, in the web UI or in Roon.
 1. **Roon → Settings → Extensions → Wishlist → Settings**
 2. Open the **Actions** dropdown
 3. **Expect:** there is **no** *Add album to wishlist* entry. The remaining actions are
-   *Remove album from wishlist*, *Refresh & clean*, *Scan low-quality albums* and
-   *Refresh storage locations from Roon*.
+   *Remove album from wishlist*, *Refresh & clean* and *Scan low-quality albums*.
 
 The rule this used to test still holds and still matters: a sync only ever removes
 albums that came **from the tag**. Your **135 low-quality albums** were found by
@@ -222,43 +221,48 @@ What changed, in plain terms:
 5. An album is removed **only when the whole album is lossless**. One FLAC track among
    ten MP3s no longer counts as owning it.
 
-### Test 9 — What does Roon actually report?
+### Test 9 — Roon does not supply the folders, so you configure them
 
-This is the question the whole issue hangs on, and it needs the extension paired.
+You were right that something was wrong here, and right to push back. The answer turned
+out to be that **Roon never gives extensions its storage folders** — not that yours are
+missing. Three independent checks agree:
 
-1. Go to **Settings** → **Music storage locations**
-2. Press **Refresh from Roon**
-3. **Expect:** the message now tells you the outcome. Either *"Roon reported N storage
-   location(s)"*, or *"Roon reported no storage locations"* followed by the reason.
+- Roon's SDK registers no service that could carry them (only browse, settings, status,
+  pairing, ping, registry).
+- Asking your own Core returns only *Profile* and *Display Settings*, with nothing
+  storage-shaped inside either.
+- Roon's own position, per their API documentation and community answers, is that
+  storage configuration is not offered to third parties.
 
-You reported that it says the information cannot be found in Roon, and that this must be
-wrong because the folders are obviously configured there. Both are true at once: Roon
-knows your storage folders, but it does not offer them to extensions. The Browse API's
-settings hierarchy contains only *Profile* and *Display Settings*. The lookup now also
-looks one level inside each of those before giving up, and the panel lists everything
-Roon did offer — so you can read the evidence instead of taking my word for it.
+So the feature has been turned the right way round: **the folders you configure here are
+the source**, not a fallback. The misleading *Refresh from Roon* button is gone — a
+button that can only ever fail is worse than no button — and the same action has been
+removed from Roon's own settings screen.
 
-That is why the library path below is not a workaround for a bug: it is the only route
-Roon leaves open.
+1. Go to **Settings**
+2. **Expect:** the first thing on the page is **Music folders**, with your folders in the
+   box and a **Save folders** button
+3. **Expect:** underneath, one line of explanation, and a small collapsed *Why not from
+   Roon?* that opens to show exactly what Roon did offer
+4. **Expect:** there is **no** *Refresh from Roon* button anywhere
+5. In **Roon → Settings → Extensions → Wishlist → Settings**, open the **Action**
+   dropdown
+6. **Expect:** no *Refresh storage locations from Roon* entry
 
-You also reported this button as doing nothing. It was in fact querying Roon every time — but
-it always said "Storage locations refreshed", which is indistinguishable from a button
-that is wired to nothing. It now reports what Roon answered.
-
-Expected on Roon 2.71: no storage locations, because Roon's browsable settings contain
-no Storage or Library entry. If instead it lists your real music folders, that is
-genuinely new and worth reporting on issue #15 with your Roon version.
+If some future Roon does start exposing storage, the probe still runs once when pairing
+and would show up here. It is no longer run before every scan, since the answer does not
+change.
 
 ### Test 10 — Several library folders at once
 
-1. In **Settings**, set the library path to both fixture folders:
+1. In **Settings** → **Music folders**, enter both fixture folders:
 
    ```
    /var/tmp/roon-wishlist-fixture/libA; /var/tmp/roon-wishlist-fixture/libB
    ```
 
-2. Press **Save path**
-3. **Expect:** the storage panel lists **both** folders, each marked *typed here*, and
+2. Press **Save folders**
+3. **Expect:** the panel below lists **both** folders, each marked *typed here*, and
    says two of two locations will be scanned
 
 ### Test 11 — Removing and excluding a folder
@@ -267,9 +271,9 @@ The two buttons now mean different things, which is the change you asked for.
 
 1. **Expect:** each folder you typed has a **Remove** button
 2. Press **Remove** on `libB` and confirm
-3. **Expect:** it disappears from the list *and* from the Library path field — it is
+3. **Expect:** it disappears from the list *and* from the Music folders box — it is
    genuinely gone, not just skipped
-4. Put it back by typing the path again and pressing **Save path**
+4. Put it back by typing the path again and pressing **Save folders**
 
 If Roon ever does report a folder, that entry gets an **Exclude** button instead of
 Remove, and its line says *remove it in Roon*. A Roon-supplied path is not ours to
@@ -330,8 +334,8 @@ the point.
 
 1. Set the library path to include a folder that does not exist, e.g.
    `/var/tmp/roon-wishlist-fixture/libA; /mnt/not-mounted`
-2. Press **Save path**
-3. **Expect:** the storage panel marks the missing folder as unreadable, and scans still
+2. Press **Save folders**
+3. **Expect:** the folder list marks the missing folder as unreadable, and scans still
    run against the folder that works
 
 An unmounted NAS must never look like "you own nothing", because that would delete
@@ -380,7 +384,7 @@ The first time round this failed silently: the library path was pointing at a fo
 does not exist, so nothing could be found, and the sync still reported plain success.
 
 1. In Settings, set the library path to `/mnt/not-a-real-folder`
-2. Press **Save path**, then press **Sync Roon tag**
+2. Press **Save folders**, then press **Sync Roon tag**
 3. **Expect:** a red message — *"Synced, but could not check what you already own: no
    readable storage location…"*. It must **not** claim success, and albums already marked
    as owned must **not** move back onto the wishlist.

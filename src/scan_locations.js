@@ -97,9 +97,10 @@ function isExcluded(candidatePath, excludedSet) {
  *
  * @param {Object} options
  * @param {Array} [options.roonLocations] Raw output of `getStorageLocations()`.
- * @param {string} [options.manualPath] The `music_library_path` override.
+ * @param {string} [options.manualPath] The `music_library_path` setting: the folders
+ *   you configure, which is the normal way folders get here.
  * @param {string[]} [options.excluded] Paths the user opted out of.
- * @returns {{locations: Array, active: string[], excluded: string[], usedFallback: boolean}}
+ * @returns {{locations: Array, active: string[], excluded: string[], manualOnly: boolean}}
  */
 function resolveScanLocations({ roonLocations, manualPath, excluded } = {}) {
   const excludedList = (Array.isArray(excluded) ? excluded : [])
@@ -147,8 +148,9 @@ function resolveScanLocations({ roonLocations, manualPath, excluded } = {}) {
     locations,
     active,
     excluded: locations.filter((entry) => entry.excluded).map((entry) => entry.path),
-    // True when Roon told us nothing usable and we are relying on the typed path.
-    usedFallback: !extractRoonPaths(roonLocations).length && manual.length > 0,
+    // True when every folder came from the settings screen. This is the expected case:
+    // Roon does not expose its storage folders to extensions (see issue #15).
+    manualOnly: !extractRoonPaths(roonLocations).length && manual.length > 0,
   };
 }
 

@@ -33,11 +33,14 @@ let roonStorageLocations = [];
 // fallback instead of just showing an empty list.
 let roonStorageDiagnostic = {
   outcome: "not-checked",
-  detail: "Roon has not been asked for storage locations yet.",
+  detail:
+    "Roon has not been asked yet — it is asked once when pairing. Roon does not give " +
+    "extensions the storage folders from its own settings, so the folders configured " +
+    "here are what gets scanned.",
 };
 // Last resolved view of where scans will run, cached so the settings screen can show
 // it without re-querying Roon on every render.
-let resolvedScanLocations = { locations: [], active: [], excluded: [], usedFallback: false };
+let resolvedScanLocations = { locations: [], active: [], excluded: [], manualOnly: false };
 
 // Roon identifies an extension by `extension_id`. Two processes sharing one id fight
 // over the pairing, so a test build must announce itself as a different extension.
@@ -63,8 +66,9 @@ const roonApp = new RoonApi({
       console.warn("Reconciliation after pairing failed:", err.message);
     });
 
-    // Roon can only tell us about storage locations once paired.
-    resolveActiveScanLocations().catch((err) => {
+    // One probe per pairing: if a future Roon ever exposes storage, this is where we
+    // would notice. Everyday scans do not ask again — the answer does not change.
+    resolveActiveScanLocations({ refresh: true }).catch((err) => {
       console.warn("Could not resolve scan locations after pairing:", err.message);
     });
   },
@@ -116,9 +120,9 @@ function renderScanLocations() {
   const { locations, active } = resolvedScanLocations;
   if (!locations.length) {
     return (
-      "No storage location detected yet.\n" +
-      `Roon: ${roonStorageDiagnostic.detail}\n` +
-      "Set the music library path below to tell the extension where to look."
+      "No music folder configured yet.\n" +
+      "Roon does not give extensions its storage folders, so set the folder below.\n" +
+      `Checked at pairing: ${roonStorageDiagnostic.detail}`
     );
   }
 
@@ -132,7 +136,7 @@ function renderScanLocations() {
 
   lines.push("", `${active.length} of ${locations.length} location(s) will be scanned.`);
   if (!roonStorageLocations.length) {
-    lines.push("", `Roon: ${roonStorageDiagnostic.detail}`);
+    lines.push("", "These are the folders you configured. Roon does not give extensions its storage folders.");
   }
   return lines.join("\n");
 }
@@ -165,7 +169,6 @@ function make_layout(settings) {
         { title: "Remove album from wishlist", value: "remove" },
         { title: "Refresh & clean (scan library)", value: "clean" },
         { title: "Scan low-quality albums into wishlist", value: "low_quality" },
-        { title: "Refresh storage locations from Roon", value: "refresh_locations" },
       ],
       setting: "action",
     },
@@ -237,13 +240,6 @@ async function performAction(values) {
   if (action === "low_quality") {
     const result = await runLowQualityScan();
     return `Low-quality scan done: added ${result.added}, already on wishlist ${result.alreadyPresent}, ignored ${result.ignored}`;
-  }
-  if (action === "refresh_locations") {
-    const resolved = await resolveActiveScanLocations();
-    if (!resolved.locations.length) {
-      return "No storage location reported by Roon. Set the music library path instead.";
-    }
-    return `Storage locations refreshed: ${resolved.active.length} of ${resolved.locations.length} will be scanned`;
   }
   return "Settings saved";
 }
@@ -441,12 +437,15 @@ async function getStorageLocationsFromRoon() {
 }
 
 /**
- * Works out where the next scan will actually look: Roon's storage locations, minus
- * anything the user excluded, with the manual path as an override/fallback. Refreshing
- * from Roon is best-effort — if Roon is unreachable we still fall back to the last
- * known list and the typed path rather than failing the scan outright.
+ * Works out where the next scan will actually look.
+ *
+ * The folders you configure here are the real source. Roon does not hand its storage
+ * locations to extensions — measured on Roon 2.71, and the SDK registers no service
+ * that could carry them (issue #15) — so asking is a compatibility probe for some
+ * future Roon, not something to repeat before every scan. `refresh` therefore defaults
+ * to false: it is done once when pairing, and on request.
  */
-async function resolveActiveScanLocations({ refresh = true } = {}) {
+async function resolveActiveScanLocations({ refresh = false } = {}) {
   if (refresh) {
     await getStorageLocationsFromRoon();
   }
@@ -942,9 +941,11 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // Get storage locations from Roon, together with how they resolve into scan roots.
+  // The configured music folders, together with how they resolve into scan roots.
+  // `?refresh=1` re-asks Roon; that is a compatibility probe, not part of normal use,
+  // because Roon does not expose storage folders to extensions (issue #15).
   if (req.method === "GET" && url.pathname === "/storage-locations") {
-    resolveActiveScanLocations()
+    resolveActiveScanLocations({ refresh: url.searchParams.get("refresh") === "1" })
       .then((resolved) => scanLocations
         .validateLocations(resolved.active)
         .then(({ unreadable }) => {
@@ -954,7 +955,7 @@ const server = http.createServer(async (req, res) => {
             resolved: resolved.locations,
             active: resolved.active,
             excluded: resolved.excluded,
-            usedFallback: resolved.usedFallback,
+            manualOnly: resolved.manualOnly,
             unreadable,
           }, null, 2));
         }))

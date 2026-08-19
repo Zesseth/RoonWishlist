@@ -46,7 +46,7 @@ Observed on the production install, Roon **2.71 (build 1683)**, paired, with
 GET /storage-locations
   locations:  []          <- nothing came from Roon
   active:     ["/music"]  <- the manual path
-  usedFallback: true
+  manualOnly: true   <- normal: Roon supplies nothing
 ```
 
 `getStorageLocations()` browses the `settings` hierarchy and looks for an entry whose
@@ -69,10 +69,33 @@ user's side, from "Roon has no storage configured". The diagnostic is surfaced i
 `/status`, in `/storage-locations`, in the web UI panel and in Roon's own settings
 screen.
 
-**Open question for issue #15:** whether Roon exposes storage under a differently
-titled settings entry on some versions. The `not-exposed` diagnostic now prints the
-entries Roon actually offered, which is the evidence needed to answer that without
-shell access to the server logs.
+### Closed, 2026-08-19: Roon does not expose storage locations at all
+
+The open question above is answered, three independent ways, and they agree:
+
+1. **The SDK carries no such service.** `node-roon-api` and its companion packages
+   register `com.roonlabs.browse:1`, `settings:1`, `status:1`, `pairing:1`, `ping:1` and
+   `registry:1`. There is no storage or library-configuration service to call, so Browse
+   was never a shortcut around a missing API — it was the only door, and it is shut.
+2. **The live Core offers nothing.** Roon 2.71 (build 1683): the `settings` hierarchy is
+   `["Profile", "Display Settings"]`, and descending one level into each finds nothing
+   storage-shaped.
+3. **Roon intends this.** Their documentation and support answers state that storage and
+   watched-folder configuration is not exposed to third-party extensions.
+
+**Consequence, and the design change it forced:** the manual folder list is not a
+fallback. It is the only route Roon leaves open, and the product now says so:
+
+- `music_library_path` is presented first, as **Music folders**, and accepts several
+  folders separated by a semicolon
+- the *Refresh from Roon* button in the web UI and the *Refresh storage locations from
+  Roon* action in Roon's settings screen are **removed** — a control that can only ever
+  fail is worse than no control
+- the probe still runs **once at pairing** rather than before every scan, so a future
+  Roon that starts exposing storage would still be picked up, at no recurring cost
+- the `not-exposed` diagnostic is now shown as a collapsed *Why not from Roon?* note
+  rather than an error, because it describes normal behaviour
+- `usedFallback` was renamed `manualOnly`: nothing here is a fall back from anything
 
 ## No list or table widget in the native settings UI — worked around, 2026-08-19
 
