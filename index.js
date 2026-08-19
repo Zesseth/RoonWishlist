@@ -10,7 +10,7 @@ const lossless = require("./src/lossless_checker");
 const lowQualityIgnore = require("./src/ignored_low_quality");
 const { ROON_WISHLIST_TAG, SyncError, syncTaggedAlbums, rebuildTaggedAlbums } = require("./src/roon_tag_sync");
 const { reconcileOnStartup, trackSyncHealth } = require("./src/roon_reconciliation");
-const { getStorageLocations } = require("./src/roon_storage");
+const { getStorageLocationsDetailed } = require("./src/roon_storage");
 const scanLocations = require("./src/scan_locations");
 
 let roon, mysettings, svc_status;
@@ -23,6 +23,12 @@ let reconciliationInProgress = false;
 let lastLowQualityScan = null;
 let lastReconciliation = null;
 let roonStorageLocations = [];
+// Why the last Roon storage lookup produced what it did. Kept so the UI can explain a
+// fallback instead of just showing an empty list.
+let roonStorageDiagnostic = {
+  outcome: "not-checked",
+  detail: "Roon has not been asked for storage locations yet.",
+};
 // Last resolved view of where scans will run, cached so the settings screen can show
 // it without re-querying Roon on every render.
 let resolvedScanLocations = { locations: [], active: [], excluded: [], usedFallback: false };
@@ -84,8 +90,8 @@ function renderScanLocations() {
   if (!locations.length) {
     return (
       "No storage location detected yet.\n" +
-      "Roon did not report one (its Browse API does not expose storage on every " +
-      "version), so set the music library path below."
+      `Roon: ${roonStorageDiagnostic.detail}\n` +
+      "Set the music library path below to tell the extension where to look."
     );
   }
 
@@ -98,6 +104,9 @@ function renderScanLocations() {
   });
 
   lines.push("", `${active.length} of ${locations.length} location(s) will be scanned.`);
+  if (!roonStorageLocations.length) {
+    lines.push("", `Roon: ${roonStorageDiagnostic.detail}`);
+  }
   return lines.join("\n");
 }
 
@@ -392,16 +401,19 @@ async function triggerReconciliation() {
 }
 
 async function getStorageLocationsFromRoon() {
-  try {
-    const browseService = getBrowseService();
-    if (!browseService) return [];
-    const locations = await getStorageLocations(browseService);
-    roonStorageLocations = locations;
-    return locations;
-  } catch (err) {
-    console.warn("Could not fetch storage locations:", err.message);
+  const browseService = getBrowseService();
+  if (!browseService) {
+    roonStorageDiagnostic = {
+      outcome: "not-paired",
+      detail: "Not paired with Roon, so its storage locations cannot be read yet.",
+    };
     return [];
   }
+
+  const { locations, diagnostic } = await getStorageLocationsDetailed(browseService);
+  roonStorageLocations = locations;
+  roonStorageDiagnostic = diagnostic;
+  return locations;
 }
 
 /**
@@ -821,6 +833,7 @@ const server = http.createServer(async (req, res) => {
       lastLowQualityScan,
       libraryPath: mysettings.music_library_path || "",
       storageLocations: roonStorageLocations,
+      storageDiagnostic: roonStorageDiagnostic,
       scanLocations: resolvedScanLocations.locations,
       activeScanLocations: resolvedScanLocations.active,
       excludedScanLocations: resolvedScanLocations.excluded,
@@ -859,6 +872,7 @@ const server = http.createServer(async (req, res) => {
         .then(({ unreadable }) => {
           res.end(JSON.stringify({
             locations: roonStorageLocations,
+            diagnostic: roonStorageDiagnostic,
             resolved: resolved.locations,
             active: resolved.active,
             excluded: resolved.excluded,

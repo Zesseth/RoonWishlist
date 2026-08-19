@@ -13,7 +13,7 @@ npm test          # node --test
 npm run test:watch
 ```
 
-**93 tests total**, roughly 1–2 seconds.
+**101 tests total**, roughly 1–2 seconds.
 
 ### `test/wishlist.test.js` — 26 tests
 
@@ -52,6 +52,15 @@ Pure unit tests against temporary fixture directories; no network, no Roon.
 | `resolveScanLocations()` | 9 | Roon locations, manual fallback, several manual paths, dedupe, exclusions |
 | `toggleExclusion()` | 4 | add, remove, no duplicates, blank input |
 | `validateLocations()` | 4 | readable dir, missing dir, a file, mixed input |
+
+### `test/roon_storage.test.js` — 8 tests
+
+Covers `getStorageLocationsDetailed()` against a stubbed Browse service: reading
+storage entries, the path arriving in either `subtitle` or `title`, header rows being
+skipped, and — the point of the diagnostic — telling `not-paired`, `not-exposed`,
+`empty` and `error` apart instead of returning a bare empty list for all four. Also
+asserts it never throws, since the caller has to be able to fall back to the manual
+path.
 
 ### `test/search.test.js` — 9 tests
 

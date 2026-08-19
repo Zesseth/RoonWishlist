@@ -622,10 +622,14 @@
       const locations = (data && data.resolved) || [];
       const unreadable = (data && data.unreadable) || [];
 
+      const diagnostic = (data && data.diagnostic) || null;
+      const roonReported = ((data && data.locations) || []).length;
+
       if (!locations.length) {
         box.innerHTML =
-          '<div class="empty">No storage location detected. Roon did not report one ' +
-          '(its Browse API does not expose storage on every version), so set the library path below.</div>';
+          '<div class="empty">No storage location detected.' +
+          (diagnostic ? '<br>Roon: ' + esc(diagnostic.detail) : '') +
+          '<br>Set the library path below to tell the extension where to look.</div>';
         return;
       }
 
@@ -660,6 +664,13 @@
       const active = (data && data.active) || [];
       html += '<div class="album-meta" style="margin-top:8px;">' +
         esc(active.length + " of " + locations.length + " location(s) will be scanned.") + '</div>';
+
+      // Say why nothing came from Roon, so a manual-only list is not mistaken for a
+      // broken lookup - or for Roon having no storage configured.
+      if (!roonReported && diagnostic) {
+        html += '<div class="album-meta" style="margin-top:4px;">' +
+          esc("Roon: " + diagnostic.detail) + '</div>';
+      }
 
       box.innerHTML = html;
 

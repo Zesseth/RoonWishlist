@@ -38,35 +38,58 @@ sudo ./install.sh --web
 
 The extension will be available at: http://localhost:3141 (or your server IP if using --web)
 
-### Testing a feature branch alongside the working install
+### Upgrading the existing install to a branch
 
-> **A test instance of `feat/roon-storage-locations` is already running on the music
-> server**, so you can skip the install steps below and go straight to
-> **<http://192.168.1.100:3142>** from any device on the same network.
->
-> It runs as a plain user process rather than a systemd service, because installing a
-> service needs a `sudo` password that was not available. That means **it does not
-> survive a reboot**. If it is not answering, start it again with:
+This is usually what you want, and it is a single command from a clone of the branch:
+
+```bash
+git clone https://github.com/Zesseth/RoonWishlist.git roonwishlist-src
+cd roonwishlist-src
+git checkout feat/roon-storage-locations
+sudo ./install.sh --web
+```
+
+The installer is idempotent: it replaces the application files, reinstalls
+dependencies, rewrites the systemd unit and restarts the service.
+
+**Your Roon pairing and your wishlist both survive.** The pairing token lives in
+`config.json` inside the install directory and is explicitly preserved; the wishlist
+lives in the data directory, which the installer never touches. So the extension comes
+back already enabled in Roon, with nothing to click.
+
+> Before an upgrade it is still worth taking a backup you can fall back to:
 >
 > ```bash
-> cd ~/roon-wishlist-test/app
-> ROON_WISHLIST_DATA_DIR=~/roon-wishlist-test/data \
-> ROON_WISHLIST_HTTP_HOST=0.0.0.0 \
-> ROON_WISHLIST_HTTP_PORT=3142 \
-> ROON_WISHLIST_EXTENSION_ID=com.zesseth.roon-wishlist.test \
-> ROON_WISHLIST_DISPLAY_NAME="Wishlist (test)" \
-> nohup node index.js > ~/roon-wishlist-test/server.log 2>&1 &
+> sudo cp -a /opt/roon-wishlist ~/roon-wishlist-backup
+> sudo cp -a /var/lib/roon-wishlist/wishlist.json ~/wishlist.json.bak
 > ```
 >
-> To stop it: `pgrep -f roon-wishlist.test` and then `kill <pid>`.
+> To roll back:
 >
-> It has **not** been enabled in Roon yet - that is the first step of the storage
-> locations test section below, and it is the first thing to do.
+> ```bash
+> sudo rsync -a --delete ~/roon-wishlist-backup/ /opt/roon-wishlist/
+> sudo systemctl restart roon-wishlist
+> ```
 
-When you want to try an unreleased branch **without disturbing the install you rely
-on**, run it as a second instance. Roon identifies an extension by its `extension_id`,
-so the test build must announce a different one — otherwise the two instances fight
-over the pairing and the working install stops responding.
+Check it came back up:
+
+```bash
+systemctl is-active roon-wishlist
+curl -s http://127.0.0.1:3141/status
+```
+
+Expect `active`, and `"paired": true` with your core name in the status output.
+
+### Testing a feature branch alongside the working install
+
+Use this only when you specifically want the old and new versions running at the same
+time. It costs you an extra step: a second instance announces a **different**
+`extension_id`, so Roon treats it as a new extension and you have to enable it by hand
+in Roon -> Settings -> Extensions before it can read anything.
+
+Roon identifies an extension by its `extension_id`, so the test build **must** announce
+a different one - otherwise the two instances fight over the pairing and the working
+install stops responding.
 
 ```bash
 git clone https://github.com/Zesseth/RoonWishlist.git roonwishlist-test
@@ -231,27 +254,28 @@ sudo ./install.sh --uninstall --instance test
 
 ## Storage locations & lossless detection (issue #15)
 
-> These tests cover the `feat/roon-storage-locations` branch. Run them on the **test
-> instance** (port 3142) so your working install stays untouched.
+> These tests cover the `feat/roon-storage-locations` branch.
 
-### First: enable the test extension in Roon
+### First: make sure the extension is paired
 
-The test instance announces itself under a **different** extension id, so Roon lists it
-separately and the two never fight over the pairing.
+Which URL you test on depends on how you installed the branch:
 
-1. Roon -> **Settings -> Extensions**
-2. Find **Wishlist (test)** and click **Enable**
-3. **Verify:** `http://192.168.1.100:3142` shows "Paired with Roon"
-4. **Verify:** the original **Wishlist** entry is still enabled and still paired
+| You installed with | Test on | Pairing |
+|---|---|---|
+| `sudo ./install.sh --web` (upgrade in place) | `http://192.168.1.100:3141` | already paired - nothing to do |
+| `sudo ./install.sh --web --instance test` (side by side) | `http://192.168.1.100:3142` | enable **Wishlist (test)** in Roon -> Settings -> Extensions first |
 
-Until you do this, the test instance runs unpaired: the web UI works and the folder
-scanning tests below still pass, but nothing can be read from Roon.
+The upgrade-in-place route is the simpler one and needs no clicking in Roon, because
+the pairing token is preserved across the upgrade.
 
-### A ready-made test library is already set up
+**Verify before going further:** the status chip in the web UI says "Paired with Roon".
+Test A below - whether Roon reports your storage folders at all - cannot be answered
+while the extension is unpaired.
+
+### A ready-made test library is available
 
 So that Tests C-G do not depend on hunting for the right albums in your real library,
-a small fake library has been created on the server and the test instance is already
-pointed at it. Nothing here touches your real music.
+a small fake library exists on the server. Nothing in it touches your real music.
 
 ```
 ~/roon-wishlist-test/fixture/libA/       ~/roon-wishlist-test/fixture/libB/
@@ -264,10 +288,27 @@ pointed at it. Nothing here touches your real music.
 ```
 
 The files are empty placeholders - only their extensions matter, which is exactly what
-the detection logic looks at. The wishlist is pre-seeded with all eight albums plus one
-("Nobody - Missing Album") that exists nowhere.
+the detection logic looks at.
 
-**Expected outcome of a single "Clear & rebuild low-quality albums" run against this library:**
+> **Do not point your main install at this fixture.** "Clear & rebuild low-quality
+> albums" empties the low-quality list and rebuilds it from whatever is currently
+> configured, so running it against the fixture would replace your real low-quality
+> list with eight fake albums. It is recoverable - point the path back at `/music` and
+> rebuild again - but it is a pointless detour.
+>
+> Use the fixture from the **side-by-side test instance**, which has its own separate
+> wishlist file, by setting its library path to:
+>
+> ```
+> /home/jesse/roon-wishlist-test/fixture/libA; /home/jesse/roon-wishlist-test/fixture/libB
+> ```
+>
+> On your **main install**, run the same tests against `/music` instead and pick real
+> albums whose contents you know.
+
+**Expected outcome of a single "Clear & rebuild low-quality albums" run against the
+fixture,** with all eight albums on the wishlist plus one ("Nobody - Missing Album")
+that exists nowhere:
 
 | Album | Expected | Why |
 |---|---|---|
@@ -279,12 +320,6 @@ the detection logic looks at. The wishlist is pre-seeded with all eight albums p
 | Portishead - Dummy | kept, `owned-lossy` | every track MP3 |
 | Tool - Lateralus | kept, `owned-mixed` | 1 FLAC among 10 - **the main fix**, previously deleted |
 | Nobody - Missing Album | kept, `not-found` | not in the library |
-
-To put the test data back to this starting state at any time, re-add the removed
-albums by hand, or ask for the seeding script to be run again.
-
-If you would rather test against your **real** library, just change the library path in
-Settings - but then work from albums you know the contents of.
 
 ### What changed, in plain terms
 
@@ -300,24 +335,24 @@ Settings - but then work from albums you know the contents of.
 
 ### Test A: See where the extension is scanning
 
-1. Open the test web UI: `http://192.168.1.100:3142`
+1. Open the web UI of whichever instance you installed (see the table above)
 2. Go to **Settings**
 3. **Verify:** the "Music storage locations" panel lists at least one folder
 4. **Verify:** each entry says whether it is `scanned` or `excluded`, and whether it
    came `from Roon` or is `manual`
 5. Click **Refresh from Roon**
 6. **Verify:** the list reloads without error
-7. **Verify:** after enabling the extension in Roon, your **real** storage folders
-   appear in the list alongside the two fixture folders, marked `from Roon`. This is
-   the headline feature of the issue - please report whether they show up.
+7. **Verify:** the panel says what Roon reported. On the install here this is expected
+   to read something like *"Roon's browsable settings contain no Storage or Library
+   entry…"* — measured on Roon 2.71 (build 1683), Roon does **not** expose storage
+   folders over its Browse API, so the manual path is what actually gets scanned.
+   **Please report the exact wording**, because it names the settings entries Roon did
+   offer, and that is the evidence needed to tell "Roon cannot do this" apart from
+   "we are looking under the wrong name".
 
-> If the list only ever shows the `manual` entries, Roon did not expose its storage
-> settings over the API. That is a known Roon limitation, not a bug - the manual path
-> is the supported fallback and the rest of the tests still apply. Please note in the
-> issue which Roon version you are on.
->
-> The manual path accepts **several folders separated by a semicolon**, so multi-location
-> scanning works even when Roon reports nothing.
+> If storage locations never appear, that is a Roon limitation rather than a bug. The
+> manual path is the supported fallback, and it accepts **several folders separated by
+> a semicolon**, so multi-location scanning works either way.
 
 ### Test B: Exclude a folder
 
@@ -388,13 +423,24 @@ result would not.
    failing or reporting that nothing is owned
 5. Remove the bogus path again
 
-### Test H: The main install is undisturbed
+### Test H: The upgrade kept what it should
+
+**If you upgraded in place** (`sudo ./install.sh --web`):
 
 1. Open `http://192.168.1.100:3141`
-2. **Verify:** it still loads and still says "Paired"
-3. **Verify:** its wishlist is unchanged - the test instance has its own separate data
-   directory and never writes to the production one
-4. **Verify:** Roon -> Settings -> Extensions lists **both** "Wishlist" and
+2. **Verify:** it still says "Paired" - you did **not** have to re-enable anything in
+   Roon. This is what the `config.json` preservation fix is for; before it, every
+   upgrade silently unpaired the extension.
+3. **Verify:** your wishlist still has the same albums it had before the upgrade
+4. **Verify:** `systemctl is-active roon-wishlist` reports `active`
+
+**If you installed side by side** (`--instance test`):
+
+1. Open `http://192.168.1.100:3141`
+2. **Verify:** the original install still loads, still says "Paired", and its wishlist
+   is unchanged - the test instance has its own data directory and never writes to the
+   production one
+3. **Verify:** Roon -> Settings -> Extensions lists **both** "Wishlist" and
    "Wishlist (test)"
 
 ### What to report
