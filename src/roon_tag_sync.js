@@ -240,7 +240,17 @@ function normalizeAlbumArtist(subtitle) {
   return match ? String(match[1] || "").trim() : text;
 }
 
-async function listTaggedAlbums(browseService, tagName) {
+/**
+ * Look up the albums carrying the Roon tag.
+ *
+ * Returns `tagFound: false` rather than throwing when the tag is not in Roon's browse
+ * tree. Roon hides a tag once its last album is untagged, so "tag missing" and "tag
+ * empty" are the same observation, and the sensible reading of both is "zero albums
+ * carry this tag". Callers that intend to mirror Roon need that to be an ordinary
+ * result, not an error. A missing browse service still throws: that means we could not
+ * look at all, which must never be mistaken for an empty tag.
+ */
+async function listTaggedAlbumsDetailed(browseService, tagName) {
   if (!browseService) {
     throw new SyncError(
       "Roon browse access is not available yet. Re-open the Wishlist extension in Roon after upgrading, then try again.",
@@ -254,16 +264,24 @@ async function listTaggedAlbums(browseService, tagName) {
     await openTagViaSearch(browseService, tagName, sessionKey);
 
   if (!tagLevel) {
-    throw new SyncError(`Could not find the Roon tag "${tagName}".`, 404);
+    return { albums: [], tagFound: false };
   }
 
   const albumLevel = await openAlbumLevelFromTag(browseService, tagLevel, sessionKey);
-  return mapAlbumItems(albumLevel.items);
+  return { albums: mapAlbumItems(albumLevel.items), tagFound: true };
+}
+
+async function listTaggedAlbums(browseService, tagName) {
+  const { albums, tagFound } = await listTaggedAlbumsDetailed(browseService, tagName);
+  if (!tagFound) {
+    throw new SyncError(`Could not find the Roon tag "${tagName}".`, 404);
+  }
+  return albums;
 }
 
 async function buildTaggedWishlist({ browseService, searchAll, tagName, onProgress }) {
   const wantedTag = String(tagName || ROON_WISHLIST_TAG).trim() || ROON_WISHLIST_TAG;
-  const albums = await listTaggedAlbums(browseService, wantedTag);
+  const { albums, tagFound } = await listTaggedAlbumsDetailed(browseService, wantedTag);
 
   let withLinks = 0;
   let withoutLinks = 0;
@@ -291,6 +309,7 @@ async function buildTaggedWishlist({ browseService, searchAll, tagName, onProgre
 
   return {
     tagName: wantedTag,
+    tagFound,
     totalTaggedAlbums: albums.length,
     wishlistAlbums,
     withLinks,
@@ -299,6 +318,16 @@ async function buildTaggedWishlist({ browseService, searchAll, tagName, onProgre
   };
 }
 
+/**
+ * Mirror the Roon tag into the wishlist.
+ *
+ * Roon is the master for anything that came from the tag: untagging an album in Roon
+ * has to remove it here too, otherwise the wishlist only ever grows and quietly drifts
+ * out of step with the tag it claims to mirror.
+ *
+ * Entries the user added by hand are left alone. They were never derived from the tag,
+ * so the tag has no authority to delete them.
+ */
 async function syncTaggedAlbums({ browseService, wishlist, searchAll, tagName, onProgress }) {
   const prepared = await buildTaggedWishlist({ browseService, searchAll, tagName, onProgress });
 
@@ -313,16 +342,33 @@ async function syncTaggedAlbums({ browseService, wishlist, searchAll, tagName, o
     else unchanged += 1;
   }
 
+  const tagged = new Set(prepared.wishlistAlbums.map((a) => albumKey(a)));
+  const removed = [];
+  for (const entry of wishlist.getAll()) {
+    if (entry.source !== "roon-tag") continue;
+    if (tagged.has(albumKey(entry))) continue;
+    if (wishlist.remove(entry)) removed.push({ artist: entry.artist, title: entry.title });
+  }
+
   return {
     tagName: prepared.tagName,
+    tagFound: prepared.tagFound,
     totalTaggedAlbums: prepared.totalTaggedAlbums,
     added,
     updated,
     unchanged,
+    removed: removed.length,
+    removedAlbums: removed,
     withLinks: prepared.withLinks,
     withoutLinks: prepared.withoutLinks,
     lookupErrors: prepared.lookupErrors,
   };
+}
+
+function albumKey(album) {
+  return `${String(album && album.artist ? album.artist : "").trim().toLowerCase()}||${String(
+    album && album.title ? album.title : "",
+  ).trim().toLowerCase()}`;
 }
 
 async function rebuildTaggedAlbums({ browseService, wishlist, searchAll, tagName, onProgress }) {
@@ -332,6 +378,7 @@ async function rebuildTaggedAlbums({ browseService, wishlist, searchAll, tagName
 
   return {
     tagName: prepared.tagName,
+    tagFound: prepared.tagFound,
     totalTaggedAlbums: prepared.totalTaggedAlbums,
     rebuilt,
     previousWishlistCount,
@@ -346,6 +393,7 @@ module.exports = {
   ROON_WISHLIST_TAG,
   SyncError,
   listTaggedAlbums,
+  listTaggedAlbumsDetailed,
   syncTaggedAlbums,
   rebuildTaggedAlbums,
 };

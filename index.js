@@ -800,7 +800,13 @@ const server = http.createServer(async (req, res) => {
     await runRoonTagAction(res, {
       verb: "Syncing",
       successStatus(result) {
-        return `Roon tag sync done: added ${result.added}, updated ${result.updated}, links ${result.withLinks}/${result.totalTaggedAlbums}`;
+        const parts = [`added ${result.added}`, `updated ${result.updated}`];
+        if (result.removed) parts.push(`removed ${result.removed}`);
+        parts.push(`links ${result.withLinks}/${result.totalTaggedAlbums}`);
+        const missing = result.tagFound
+          ? ""
+          : ` (the tag "${result.tagName}" is not in Roon right now, so it was treated as empty)`;
+        return `Roon tag sync done: ${parts.join(", ")}${missing}`;
       },
       action({ browseService, onProgress }) {
         return syncTaggedAlbums({
