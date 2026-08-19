@@ -5,7 +5,7 @@
 
 **Status markers:** `[ ]` not started · `[~]` in progress · `[x]` done · `[!]` blocked
 
-Last updated: 2026-07-28
+Last updated: 2026-08-19
 
 ---
 
@@ -134,8 +134,12 @@ Each item maps to a GitHub issue.
   - ✅ Setup script: `setup.sh` (automated clone, install, verify)
   - ⏭️ Next: mocked HTTP tests for `lossless_checker.js` (deferred to v1.1)
 
-- [ ] **#7 CI (GitHub Actions).** Workflow: install + lint + tests on PRs and merges
-  to main. Requires the `workflow` scope (already present on the token).
+- [x] **#7 CI (GitHub Actions).** ✅ **COMPLETE (2026-08-19):**
+  - ✅ `.github/workflows/ci.yml` created
+  - ✅ Workflow triggers on push to main and pull requests
+  - ✅ Tests against Node.js 20.18.1 (minimum) and 22 (latest)
+  - ✅ Runs: npm ci && npm test
+  - ✅ Merged to main and pushed to GitHub
 
 - [ ] **#8 Configuration & logging.** Configurable port, log levels, environment
   variable / settings support, clean error logging.
