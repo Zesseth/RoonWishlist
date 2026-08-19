@@ -15,6 +15,14 @@ As of investigation on 2026-07-28, the following has been implemented:
 
 ### ❌ BLOCKED BY ROON API LIMITATIONS
 - **Write tags back to Roon:** The Browse API does not expose `setMultipleMetadata` or any tag-write methods. Tags are read-only from Roon's perspective. This is an API limitation, not an implementation issue.
+
+  **Still to be measured, not assumed.** This entry was written from reading the SDK, and
+  an equivalent assumption on this page (that Roon's settings screen could not show a
+  per-album status) turned out to be wrong. `GET /roon-tag/write-support` therefore asks
+  the live Core: it navigates into a tagged album, read-only, and reports every action
+  Roon offers there. If a tag-editing action ever appears, the "untag the albums I
+  already own" button in issue #32 becomes possible. Until that measurement is filed,
+  treat this row as unconfirmed.
 - **Track-level tagging:** Only album-level tagging is possible via Browse. Track-level tagging would require metadata write access.
 
 ## Storage locations over the Browse API — measured, 2026-08-19

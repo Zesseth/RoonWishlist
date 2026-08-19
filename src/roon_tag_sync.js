@@ -410,11 +410,83 @@ async function rebuildTaggedAlbums({ browseService, wishlist, searchAll, tagName
   };
 }
 
+// Titles Roon would use if it offered tag editing on an album. Kept as a set so the
+// probe below reports a match rather than guessing from a substring.
+const TAG_EDIT_TITLES = new Set([
+  "tags", "tagit", "edit tags", "add to tag", "remove from tag", "remove from tags",
+]);
+
+/**
+ * Asks Roon, read-only, whether an album offers any tag-editing action.
+ *
+ * `ROON_API_LIMITATIONS.md` records that the Browse API exposes no tag writes, so the
+ * extension cannot untag an album on the user's behalf. That claim was made from
+ * reading the SDK rather than from asking a real core, and it decides a feature the
+ * user asked for, so this measures it instead: it navigates into the first tagged
+ * album and reports every action Roon offers there. Navigation only - no item that
+ * could change anything is ever invoked. See issue #32.
+ */
+async function probeTagWriteSupport(browseService, tagName) {
+  if (!browseService) {
+    throw new SyncError("Roon browse access is not available yet.", 503);
+  }
+
+  const wantedTag = String(tagName || ROON_WISHLIST_TAG).trim() || ROON_WISHLIST_TAG;
+  const sessionKey = `wishlist-tag-probe:${crypto.randomUUID()}`;
+  const tagLevel =
+    await openTagViaBrowseTree(browseService, wantedTag, sessionKey) ||
+    await openTagViaSearch(browseService, wantedTag, sessionKey);
+
+  if (!tagLevel) {
+    return { tagFound: false, supported: false, reason: `The tag "${wantedTag}" is not in Roon.`, offered: [] };
+  }
+
+  const actionable = (tagLevel.items || []).filter(
+    (item) => item && item.item_key && item.hint !== "header" && !isTagAction(item),
+  );
+  if (!actionable.length) {
+    return {
+      tagFound: true,
+      supported: false,
+      reason: "The tag holds no albums, so there was nothing to inspect.",
+      offered: [],
+    };
+  }
+
+  const albumLevel = await openAlbumLevelFromTag(browseService, tagLevel, sessionKey);
+  const album = (albumLevel.items || []).find((item) => item && item.item_key && item.hint !== "header");
+  if (!album) {
+    return { tagFound: true, supported: false, reason: "No album could be opened from the tag.", offered: [] };
+  }
+
+  const detail = await openLevel(browseService, {
+    hierarchy: "browse",
+    sessionKey,
+    itemKey: album.item_key,
+    allowEmpty: true,
+  });
+
+  const offered = (detail.items || []).map((item) => ({ title: item.title, hint: item.hint || null }));
+  const matched = offered.find((entry) => TAG_EDIT_TITLES.has(normalizeTitle(entry.title))) || null;
+
+  return {
+    tagFound: true,
+    album: album.title || null,
+    supported: Boolean(matched),
+    matched,
+    offered,
+    reason: matched
+      ? `Roon offers "${matched.title}" on an album, so tag editing may be possible.`
+      : "Roon offered no tag-editing action on the album, confirming tags are read-only over the Browse API.",
+  };
+}
+
 module.exports = {
   ROON_WISHLIST_TAG,
   SyncError,
   listTaggedAlbums,
   listTaggedAlbumsDetailed,
+  probeTagWriteSupport,
   syncTaggedAlbums,
   rebuildTaggedAlbums,
 };

@@ -341,13 +341,14 @@ async function checkAndClean(locations, wishlistModule) {
   const roots = normalizeLocations(locations);
 
   if (!wishlistItems.length) {
-    return { removed: [], kept: [], scannedAlbums: 0, locations: roots, perLocation: [], errors: 0 };
+    return { removed: [], kept: [], alreadyOwned: [], scannedAlbums: 0, locations: roots, perLocation: [], errors: 0 };
   }
 
   const { albums, errors, perLocation } = await scanLibraries(roots);
   const localAlbums = mergeAlbumsAcrossLocations(albums);
   const removed = [];
   const kept = [];
+  const alreadyOwned = [];
 
   for (const item of wishlistItems) {
     const match = localAlbums.find(
@@ -368,9 +369,26 @@ async function checkAndClean(locations, wishlistModule) {
     };
 
     if (status === "owned-lossless") {
+      const reason = "Complete lossless copy found in the library";
+      if (item.source === "roon-tag") {
+        // Roon is the master for tagged entries, so deleting one here would only make
+        // the next sync add it straight back. Flag it instead and let the UI list it
+        // apart, with the advice to drop the tag in Roon. See issue #32.
+        if (item.ownedLossless !== true) {
+          wishlistModule.upsert({ artist: item.artist, title: item.title, ownedLossless: true });
+        }
+        alreadyOwned.push({ ...details, reason });
+        persistLastCheck(wishlistModule, item, { status, reason, details });
+        continue;
+      }
       wishlistModule.remove(item);
-      removed.push({ ...details, reason: "Complete lossless copy found in the library" });
+      removed.push({ ...details, reason });
       continue;
+    }
+
+    if (item.ownedLossless === true) {
+      // It was owned in lossless last time and is not any more — do not leave a stale flag.
+      wishlistModule.upsert({ artist: item.artist, title: item.title, ownedLossless: false });
     }
 
     const reason = KEEP_REASONS[status] || KEEP_REASONS["not-found"];
@@ -381,6 +399,7 @@ async function checkAndClean(locations, wishlistModule) {
   return {
     removed,
     kept,
+    alreadyOwned,
     scannedAlbums: localAlbums.length,
     locations: roots,
     perLocation,
@@ -508,12 +527,133 @@ async function scanLowQualityAlbums(locations, wishlistModule, ignoreModule) {  
   };
 }
 
+/**
+ * Classifies only the albums we actually care about.
+ *
+ * `checkAndClean` classifies every album in the library; that is fine for the nightly
+ * clean but far too much disk work for the tag sync, which runs whenever the user
+ * presses a button. Listing the artist/album folders is two cheap directory reads per
+ * location, so we do that first and only open the folders whose names match something
+ * on the list.
+ *
+ * @param {string|string[]|Array<{path:string}>} locations
+ * @param {Array<{artist:string,title:string}>} items
+ * @returns {Promise<{results: Map<string, Object>, errors: number, locations: string[]}>}
+ *   `results` is keyed by `albumKey(artist, title)`; an item with no matching folder
+ *   is simply absent.
+ */
+async function classifyWantedAlbums(locations, items) {
+  const roots = normalizeLocations(locations);
+  const results = new Map();
+  let errors = 0;
+
+  const wanted = (items || [])
+    .filter((item) => item && (item.artist || item.title))
+    .map((item) => ({ item, key: albumKey(item.artist, item.title) }));
+
+  if (!wanted.length || !roots.length) return { results, errors, locations: roots };
+
+  for (const root of roots) {
+    const { albums: folders, errors: rootErrors } = await getArtistAlbumFolders(root);
+    errors += rootErrors;
+
+    for (const folder of folders) {
+      const artist = cleanArtistName(folder.artist);
+      const album = cleanAlbumTitle(folder.album, folder.artist);
+      if (!artist || !album) continue;
+
+      const hit = wanted.find(
+        (w) => namesMatchExactly(artist, w.item.artist) && namesMatchExactly(album, w.item.title),
+      );
+      if (!hit) continue;
+
+      const classification = await classifyAlbumFolder(folder.fullPath);
+      errors += classification.errors;
+
+      const detail = {
+        status: classification.status,
+        foundAt: folder.fullPath,
+        location: root,
+        losslessTracks: classification.losslessFiles,
+        totalTracks: classification.totalAudioFiles,
+        formats: classification.formats,
+      };
+
+      const previous = results.get(hit.key);
+      // A second copy only wins if it is genuinely better than the one already found.
+      if (!previous || betterStatus(previous.status, detail.status) !== previous.status) {
+        results.set(hit.key, detail);
+      }
+    }
+  }
+
+  return { results, errors, locations: roots };
+}
+
+/**
+ * Flags the Roon-tagged wishlist entries that are already owned in full lossless.
+ *
+ * A tagged album cannot simply be deleted the way a scanned one can: Roon is the master
+ * for these entries, so the next sync would just put it straight back. Instead the entry
+ * stays, marked `ownedLossless`, and the UI lists it separately as "already owned" with
+ * the advice to drop the tag in Roon. See issue #32.
+ *
+ * @returns {Promise<{owned: Object[], cleared: Object[], checked: number, errors: number, locations: string[]}>}
+ */
+async function markOwnedTaggedAlbums(locations, wishlistModule) {
+  const items = wishlistModule.getAll().filter((item) => item.source === "roon-tag");
+  if (!items.length) {
+    return { owned: [], cleared: [], checked: 0, errors: 0, locations: normalizeLocations(locations) };
+  }
+
+  const { results, errors, locations: roots } = await classifyWantedAlbums(locations, items);
+  const owned = [];
+  const cleared = [];
+
+  for (const item of items) {
+    const detail = {
+      status: "not-found",
+      foundAt: null,
+      location: null,
+      losslessTracks: 0,
+      totalTracks: 0,
+      formats: [],
+      ...(results.get(albumKey(item.artist, item.title)) || {}),
+    };
+    const isOwned = detail.status === "owned-lossless";
+    const wasOwned = item.ownedLossless === true;
+
+    if (isOwned) owned.push({ ...item, ...detail });
+    else if (wasOwned) cleared.push({ ...item, ...detail });
+
+    if (isOwned !== wasOwned) {
+      try {
+        wishlistModule.upsert({ artist: item.artist, title: item.title, ownedLossless: isOwned });
+      } catch (err) {
+        console.warn(`Could not flag ${item.artist} — ${item.title} as owned: ${err.message}`);
+      }
+    }
+
+    persistLastCheck(wishlistModule, item, {
+      status: detail.status,
+      reason: detail.status === "owned-lossless"
+        ? "Complete lossless copy already in the library"
+        : KEEP_REASONS[detail.status] || KEEP_REASONS["not-found"],
+      details: detail,
+    });
+  }
+
+  return { owned, cleared, checked: items.length, errors, locations: roots };
+}
+
 module.exports = {
   LOSSLESS_EXTENSIONS,
   LOSSY_EXTENSIONS,
   checkAndClean,
   classifyAlbumFolder,
+  classifyWantedAlbums,
   isLosslessExtension,
+  markOwnedTaggedAlbums,
   mergeAlbumsAcrossLocations,
   normalizeLocations,
   scanLibraries,

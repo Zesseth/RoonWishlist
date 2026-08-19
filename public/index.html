@@ -227,6 +227,8 @@
     .danger-zone p { margin: 0 0 12px; font-size: 13px; color: var(--text); }
     .page { display: none; }
     .page.active { display: block; }
+    /* An optional section on an active page still has to be able to hide itself. */
+    .page[hidden] { display: none; }
     footer { text-align: center; color: var(--muted); font-size: 12px; padding: 8px 0 28px; }
     footer a { color: var(--muted); }
     /* Toasts */
@@ -283,6 +285,18 @@
         </div>
       </div>
       <ul class="list" id="wishlist"></ul>
+    </section>
+
+    <section class="card page active" data-page="wishlist" id="owned-section" hidden>
+      <div class="toolbar">
+        <div>
+          <h2 style="margin:0;">Already owned in lossless</h2>
+          <div class="sync-note" id="owned-note">Tagged Wishlist in Roon, but a complete lossless copy is already in your library &mdash; nothing to buy. Remove the Wishlist tag from these in Roon, then sync.</div>
+        </div>
+        <span class="count" id="owned-count"></span>
+      </div>
+      <ul class="list" id="owned-list"></ul>
+      <div class="sync-note" id="owned-untag-note"></div>
     </section>
 
     <section class="card page" data-page="low-quality">
@@ -757,8 +771,30 @@
       }
     }
 
+    async function loadOwnedLossless() {
+      try {
+        renderOwnedLossless(await api("/wishlist/owned-lossless") || []);
+      } catch (e) {
+        toast("Failed to load already-owned albums: " + e.message, "err");
+      }
+    }
+
     async function loadWishlist() {
-      await Promise.all([loadRoonTagWishlist(), loadLowQualityWishlist()]);
+      await Promise.all([loadRoonTagWishlist(), loadLowQualityWishlist(), loadOwnedLossless()]);
+    }
+
+    // Albums tagged in Roon that turned out to be owned in full lossless. They stay
+    // visible instead of being deleted, because Roon is the master: the next sync would
+    // only bring them back. The fix belongs in Roon, so say so plainly.
+    function renderOwnedLossless(items) {
+      const section = $("owned-section");
+      const ul = $("owned-list");
+      if (!section || !ul) return;
+      section.hidden = !items.length;
+      ul.innerHTML = "";
+      $("owned-count").textContent = items.length + (items.length === 1 ? " album" : " albums");
+      if (!items.length) return;
+      renderWishlistItems(ul, items, false, false);
     }
 
     function renderRoonTagWishlist(items) {
@@ -827,7 +863,7 @@
       }
     }
 
-    function renderStoreResults(box, results, addable, fallbackArtist, fallbackTitle) {
+    function renderStoreResults(box, results, fallbackArtist, fallbackTitle) {
       const list = document.createElement("ul");
       list.className = "list";
       for (const r of results) {
@@ -839,35 +875,10 @@
           '<a href="' + esc(r.url) + '" target="_blank" rel="noopener">' +
           esc(r.artist || fallbackArtist) + ' &mdash; ' + esc(r.title || fallbackTitle) + '</a>';
         item.appendChild(left);
-        if (addable) {
-          const add = document.createElement("button");
-          add.className = "secondary small";
-          add.textContent = "Add";
-          add.addEventListener("click", async () => {
-            add.disabled = true;
-            try { await addAlbum(r.artist || fallbackArtist, r.title || fallbackTitle); }
-            catch (e) { add.disabled = false; toast("Add failed: " + e.message, "err"); }
-          });
-          item.appendChild(add);
-        }
         list.appendChild(item);
       }
       box.innerHTML = "";
       box.appendChild(list);
-    }
-
-    async function addAlbum(artist, title) {
-      const r = await api("/wishlist/add", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ artist, title }),
-      });
-      if (r && r.added) {
-        toast("Added: " + artist + " — " + title, "ok");
-      } else {
-        toast("Already on the wishlist.", "");
-      }
-      await loadWishlist();
     }
 
     async function removeAlbum(a, li) {
@@ -911,9 +922,8 @@
       }
     }
 
-    // Search the stores and render results into `box`. If addable is true, each
-    // result gets an "Add" button (used by the top search box).
-    async function searchInto(box, artist, title, btn, addable) {
+    // Search the stores and render buy links into `box`.
+    async function searchInto(box, artist, title, btn) {
       if (btn) btn.disabled = true;
       box.innerHTML = '<div class="album-meta">Searching Bandcamp &amp; Qobuz…</div>';
       try {
@@ -922,7 +932,7 @@
         if (!results || !results.length) {
           box.innerHTML = '<div class="album-meta">No store results found.</div>';
         } else {
-          renderStoreResults(box, results, addable, artist, title);
+          renderStoreResults(box, results, artist, title);
         }
       } catch (e) {
         box.innerHTML = '<div class="album-meta" style="color:var(--danger)">Search failed: ' + esc(e.message) + '</div>';

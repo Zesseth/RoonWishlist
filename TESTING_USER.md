@@ -3,7 +3,7 @@
 A checklist you can work through top to bottom. Every test says what to do, what you
 should see, and where to report it if it goes wrong.
 
-- **Time needed:** about 30 minutes for everything, 10 for part 1 alone.
+- **Time needed:** about 40 minutes for everything, 10 for part 1 alone.
 - **Where you test:** `http://192.168.1.100:3141` — the normal install, on the server.
 - **What you need:** the Roon app, to tag albums and to look at the extension settings.
 
@@ -190,22 +190,21 @@ Not being able to reach Roon at all still reports an error, and correctly so: fa
 look must never be mistaken for an empty tag, or a dropped connection would wipe the
 list.
 
-### Test 8 — Albums added by hand are never deleted by a sync
+### Test 8 — Adding an album by hand is gone
 
-Manual adding is in **Roon's settings screen**, not the web UI (my earlier instructions
-pointed you at the wrong place — sorry).
+You asked for this to be removed outright, so it is: there is no way to type an album
+onto the wishlist any more, in the web UI or in Roon.
 
 1. **Roon → Settings → Extensions → Wishlist → Settings**
-2. Under **Actions**, pick *Add album to wishlist*, fill in Artist and Album title,
-   press **Save**
-3. In the web UI, press **Sync Roon tag**
-4. **Expect:** the album you added by hand is **still there**, even though it carries no
-   Roon tag
+2. Open the **Actions** dropdown
+3. **Expect:** there is **no** *Add album to wishlist* entry. The remaining actions are
+   *Remove album from wishlist*, *Refresh & clean*, *Scan low-quality albums* and
+   *Refresh storage locations from Roon*.
 
-The more important everyday case is the same rule: your **135 low-quality albums** were
-found by scanning, not by the tag, so a sync must never touch them either. This has
-already been verified live on your install — a `/reconcile` run found the tag, and
-removed nothing.
+The rule this used to test still holds and still matters: a sync only ever removes
+albums that came **from the tag**. Your **135 low-quality albums** were found by
+scanning, so a sync must never touch them. That was verified live on your install — a
+`/reconcile` run found the tag and removed nothing.
 
 ---
 
@@ -330,6 +329,75 @@ nothing but would report your whole library as missing.
 
 ---
 
+## Part 4 — Albums you already own in lossless ([issue #32](https://github.com/Zesseth/RoonWishlist/issues/32))
+
+You tagged *The World We Left Behind* and it appeared on the wishlist even though you
+already own it as FLAC. That was wrong, and the cause was simple: the tag sync added
+every tagged album without ever looking at your library.
+
+It now checks. A tagged album that already has a **complete lossless copy** is no longer
+listed as wanted — it moves to its own section, **Already owned in lossless**, on the
+wishlist page.
+
+It is **not deleted**, deliberately. Roon is the master for tagged albums, so deleting it
+here would only mean the next sync added it straight back. The thing that is stale is the
+tag, and the tag lives in Roon.
+
+### Test 15 — An album you already own moves out of the wishlist
+
+1. In Roon, tag an album you **own as FLAC** (or any lossless format) with `Wishlist`
+2. In the web UI, press **Sync Roon tag**
+3. **Expect:** it does **not** appear in the main wishlist. A second panel, *Already
+   owned in lossless*, appears below it and lists the album.
+4. **Expect:** the status line after the sync mentions `already owned 1`
+
+*The World We Left Behind* is the exact case to try, since that is the one that failed.
+
+### Test 16 — An album you own only as MP3 is still wanted
+
+1. In Roon, tag an album you own only in a lossy format
+2. Press **Sync Roon tag**
+3. **Expect:** it stays in the **main wishlist**, with buy links. It must **not** be
+   moved to *Already owned*.
+
+An album where only *some* tracks are lossless also stays wanted — half an album in FLAC
+is not owning it.
+
+### Test 17 — Removing the tag in Roon clears it from both lists
+
+1. In Roon, remove the `Wishlist` tag from the album used in Test 15
+2. Press **Sync Roon tag**
+3. **Expect:** the *Already owned in lossless* panel disappears (or loses that album)
+
+### Test 18 — Can the extension untag albums in Roon for you?
+
+You asked for a button that removes the tag in Roon for albums you already own. Roon's
+documented Browse API has no tag-writing method, so the honest answer so far is "no" —
+but that answer was written from reading the SDK, not from asking your actual Core, and
+I got a similar assumption wrong earlier in this branch. So there is now a check that
+asks Roon directly.
+
+With at least one album tagged `Wishlist`, run this on the server:
+
+```bash
+curl -s http://localhost:3141/roon-tag/write-support | head -40
+```
+
+**Expect** JSON listing every action Roon offers on a tagged album, plus a verdict:
+
+- `"supported": false` — Roon offers no tag-editing action, so the button genuinely
+  cannot be built. This is the expected result.
+- `"supported": true` — Roon does offer one, and the button becomes possible. Paste the
+  output into issue #32 and it will be implemented.
+
+Either way, **paste the `offered` list into issue #32**. That is the measurement that
+settles it. Nothing in this test changes anything — it only navigates and reads.
+
+Until then, the *Already owned in lossless* panel is your work list: remove the
+`Wishlist` tag from those albums in Roon yourself.
+
+---
+
 ## When you are done
 
 Set the library path back to your real library:
@@ -366,6 +434,7 @@ Whether these should be one button is [issue #28](https://github.com/Zesseth/Roo
 | 1–5 | a new issue, unless it is obviously covered by an existing one |
 | 6–8 | [issue #31](https://github.com/Zesseth/RoonWishlist/issues/31) |
 | 9–14 | [issue #15](https://github.com/Zesseth/RoonWishlist/issues/15) — include your Roon version for Test 9 |
+| 15–18 | [issue #32](https://github.com/Zesseth/RoonWishlist/issues/32) — paste the Test 18 output there |
 
 ---
 

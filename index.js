@@ -8,7 +8,13 @@ const wishlist = require("./src/wishlist");
 const { searchAll } = require("./src/search");
 const lossless = require("./src/lossless_checker");
 const lowQualityIgnore = require("./src/ignored_low_quality");
-const { ROON_WISHLIST_TAG, SyncError, syncTaggedAlbums, rebuildTaggedAlbums } = require("./src/roon_tag_sync");
+const {
+  ROON_WISHLIST_TAG,
+  SyncError,
+  probeTagWriteSupport,
+  syncTaggedAlbums,
+  rebuildTaggedAlbums,
+} = require("./src/roon_tag_sync");
 const { reconcileOnStartup, trackSyncHealth } = require("./src/roon_reconciliation");
 const { getStorageLocationsDetailed } = require("./src/roon_storage");
 const scanLocations = require("./src/scan_locations");
@@ -156,7 +162,6 @@ function make_layout(settings) {
       subtitle: "Pick an action, fill the fields below if shown, then press Save.",
       values: [
         { title: "— none —", value: "none" },
-        { title: "Add album to wishlist", value: "add" },
         { title: "Remove album from wishlist", value: "remove" },
         { title: "Refresh & clean (scan library)", value: "clean" },
         { title: "Scan low-quality albums into wishlist", value: "low_quality" },
@@ -165,7 +170,7 @@ function make_layout(settings) {
       setting: "action",
     },
   ];
-  if (action === "add" || action === "remove") {
+  if (action === "remove") {
     actionItems.push({ type: "string", title: "Artist", setting: "artist" });
     actionItems.push({ type: "string", title: "Album title", setting: "title" });
   }
@@ -221,11 +226,6 @@ async function performAction(values) {
   const artist = (values.artist || "").trim();
   const title = (values.title || "").trim();
 
-  if (action === "add") {
-    return wishlist.add({ artist, title })
-      ? `Added: ${artist} — ${title}`
-      : "Album already on wishlist";
-  }
   if (action === "remove") {
     return wishlist.remove({ artist, title })
       ? `Removed: ${artist} — ${title}`
@@ -257,7 +257,7 @@ const svc_settings = new RoonApiSettings(roonApp, {
     const action = settings.values.action || "none";
 
     // Validate only on a real save so dynamically revealed fields don't error mid-edit.
-    if (!isdryrun && (action === "add" || action === "remove")) {
+    if (!isdryrun && action === "remove") {
       const artist = (settings.values.artist || "").trim();
       const title = (settings.values.title || "").trim();
       if (!artist || !title) l.has_error = true;
@@ -410,12 +410,15 @@ async function triggerReconciliation() {
       searchAll,
       tagName: ROON_WISHLIST_TAG,
     });
+    // A reconciliation can pull in albums the user already owns in lossless, so flag
+    // those straight away rather than waiting for the next manual sync. See issue #32.
+    const ownedCheck = await flagOwnedTaggedAlbums();
     lastReconciliation = {
       timestamp: new Date().toISOString(),
-      result,
+      result: { ...result, ownedCheck },
     };
-    console.log("Reconciliation completed:", result);
-    return result;
+    console.log("Reconciliation completed:", lastReconciliation.result);
+    return lastReconciliation.result;
   } finally {
     reconciliationInProgress = false;
   }
@@ -520,6 +523,12 @@ async function runLibraryScanAction(task, { startStatus, successStatus, action }
 }
 
 /** Turns a clean result into a one-line summary that says what was kept and why. */
+// Entries that came from the Roon tag, including legacy rows written before `source`
+// existed (those were tag-derived too).
+function isTagSourced(album) {
+  return album.source === "roon-tag" || !album.source;
+}
+
 function summarizeCleanResult(result) {
   const keptByReason = new Map();
   for (const entry of result.kept) {
@@ -527,6 +536,8 @@ function summarizeCleanResult(result) {
   }
 
   const parts = [`removed ${result.removed.length} fully lossless album(s)`];
+  const owned = (result.alreadyOwned || []).length;
+  if (owned) parts.push(`${owned} Roon-tagged album(s) already owned in lossless`);
   const lossy = keptByReason.get("owned-lossy") || 0;
   const mixed = keptByReason.get("owned-mixed") || 0;
   const notFound = keptByReason.get("not-found") || 0;
@@ -545,6 +556,21 @@ async function runLosslessClean() {
       return lossless.checkAndClean(roots, wishlist);
     },
   });
+}
+
+/**
+ * Re-checks the Roon-tagged entries against the library and flags the ones already held
+ * in full lossless. Runs after a tag sync so a freshly tagged album the user already
+ * owns never shows up as wanted. A library problem must not fail the sync itself, so
+ * the outcome is reported rather than thrown. See issue #32.
+ */
+async function flagOwnedTaggedAlbums() {
+  try {
+    const roots = await getScanRoots();
+    return await lossless.markOwnedTaggedAlbums(roots, wishlist);
+  } catch (err) {
+    return { owned: [], cleared: [], checked: 0, errors: 1, error: err.message };
+  }
 }
 
 async function runLowQualityScan() {
@@ -612,14 +638,15 @@ const server = http.createServer(async (req, res) => {
   const apiPaths = [
     "/wishlist",
     "/wishlist/roon-tag",
+    "/wishlist/owned-lossless",
     "/wishlist/low-quality",
-    "/wishlist/add",
     "/wishlist/remove",
     "/search",
     "/check-lossless",
     "/scan-low-quality",
     "/ignore-low-quality",
     "/sync-roon-tag",
+    "/roon-tag/write-support",
     "/rebuild-from-roon-tag",
     "/settings",
     "/status",
@@ -643,10 +670,17 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (req.method === "GET" && url.pathname === "/wishlist/roon-tag") {
-    const all = wishlist.getAll();
-    // Include items with source "roon-tag" or legacy items without a source (manual additions)
-    const roonTagAlbums = all.filter((a) => a.source === "roon-tag" || !a.source);
+    // Albums still worth buying: tagged in Roon and not already held in lossless.
+    const roonTagAlbums = wishlist.getAll().filter(isTagSourced).filter((a) => a.ownedLossless !== true);
     res.end(JSON.stringify(roonTagAlbums, null, 2));
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/wishlist/owned-lossless") {
+    // Tagged in Roon but already owned in full lossless — nothing to buy, the tag is
+    // what is stale. See issue #32.
+    const owned = wishlist.getAll().filter(isTagSourced).filter((a) => a.ownedLossless === true);
+    res.end(JSON.stringify(owned, null, 2));
     return;
   }
 
@@ -658,14 +692,6 @@ const server = http.createServer(async (req, res) => {
       (a.qualityFlacTracks !== undefined && a.qualityTotalTracks !== undefined)
     );
     res.end(JSON.stringify(lowQualityAlbums, null, 2));
-    return;
-  }
-
-  if (req.method === "POST" && url.pathname === "/wishlist/add") {
-    readJsonBody(req, res, (album) => {
-      const added = wishlist.add(album);
-      res.end(JSON.stringify({ added }));
-    });
     return;
   }
 
@@ -792,6 +818,21 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (req.method === "GET" && url.pathname === "/roon-tag/write-support") {
+    if (!pairedCore) {
+      res.statusCode = 503;
+      res.end(JSON.stringify({ error: "Roon is not paired yet." }));
+      return;
+    }
+    try {
+      res.end(JSON.stringify(await probeTagWriteSupport(getBrowseService(), ROON_WISHLIST_TAG), null, 2));
+    } catch (e) {
+      res.statusCode = e.statusCode || 500;
+      res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
+  }
+
   if (url.pathname === "/sync-roon-tag") {
     if (req.method !== "POST") {
       res.statusCode = 405;
@@ -804,19 +845,22 @@ const server = http.createServer(async (req, res) => {
         const parts = [`added ${result.added}`, `updated ${result.updated}`];
         if (result.removed) parts.push(`removed ${result.removed}`);
         parts.push(`links ${result.withLinks}/${result.totalTaggedAlbums}`);
+        const owned = result.ownedCheck && result.ownedCheck.owned.length;
+        if (owned) parts.push(`already owned ${owned}`);
         const missing = result.tagFound
           ? ""
           : ` (the tag "${result.tagName}" is not in Roon right now, so it was treated as empty)`;
         return `Roon tag sync done: ${parts.join(", ")}${missing}`;
       },
-      action({ browseService, onProgress }) {
-        return syncTaggedAlbums({
+      async action({ browseService, onProgress }) {
+        const result = await syncTaggedAlbums({
           browseService,
           wishlist,
           searchAll,
           tagName: ROON_WISHLIST_TAG,
           onProgress,
         });
+        return { ...result, ownedCheck: await flagOwnedTaggedAlbums() };
       },
     });
     return;
@@ -833,14 +877,15 @@ const server = http.createServer(async (req, res) => {
       successStatus(result) {
         return `Roon tag rebuild done: replaced ${result.previousWishlistCount} with ${result.rebuilt}, links ${result.withLinks}/${result.totalTaggedAlbums}`;
       },
-      action({ browseService, onProgress }) {
-        return rebuildTaggedAlbums({
+      async action({ browseService, onProgress }) {
+        const result = await rebuildTaggedAlbums({
           browseService,
           wishlist,
           searchAll,
           tagName: ROON_WISHLIST_TAG,
           onProgress,
         });
+        return { ...result, ownedCheck: await flagOwnedTaggedAlbums() };
       },
     });
     return;

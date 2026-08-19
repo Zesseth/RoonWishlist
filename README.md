@@ -382,10 +382,17 @@ use can go through the native Roon settings menu described above.
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/wishlist` | Get all wishlist albums |
-| POST | `/wishlist/add` | Add an album `{"artist":"...","title":"..."}` |
+| GET | `/wishlist/roon-tag` | Tagged albums still worth buying |
+| GET | `/wishlist/owned-lossless` | Tagged albums already owned in full lossless |
+| GET | `/wishlist/low-quality` | Albums the library scan found in less than lossless |
 | POST | `/wishlist/remove` | Remove an album `{"artist":"...","title":"..."}` |
 | GET | `/search?artist=&title=` | Get buy links from Bandcamp/Qobuz |
 | POST | `/check-lossless` | Check the library and clean up the wishlist |
+| GET | `/roon-tag/write-support` | Ask Roon, read-only, whether it offers any tag-editing action |
+
+There is deliberately no "add an album" endpoint. The wishlist is derived from Roon's
+`Wishlist` tag and from the library scan; adding entries by hand would only produce
+rows that neither source can ever clean up.
 
 ## Project structure
 

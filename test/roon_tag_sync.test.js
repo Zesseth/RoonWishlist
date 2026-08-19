@@ -313,3 +313,55 @@ describe("reconcileOnStartup() - Roon is the master", () => {
     assert.strictEqual(wishlist._state.length, 1);
   });
 });
+
+describe("probeTagWriteSupport()", () => {
+  /** Browse tree whose album page offers the given action titles. */
+  function browseWithAlbumActions(actionTitles) {
+    return fakeBrowse({
+      root: [{ item_key: "lib", title: "Library" }],
+      lib: [{ item_key: "tags", title: "Tags" }],
+      tags: [{ item_key: "tag", title: "Wishlist" }],
+      tag: [{ item_key: "albums", title: "Albums" }],
+      albums: [{ item_key: "a0", title: "Lateralus", subtitle: "Tool", hint: "list" }],
+      a0: actionTitles.map((title, i) => ({ item_key: `act${i}`, title, hint: "action" })),
+    });
+  }
+
+  it("reports the actions Roon offers on an album", async () => {
+    const result = await tagSync.probeTagWriteSupport(
+      browseWithAlbumActions(["Play Album", "Add to Queue"]),
+      "Wishlist",
+    );
+    assert.strictEqual(result.tagFound, true);
+    assert.strictEqual(result.album, "Lateralus");
+    assert.deepStrictEqual(result.offered.map((o) => o.title), ["Play Album", "Add to Queue"]);
+  });
+
+  it("says tag editing is unsupported when no tag action is offered", async () => {
+    const result = await tagSync.probeTagWriteSupport(
+      browseWithAlbumActions(["Play Album"]),
+      "Wishlist",
+    );
+    assert.strictEqual(result.supported, false);
+    assert.match(result.reason, /read-only/i);
+  });
+
+  it("detects a tag action if Roon ever offers one", async () => {
+    const result = await tagSync.probeTagWriteSupport(
+      browseWithAlbumActions(["Play Album", "Tags"]),
+      "Wishlist",
+    );
+    assert.strictEqual(result.supported, true);
+    assert.strictEqual(result.matched.title, "Tags");
+  });
+
+  it("reports a missing tag instead of throwing", async () => {
+    const result = await tagSync.probeTagWriteSupport(browseWithoutTag(), "Wishlist");
+    assert.strictEqual(result.tagFound, false);
+    assert.strictEqual(result.supported, false);
+  });
+
+  it("refuses to guess when browse is unavailable", async () => {
+    await assert.rejects(() => tagSync.probeTagWriteSupport(null, "Wishlist"), /browse access/i);
+  });
+});

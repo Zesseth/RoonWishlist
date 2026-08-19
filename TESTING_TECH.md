@@ -13,7 +13,7 @@ npm test          # node --test
 npm run test:watch
 ```
 
-**127 tests total**, roughly 1–2 seconds.
+**144 tests total**, roughly 1–2 seconds.
 
 ### `test/wishlist.test.js` — 26 tests
 
@@ -43,7 +43,7 @@ Pure unit tests against temporary fixture directories; no network, no Roon.
 | persisted `lastCheck` | 4 | status written to the entry, no write when unchanged, survives a module without `upsert()` |
 | `scanLowQualityAlbums()` | 4 | what gets added, the ignore list, recorded quality |
 
-### `test/roon_tag_sync.test.js` — 16 tests
+### `test/roon_tag_sync.test.js` — 21 tests
 
 Stubbed Roon browse tree (Library -> Tags -> Wishlist -> Albums); no Roon core.
 
@@ -52,6 +52,18 @@ Stubbed Roon browse tree (Library -> Tags -> Wishlist -> Albums); no Roon core.
 | `listTaggedAlbumsDetailed()` | 7 | all three shapes of an empty tag read as empty; a missing browse service still throws |
 | `syncTaggedAlbums()` | 6 | adds, removes on untag, clears an emptied tag, never touches manual entries |
 | `reconcileOnStartup()` | 3 | the same removal rule on startup, and no action without browse |
+| `probeTagWriteSupport()` | 5 | reports the actions Roon offers on an album, spots a tag action if one ever appears, never guesses |
+
+### `test/owned_tagged.test.js` — 12 tests
+
+Tagged albums the user already owns in lossless (issue #32). Temporary fixture
+directories, no Roon.
+
+| Group | Tests | Covers |
+|---|---|---|
+| `classifyWantedAlbums()` | 3 | only the wanted folders are opened, absent albums, nothing wanted |
+| `markOwnedTaggedAlbums()` | 6 | flags a fully lossless copy, ignores lossy and mixed, clears a stale flag, skips non-tag entries, never deletes |
+| `checkAndClean()` with tags | 3 | a tagged album is flagged not removed, a scanned one is still removed, stale flags cleared |
 
 ### `test/scan_locations.test.js` — 35 tests
 
@@ -120,7 +132,7 @@ path comes from Roon or from Settings, not from the environment.
 
 | Area | Why |
 |---|---|
-| Tag write-back (wishlist → Roon) | Not possible; the Roon Browse API is read-only. See [`ROON_API_LIMITATIONS.md`](./ROON_API_LIMITATIONS.md) |
+| Tag write-back (wishlist → Roon) | Believed impossible; the Roon Browse API exposes no tag writes. `GET /roon-tag/write-support` measures this against the live Core instead of assuming it. See [`ROON_API_LIMITATIONS.md`](./ROON_API_LIMITATIONS.md) |
 | Track-level tagging | Roon exposes album-level browse only |
 | Multiple Roon Cores | The extension pairs with a single Core |
 | Reading storage locations from Roon | `src/roon_storage.js` needs a live Browse service; only the parsing of its output is unit tested |
@@ -129,9 +141,8 @@ path comes from Roon or from Settings, not from the environment.
 
 ## Prerequisites for the API tests below
 
-1. **Run from `main`:**
+1. **Run the branch you want to test** (not necessarily `main`):
    ```bash
-   git checkout main
    npm ci
    node index.js
    ```
@@ -145,9 +156,30 @@ path comes from Roon or from Settings, not from the environment.
    ```bash
    # Debian/Ubuntu
    sudo apt-get install -y jq
-   
+
    # macOS
    brew install jq
+   ```
+
+4. **Define the `seed` helper.** There is deliberately no "add an album" API: the
+   wishlist is derived from Roon tags and from the library scan, never typed in by
+   hand (issue #32). Tests that need a starting state therefore write the store
+   directly. Stop the extension first — it caches the file by mtime.
+   ```bash
+   seed() {
+     node -e '
+       const fs = require("fs");
+       const path = process.env.ROON_WISHLIST_DATA_DIR || "data";
+       fs.mkdirSync(path, { recursive: true });
+       const file = path + "/wishlist.json";
+       const all = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, "utf8")) : [];
+       const album = JSON.parse(process.argv[1]);
+       album.addedAt = album.addedAt || new Date().toISOString();
+       album.source = album.source || "roon-tag";
+       all.push(album);
+       fs.writeFileSync(file, JSON.stringify(all, null, 2));
+     ' "$1"
+   }
    ```
 
 ---
@@ -160,29 +192,23 @@ Verify that albums get the correct source field when added through different met
 # Clear existing data
 rm -rf data/wishlist.json
 
-# Test 1a: Manual addition via API
-echo "=== Test 1a: Manual album ==="
-curl -X POST http://localhost:3141/wishlist/add \
-  -H "Content-Type: application/json" \
-  -d '{"artist": "Manual Artist", "title": "Manual Album"}'
+# Test 1a: An album with no source is treated as tag-derived
+echo "=== Test 1a: Album with no source ==="
+seed '{"artist": "Legacy Artist", "title": "Legacy Album", "source": null}'
 
-curl http://localhost:3141/wishlist | jq '.[] | select(.artist == "Manual Artist") | {artist, title, source}'
-# Expected: {"artist": "Manual Artist", "title": "Manual Album", "source": "manual"}
+curl http://localhost:3141/wishlist/roon-tag | jq '.[] | select(.artist == "Legacy Artist") | {artist, title}'
+# Expected: the album appears — rows written before `source` existed came from the tag.
 
 # Test 1b: Roon-tag album (simulated)
 echo "=== Test 1b: Roon-tag album ==="
-curl -X POST http://localhost:3141/wishlist/add \
-  -H "Content-Type: application/json" \
-  -d '{"artist": "Roon Artist", "title": "Roon Album", "source": "roon-tag"}'
+seed '{"artist": "Roon Artist", "title": "Roon Album", "source": "roon-tag"}'
 
 curl http://localhost:3141/wishlist | jq '.[] | select(.artist == "Roon Artist") | {artist, title, source}'
 # Expected: {"artist": "Roon Artist", "title": "Roon Album", "source": "roon-tag"}
 
 # Test 1c: Low-quality album (simulated)
 echo "=== Test 1c: Low-quality album ==="
-curl -X POST http://localhost:3141/wishlist/add \
-  -H "Content-Type: application/json" \
-  -d '{"artist": "Low Quality Artist", "title": "Low Quality Album", "source": "low-quality"}'
+seed '{"artist": "Low Quality Artist", "title": "Low Quality Album", "source": "low-quality"}'
 
 curl http://localhost:3141/wishlist | jq '.[] | select(.artist == "Low Quality Artist") | {artist, title, source}'
 # Expected: {"artist": "Low Quality Artist", "title": "Low Quality Album", "source": "low-quality"}
@@ -200,27 +226,26 @@ rm -rf data/wishlist.json
 
 # Add test albums with different sources
 echo "=== Adding test albums ==="
-curl -X POST http://localhost:3141/wishlist/add \
-  -H "Content-Type: application/json" \
-  -d '{"artist": "Manual", "title": "Album1", "source": "manual"}'
+seed '{"artist": "Roon", "title": "Album2", "source": "roon-tag"}'
 
-curl -X POST http://localhost:3141/wishlist/add \
-  -H "Content-Type: application/json" \
-  -d '{"artist": "Roon", "title": "Album2", "source": "roon-tag"}'
+seed '{"artist": "LowQual", "title": "Album3", "source": "low-quality"}'
 
-curl -X POST http://localhost:3141/wishlist/add \
-  -H "Content-Type: application/json" \
-  -d '{"artist": "LowQual", "title": "Album3", "source": "low-quality"}'
+seed '{"artist": "Owned", "title": "Album4", "source": "roon-tag", "ownedLossless": true}'
 
 # Test 2a: /wishlist returns all albums
 echo "=== Test 2a: /wishlist (all albums) ==="
 curl http://localhost:3141/wishlist | jq '.[] | {artist, source}'
-# Expected: 3 albums with sources: manual, roon-tag, low-quality
+# Expected: 3 albums with sources: roon-tag, low-quality, roon-tag
 
-# Test 2b: /wishlist/roon-tag returns only roon-tag
+# Test 2b: /wishlist/roon-tag returns only what is still worth buying
 echo "=== Test 2b: /wishlist/roon-tag ==="
 curl http://localhost:3141/wishlist/roon-tag | jq '.[] | {artist, title, source}'
-# Expected: 1 album with source: roon-tag
+# Expected: only "Roon". "Owned" is tagged too, but already held in lossless.
+
+# Test 2b2: /wishlist/owned-lossless returns the already-owned tagged albums
+echo "=== Test 2b2: /wishlist/owned-lossless ==="
+curl http://localhost:3141/wishlist/owned-lossless | jq '.[] | {artist, title}'
+# Expected: only "Owned"
 
 # Test 2c: /wishlist/low-quality returns only low-quality
 echo "=== Test 2c: /wishlist/low-quality ==="
@@ -233,8 +258,12 @@ echo "Total albums:"
 curl http://localhost:3141/wishlist | jq 'length'
 # Expected: 3
 
-echo "Roon-tag albums:"
+echo "Roon-tag albums still wanted:"
 curl http://localhost:3141/wishlist/roon-tag | jq 'length'
+# Expected: 1
+
+echo "Roon-tag albums already owned:"
+curl http://localhost:3141/wishlist/owned-lossless | jq 'length'
 # Expected: 1
 
 echo "Low-quality albums:"
@@ -254,9 +283,7 @@ rm -rf data/wishlist.json
 
 # Add album with source
 echo "=== Test 3a: Add with source ==="
-curl -X POST http://localhost:3141/wishlist/add \
-  -H "Content-Type: application/json" \
-  -d '{"artist": "Test", "title": "Persistence", "source": "roon-tag"}'
+seed '{"artist": "Test", "title": "Persistence", "source": "roon-tag"}'
 
 # Restart the extension (simulates server restart)
 echo "=== Test 3b: Restart and verify persistence ==="
@@ -280,13 +307,9 @@ rm -rf data/wishlist.json
 
 # Add albums with and without quality metadata
 echo "=== Test 4a: Add albums with quality metadata ==="
-curl -X POST http://localhost:3141/wishlist/add \
-  -H "Content-Type: application/json" \
-  -d '{"artist": "Test Artist", "title": "Test Album", "source": "low-quality", "qualityFlacTracks": 5, "qualityTotalTracks": 10}'
+seed '{"artist": "Test Artist", "title": "Test Album", "source": "low-quality", "qualityFlacTracks": 5, "qualityTotalTracks": 10}'
 
-curl -X POST http://localhost:3141/wishlist/add \
-  -H "Content-Type: application/json" \
-  -d '{"artist": "Roon Artist", "title": "Roon Album", "source": "roon-tag"}'
+seed '{"artist": "Roon Artist", "title": "Roon Album", "source": "roon-tag"}'
 
 # Test 4b: Verify low-quality album has quality metadata
 echo "=== Test 4b: Low-quality album quality metadata ==="
@@ -311,9 +334,7 @@ rm -rf data/wishlist.json data/ignored-low-quality.json
 
 # Add a low-quality album with quality metadata
 echo "=== Test 5a: Add low-quality album ==="
-curl -X POST http://localhost:3141/wishlist/add \
-  -H "Content-Type: application/json" \
-  -d '{"artist": "Ignore Test", "title": "Ignore Album", "source": "low-quality", "qualityFlacTracks": 3, "qualityTotalTracks": 8}'
+seed '{"artist": "Ignore Test", "title": "Ignore Album", "source": "low-quality", "qualityFlacTracks": 3, "qualityTotalTracks": 8}'
 
 # Verify it's in low-quality wishlist
 echo "=== Test 5b: Verify album in low-quality wishlist ==="
@@ -402,25 +423,19 @@ rm -rf data/wishlist.json
 
 # Add albums from different sources
 echo "=== Test 8a: Add mixed source albums ==="
-curl -X POST http://localhost:3141/wishlist/add \
-  -H "Content-Type: application/json" \
-  -d '{"artist": "Artist1", "title": "Album1", "source": "manual"}'
+seed '{"artist": "Artist1", "title": "Album1", "source": "roon-tag", "ownedLossless": true}'
 
-curl -X POST http://localhost:3141/wishlist/add \
-  -H "Content-Type: application/json" \
-  -d '{"artist": "Artist2", "title": "Album2", "source": "roon-tag"}'
+seed '{"artist": "Artist2", "title": "Album2", "source": "roon-tag"}'
 
-curl -X POST http://localhost:3141/wishlist/add \
-  -H "Content-Type: application/json" \
-  -d '{"artist": "Artist3", "title": "Album3", "source": "low-quality", "qualityFlacTracks": 2, "qualityTotalTracks": 5}'
+seed '{"artist": "Artist3", "title": "Album3", "source": "low-quality", "qualityFlacTracks": 2, "qualityTotalTracks": 5}'
 
 # Test 8b: Verify separation
 echo "=== Test 8b: Verify endpoint separation ==="
-echo "Manual albums:"
-curl http://localhost:3141/wishlist | jq '[.[] | select(.source == "manual")] | length'
+echo "Already-owned tagged albums:"
+curl http://localhost:3141/wishlist/owned-lossless | jq 'length'
 # Expected: 1
 
-echo "Roon-tag albums:"
+echo "Roon-tag albums still wanted:"
 curl http://localhost:3141/wishlist/roon-tag | jq 'length'
 # Expected: 1
 
@@ -435,9 +450,9 @@ curl -X POST http://localhost:3141/wishlist/remove \
   -d '{"artist": "Artist1", "title": "Album1"}'
 
 # Verify it's removed from all endpoints
-echo "Manual albums after remove:"
-curl http://localhost:3141/wishlist | jq '[.[] | select(.source == "manual")] | length'
-# Expected: 0
+echo "Already-owned tagged albums after remove:"
+curl http://localhost:3141/wishlist/owned-lossless | jq 'length'
+# Expected: 0 (it comes back on the next sync — Roon is the master)
 ```
 
 ---
@@ -446,9 +461,10 @@ curl http://localhost:3141/wishlist | jq '[.[] | select(.source == "manual")] | 
 
 | Test | Endpoint | Expected Result |
 |------|----------|-----------------|
-| 1a-1c | /wishlist/add | Albums created with correct source |
+| 1a-1c | `seed` helper | Albums created with correct source |
 | 2a | /wishlist | Returns all albums |
-| 2b | /wishlist/roon-tag | Returns only roon-tag albums |
+| 2b | /wishlist/roon-tag | Returns tagged albums not already owned in lossless |
+| 2b2 | /wishlist/owned-lossless | Returns tagged albums already owned in lossless |
 | 2c | /wishlist/low-quality | Returns only low-quality albums |
 | 3 | Persistence | Source field persists after restart |
 | 4 | Quality metadata | Only in low-quality albums |
@@ -525,8 +541,7 @@ Restore the path afterwards with the command from 9b.
 ```bash
 for a in "Opeth|Blackwater Park" "Miles Davis|Kind of Blue" \
          "Portishead|Dummy" "Tool|Lateralus" "Nobody|Nothing"; do
-  curl -s -X POST $API/wishlist/add -H 'Content-Type: application/json' \
-    -d "{\"artist\":\"${a%%|*}\",\"title\":\"${a##*|}\"}" > /dev/null
+  seed "{\"artist\":\"${a%%|*}\",\"title\":\"${a##*|}\"}" > /dev/null
 done
 
 curl -s -X POST $API/check-lossless | jq '{
@@ -573,8 +588,7 @@ curl -s -X POST $API/settings -H 'Content-Type: application/json' \
 
 curl -s $API/storage-locations | jq '.active'
 
-curl -s -X POST $API/wishlist/add -H 'Content-Type: application/json' \
-  -d '{"artist":"Portishead","title":"Dummy"}' > /dev/null
+seed '{"artist":"Portishead","title":"Dummy"}' > /dev/null
 
 curl -s -X POST $API/check-lossless | jq '[.removedFromWishlist[] | .artist]'
 ```
