@@ -976,10 +976,9 @@
         if (fromRoon) {
           toast("Roon reported " + fromRoon + " storage location(s).", "ok");
         } else {
-          const why = data && data.diagnostic && data.diagnostic.detail
-            ? " " + data.diagnostic.detail
-            : "";
-          toast("Roon reported no storage locations." + why, "err");
+          // The full explanation is rendered in the panel above and stays there; a toast
+          // that scrolls away is the wrong place for evidence the user needs to read.
+          toast("Roon exposed no storage locations to the extension — see the panel above for exactly what it did offer.", "err");
         }
       } catch (e) {
         toast("Could not refresh storage locations: " + e.message, "err");

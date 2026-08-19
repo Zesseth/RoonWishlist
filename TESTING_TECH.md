@@ -13,7 +13,7 @@ npm test          # node --test
 npm run test:watch
 ```
 
-**147 tests total**, roughly 1–2 seconds.
+**150 tests total**, roughly 1–2 seconds.
 
 ### `test/wishlist.test.js` — 26 tests
 
@@ -77,7 +77,7 @@ directories, no Roon.
 | `validateLocations()` | 4 | readable dir, missing dir, a file, mixed input |
 | `removeManualPath()` | 6 | drops a typed path, canonical matching, null for a path that is not manual |
 
-### `test/roon_storage.test.js` — 8 tests
+### `test/roon_storage.test.js` — 11 tests
 
 Covers `getStorageLocationsDetailed()` against a stubbed Browse service: reading
 storage entries, the path arriving in either `subtitle` or `title`, header rows being

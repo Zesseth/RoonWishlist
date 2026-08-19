@@ -116,3 +116,60 @@ describe("getStorageLocationsDetailed()", () => {
     assert.strictEqual(diagnostic.outcome, "error");
   });
 });
+
+describe("getStorageLocationsDetailed() — searching one level down", () => {
+  function fakeBrowse(levels) {
+    let currentLevel = null;
+    return {
+      browse(opts, cb) {
+        currentLevel = opts.item_key || "root";
+        if (!levels[currentLevel]) return cb(null, { action: "message", message: "Nothing here" });
+        cb(null, { action: "list", list: { level: 0, count: levels[currentLevel].length } });
+      },
+      load(opts, cb) {
+        const items = levels[currentLevel] || [];
+        cb(null, { items, list: { count: items.length } });
+      },
+    };
+  }
+
+  it("finds storage nested under another settings entry", async () => {
+    const browse = fakeBrowse({
+      root: [{ item_key: "gen", title: "General" }],
+      gen: [{ item_key: "st", title: "Storage" }],
+      st: [{ item_key: "l1", title: "Main library", subtitle: "/music" }],
+    });
+
+    const { locations, diagnostic } = await getStorageLocationsDetailed(browse);
+    assert.strictEqual(diagnostic.outcome, "ok");
+    assert.strictEqual(locations.length, 1);
+    assert.strictEqual(locations[0].path, "/music");
+  });
+
+  it("says exactly what Roon offered when storage is nowhere to be found", async () => {
+    const browse = fakeBrowse({
+      root: [{ item_key: "p", title: "Profile" }, { item_key: "d", title: "Display Settings" }],
+      p: [{ item_key: "p1", title: "Jesse" }],
+      d: [{ item_key: "d1", title: "Theme" }],
+    });
+
+    const { locations, diagnostic } = await getStorageLocationsDetailed(browse);
+    assert.deepStrictEqual(locations, []);
+    assert.strictEqual(diagnostic.outcome, "not-exposed");
+    // The user must be able to read the evidence, not just the verdict.
+    assert.match(diagnostic.detail, /Profile \(Jesse\)/);
+    assert.match(diagnostic.detail, /Display Settings \(Theme\)/);
+    assert.strictEqual(diagnostic.settingsTree.length, 2);
+  });
+
+  it("records an entry it could not open instead of failing the whole lookup", async () => {
+    const browse = fakeBrowse({
+      root: [{ item_key: "p", title: "Profile" }],
+      // "p" has no level defined, so opening it answers with a message.
+    });
+
+    const { diagnostic } = await getStorageLocationsDetailed(browse);
+    assert.strictEqual(diagnostic.outcome, "not-exposed");
+    assert.ok(diagnostic.settingsTree[0].error, "the failure to open should be recorded");
+  });
+});

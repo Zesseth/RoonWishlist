@@ -231,7 +231,17 @@ This is the question the whole issue hangs on, and it needs the extension paired
 3. **Expect:** the message now tells you the outcome. Either *"Roon reported N storage
    location(s)"*, or *"Roon reported no storage locations"* followed by the reason.
 
-You reported this button as doing nothing. It was in fact querying Roon every time — but
+You reported that it says the information cannot be found in Roon, and that this must be
+wrong because the folders are obviously configured there. Both are true at once: Roon
+knows your storage folders, but it does not offer them to extensions. The Browse API's
+settings hierarchy contains only *Profile* and *Display Settings*. The lookup now also
+looks one level inside each of those before giving up, and the panel lists everything
+Roon did offer — so you can read the evidence instead of taking my word for it.
+
+That is why the library path below is not a workaround for a bug: it is the only route
+Roon leaves open.
+
+You also reported this button as doing nothing. It was in fact querying Roon every time — but
 it always said "Storage locations refreshed", which is indistinguishable from a button
 that is wired to nothing. It now reports what Roon answered.
 

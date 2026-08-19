@@ -76,6 +76,60 @@ async function openLevel(browseService, { hierarchy, sessionKey, itemKey, input,
   return { hierarchy, items, list: body.list || null };
 }
 
+function looksLikeStorageTitle(title) {
+  const t = String(title || "").toLowerCase();
+  return t.includes("storage") || t.includes("library") || t.includes("watched") || t.includes("folder");
+}
+
+/**
+ * Walks one level into each settings entry, looking for anything storage-shaped.
+ *
+ * The top level of Roon's settings hierarchy is short (on Roon 2.71 it is just Profile
+ * and Display Settings), so "no Storage entry at the root" is not by itself proof that
+ * Roon withholds it - it could be nested. This descends once and records what it saw,
+ * so the answer we give the user is a measurement they can read rather than a claim.
+ * Navigation only: an entry that answers with anything but a list is recorded and left
+ * alone.
+ */
+async function exploreSettingsTree(browseService, sessionKey, rootItems) {
+  const tree = [];
+  let storageItem = null;
+
+  for (const item of rootItems) {
+    const entry = { title: item.title || "", children: [] };
+    if (!item.item_key) {
+      tree.push(entry);
+      continue;
+    }
+    try {
+      const level = await openLevel(browseService, {
+        hierarchy: "settings",
+        sessionKey,
+        itemKey: item.item_key,
+      });
+      for (const child of level.items || []) {
+        if (!child) continue;
+        entry.children.push(child.title || "");
+        if (!storageItem && child.item_key && looksLikeStorageTitle(child.title)) {
+          storageItem = child;
+        }
+      }
+    } catch (err) {
+      entry.error = err.message;
+    }
+    // Roon keeps the settings level stacked, so step back out before the next entry.
+    try {
+      await openLevel(browseService, { hierarchy: "settings", sessionKey, popAll: true });
+    } catch {
+      // If we cannot get back to the root there is nothing more to explore.
+      break;
+    }
+    tree.push(entry);
+  }
+
+  return { tree, storageItem };
+}
+
 /**
  * Reads music storage locations from Roon settings via the Browse API.
  *
@@ -112,22 +166,33 @@ async function getStorageLocationsDetailed(browseService) {
     const rootTitles = root.items.map((item) => (item && item.title) || "").filter(Boolean);
 
     // Which entry holds storage varies by Roon version, so match on the title.
-    const storageItem = root.items.find(
-      (item) =>
-        item &&
-        item.item_key &&
-        typeof item.title === "string" &&
-        (item.title.toLowerCase().includes("storage") || item.title.toLowerCase().includes("library")),
+    let storageItem = root.items.find(
+      (item) => item && item.item_key && looksLikeStorageTitle(item.title),
     );
 
+    let settingsTree;
+    if (!storageItem) {
+      // Nothing at the root. Before concluding Roon withholds this, look one level down.
+      const explored = await exploreSettingsTree(browseService, sessionKey, root.items);
+      settingsTree = explored.tree;
+      storageItem = explored.storageItem;
+    }
+
     if (!storageItem || !storageItem.item_key) {
+      const shown = (settingsTree || [])
+        .map((entry) => (entry.children.length ? `${entry.title} (${entry.children.join(", ")})` : entry.title))
+        .join("; ");
       return {
         locations: [],
         diagnostic: {
           outcome: "not-exposed",
           detail:
-            "Roon's browsable settings contain no Storage or Library entry, so storage folders cannot be read from Roon on this version. The music library path is used instead.",
+            "Roon does expose your storage folders in its own app, but not to extensions: " +
+            "the Browse API's settings hierarchy has no Storage entry, at the top level or one level down. " +
+            `Everything Roon offered was: ${shown || rootTitles.join(", ") || "nothing at all"}. ` +
+            "The music library path is used instead — that is not a fault you can fix in Roon.",
           settingsEntries: rootTitles,
+          settingsTree: settingsTree || null,
         },
       };
     }

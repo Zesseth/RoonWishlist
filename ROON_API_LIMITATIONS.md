@@ -27,6 +27,15 @@ As of investigation on 2026-07-28, the following has been implemented:
 
 ## Storage locations over the Browse API — measured, 2026-08-19
 
+**Re-measured after the user reported "this information is definitely in Roon".** It is —
+in Roon's own app. It is not offered to extensions. The Browse API's `settings` hierarchy
+returned only `Profile` and `Display Settings` on Roon 2.71 (build 1683). The lookup now
+also descends one level into each of those entries before concluding anything, and the
+diagnostic reports the whole tree it saw, so the answer shown in the UI is evidence
+rather than a claim. There is no Storage entry at either level, so the manual library
+path is not a workaround for a bug — it is the only route available.
+
+
 The note above claimed storage location reading was complete. Measured against a live
 core it is **implemented but does not yield anything**, so the wording was misleading.
 
