@@ -218,3 +218,33 @@ describe("validateLocations()", () => {
     assert.strictEqual(result.unreadable.length, 1);
   });
 });
+
+describe("removeManualPath()", () => {
+  it("drops the requested path and keeps the rest", () => {
+    const remaining = scanLocations.removeManualPath("/music; /archive; /nas", "/archive");
+    assert.strictEqual(remaining, "/music; /nas");
+  });
+
+  it("returns an empty string when the last path is removed", () => {
+    assert.strictEqual(scanLocations.removeManualPath("/music", "/music"), "");
+  });
+
+  it("matches on the canonical path, not the exact spelling", () => {
+    assert.strictEqual(scanLocations.removeManualPath("/music/; /archive", "/music"), "/archive");
+  });
+
+  it("reports null for a path that was not manually configured", () => {
+    // This is how a Roon-reported location is told apart from one typed here: it is
+    // not ours to delete, and the caller turns this into a 404 rather than a silent
+    // no-op that looks like it worked.
+    assert.strictEqual(scanLocations.removeManualPath("/music", "/somewhere-else"), null);
+  });
+
+  it("reports null for a blank target", () => {
+    assert.strictEqual(scanLocations.removeManualPath("/music", "  "), null);
+  });
+
+  it("handles newline-separated paths too", () => {
+    assert.strictEqual(scanLocations.removeManualPath("/music\n/archive", "/music"), "/archive");
+  });
+});

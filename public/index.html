@@ -274,7 +274,7 @@
       <div class="toolbar">
         <div>
           <h2 style="margin:0;">Wishlist</h2>
-          <div class="sync-note" id="sync-note">Albums tagged Wishlist in Roon.</div>
+          <div class="sync-note" id="sync-note">Albums tagged Wishlist in Roon. To take one off the list, remove the Wishlist tag in Roon and sync.</div>
         </div>
         <div class="row" style="gap:8px;">
           <button class="secondary small" id="sync-roon-btn">Sync Roon tag</button>
@@ -638,26 +638,40 @@
 
       let html = '<ul class="list">';
       for (const loc of locations) {
-        const origin = loc.sources.indexOf("roon") !== -1
-          ? (loc.sources.indexOf("manual") !== -1 ? "from Roon + manual" : "from Roon")
-          : "manual";
+        const fromRoon = loc.sources.indexOf("roon") !== -1;
+        const fromManual = loc.sources.indexOf("manual") !== -1;
+        const origin = fromRoon
+          ? (fromManual ? "from Roon + typed here" : "from Roon")
+          : "typed here";
         const problem = unreadableSet[loc.path];
         let state;
         if (loc.excluded) state = "excluded";
         else if (problem) state = "unreadable: " + problem;
         else state = "scanned";
 
-        html +=
-          '<li><div class="album-main">' +
-            '<div><span class="album-title">' + esc(loc.path) + '</span></div>' +
-            '<div class="album-meta">' + esc(state + " - " + origin) + '</div>' +
-          '</div>' +
-          '<div class="album-actions">' +
+        // A path that came from Roon is managed in Roon: deleting it here would only
+        // bring it back on the next refresh. It can still be excluded from scanning.
+        // A path typed here is ours to delete.
+        let actions = "";
+        if (fromRoon) {
+          actions =
             '<button class="secondary small" data-toggle-location="' + esc(loc.path) + '" ' +
               'data-exclude="' + (loc.excluded ? "false" : "true") + '">' +
               (loc.excluded ? "Include" : "Exclude") +
-            '</button>' +
-          '</div></li>';
+            '</button>';
+        }
+        if (fromManual) {
+          actions +=
+            '<button class="secondary small" data-remove-location="' + esc(loc.path) + '">Remove</button>';
+        }
+
+        html +=
+          '<li><div class="album-main">' +
+            '<div><span class="album-title">' + esc(loc.path) + '</span></div>' +
+            '<div class="album-meta">' + esc(state + " - " + origin) +
+              (fromRoon && !fromManual ? " - remove it in Roon" : "") + '</div>' +
+          '</div>' +
+          '<div class="album-actions">' + actions + '</div></li>';
       }
       html += '</ul>';
 
@@ -690,6 +704,26 @@
             toast("Storage locations updated.", "ok");
           } catch (e) {
             toast("Could not update storage locations: " + e.message, "err");
+            btn.disabled = false;
+          }
+        });
+      }
+      for (const btn of box.querySelectorAll("[data-remove-location]")) {
+        btn.addEventListener("click", async () => {
+          const path = btn.getAttribute("data-remove-location");
+          if (!confirm("Stop scanning " + path + "?\n\nIt will be removed from the library path.")) return;
+          btn.disabled = true;
+          try {
+            await api("/storage-locations/remove", {
+              method: "POST",
+              body: JSON.stringify({ path: path }),
+            });
+            await loadStorageLocations();
+            await loadSettings();
+            await loadStatus();
+            toast("Removed " + path + ".", "ok");
+          } catch (e) {
+            toast("Could not remove the location: " + e.message, "err");
             btn.disabled = false;
           }
         });
@@ -735,7 +769,7 @@
         ul.innerHTML = '<li class="empty">Wishlist is empty. Tag albums with "Wishlist" in Roon to populate it.</li>';
         return;
       }
-      renderWishlistItems(ul, items, false);
+      renderWishlistItems(ul, items, false, false);
     }
 
     function renderLowQualityWishlist(items) {
@@ -746,10 +780,10 @@
         ul.innerHTML = '<li class="empty">No low-quality albums on wishlist. Use Settings → Library → "Scan low-quality albums now" to add albums here.</li>';
         return;
       }
-      renderWishlistItems(ul, items, true);
+      renderWishlistItems(ul, items, true, true);
     }
 
-    function renderWishlistItems(ul, items, showIgnore) {
+    function renderWishlistItems(ul, items, showIgnore, allowRemove) {
       // Newest first.
       const sorted = items.slice().sort((a, b) => String(b.addedAt || "").localeCompare(String(a.addedAt || "")));
       for (const a of sorted) {
@@ -758,6 +792,11 @@
         const qualityMeta = qualityMetaFor(a);
         const ignoreButton = showIgnore && hasTrackCounts(a)
           ? '<button class="secondary small" data-ignore>Ignore</button>'
+          : '';
+        // Removing a Roon-tagged album here is pointless: the next sync brings it
+        // straight back, because Roon is the master. The tag is the way to remove it.
+        const removeButton = allowRemove
+          ? '<button class="danger" data-remove>Remove</button>'
           : '';
         li.innerHTML =
           '<div class="album-main">' +
@@ -770,12 +809,15 @@
           '<div class="album-actions">' +
             '<button class="secondary small" data-search>Find in stores</button>' +
             ignoreButton +
-            '<button class="danger" data-remove>Remove</button>' +
+            removeButton +
           '</div>';
         if (Array.isArray(a.buyLinks) && a.buyLinks.length) {
           renderStoreResults(li.querySelector("[data-results]"), a.buyLinks, false);
         }
-        li.querySelector("[data-remove]").addEventListener("click", () => removeAlbum(a, li));
+        const removeBtn = li.querySelector("[data-remove]");
+        if (removeBtn) {
+          removeBtn.addEventListener("click", () => removeAlbum(a, li));
+        }
         li.querySelector("[data-search]").addEventListener("click", (ev) => searchInto(li.querySelector("[data-results]"), a.artist, a.title, ev.target));
         const ignoreBtn = li.querySelector("[data-ignore]");
         if (ignoreBtn) {
@@ -914,9 +956,23 @@
       btn.disabled = true;
       btn.textContent = "Refreshing...";
       try {
-        await loadStorageLocations();
+        // Say what Roon actually answered. Reporting a bare "refreshed" when Roon
+        // returned nothing makes a working button look broken.
+        const data = await api("/storage-locations");
+        renderStorageLocations(data);
         await loadStatus();
-        toast("Storage locations refreshed.", "ok");
+
+        const fromRoon = (data && data.locations || []).length;
+        if (fromRoon) {
+          toast("Roon reported " + fromRoon + " storage location(s).", "ok");
+        } else {
+          const why = data && data.diagnostic && data.diagnostic.detail
+            ? " " + data.diagnostic.detail
+            : "";
+          toast("Roon reported no storage locations." + why, "err");
+        }
+      } catch (e) {
+        toast("Could not refresh storage locations: " + e.message, "err");
       } finally {
         btn.disabled = false;
         btn.textContent = "Refresh from Roon";

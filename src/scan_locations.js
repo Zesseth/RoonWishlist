@@ -197,11 +197,30 @@ function toggleExclusion(excluded, targetPath, shouldExclude) {
   return [...without, value];
 }
 
+/**
+ * Drop one path from the manually configured library path.
+ *
+ * Returns the remaining paths as a single settings string, or `null` when the path was
+ * not one of the manual entries — which is how the caller tells "removed" apart from
+ * "that came from Roon, so it is not mine to delete".
+ */
+function removeManualPath(manualPath, target) {
+  const wanted = canonicalize(target);
+  if (!wanted) return null;
+
+  const entries = splitManualPaths(manualPath);
+  const remaining = entries.filter((entry) => canonicalize(entry) !== wanted);
+  if (remaining.length === entries.length) return null;
+
+  return remaining.join("; ");
+}
+
 module.exports = {
   canonicalize,
   extractRoonPaths,
   isExcluded,
   looksLikeFilesystemPath,
+  removeManualPath,
   resolveScanLocations,
   splitManualPaths,
   toggleExclusion,

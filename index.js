@@ -627,6 +627,7 @@ const server = http.createServer(async (req, res) => {
     // static file handler and always answered 404.
     "/storage-locations",
     "/storage-locations/exclude",
+    "/storage-locations/remove",
     "/reconcile",
   ];
   if (req.method === "GET" && !apiPaths.includes(url.pathname)) {
@@ -938,6 +939,55 @@ const server = http.createServer(async (req, res) => {
           try { svc_settings.update_settings(make_layout(mysettings)); } catch {}
           res.end(JSON.stringify({
             excluded: mysettings.excluded_storage_locations,
+            active: resolved.active,
+            resolved: resolved.locations,
+          }, null, 2));
+        })
+        .catch((err) => {
+          res.statusCode = 500;
+          res.end(JSON.stringify({ error: err.message }));
+        });
+    });
+    return;
+  }
+
+  // Remove a manually added storage location. Roon-reported locations are deliberately
+  // not removable here: they are configured in Roon, and deleting one from this list
+  // would only make it reappear on the next refresh. Those can be excluded instead.
+  if (req.method === "POST" && url.pathname === "/storage-locations/remove") {
+    readJsonBody(req, res, (data) => {
+      const target = typeof data.path === "string" ? data.path.trim() : "";
+      if (!target) {
+        res.statusCode = 400;
+        res.end(JSON.stringify({ error: "A 'path' is required." }));
+        return;
+      }
+
+      const remaining = scanLocations.removeManualPath(mysettings.music_library_path, target);
+      if (remaining === null) {
+        res.statusCode = 404;
+        res.end(JSON.stringify({
+          error: `"${target}" is not one of the manually configured paths. Locations reported by Roon are managed in Roon.`,
+        }));
+        return;
+      }
+
+      mysettings = Object.assign({}, mysettings, {
+        music_library_path: remaining,
+        // Dropping the path makes any exclusion of it meaningless.
+        excluded_storage_locations: scanLocations.toggleExclusion(
+          mysettings.excluded_storage_locations,
+          target,
+          false,
+        ),
+      });
+      roonApp.save_config("settings", mysettings);
+
+      resolveActiveScanLocations({ refresh: false })
+        .then((resolved) => {
+          try { svc_settings.update_settings(make_layout(mysettings)); } catch {}
+          res.end(JSON.stringify({
+            music_library_path: mysettings.music_library_path,
             active: resolved.active,
             resolved: resolved.locations,
           }, null, 2));
