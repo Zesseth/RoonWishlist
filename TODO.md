@@ -85,10 +85,12 @@ Each item maps to a GitHub issue.
   - ❌ Track-level tagging — Not supported by Browse API (album-level only)
   See `ROON_API_LIMITATIONS.md` for details. **PR:** `feat/complete-roon-tagging`
 
-- [ ] **#2 Add nightly automation for store link refresh and low-quality scans.**
-  Add an optional nightly scheduler for the existing manual tasks: store-link refresh
-  / search and low-quality album scan. The user must be able to enable/disable it in
-  Settings and choose the daily run time from a 24-hour dropdown.
+- [x] **#2 Add nightly automation for store link refresh and low-quality scans.** ✅ **COMPLETE (2026-08-19):**
+  - ✅ `src/nightly_scheduler.js` — timeout-based scheduler with daily run time
+  - ✅ Settings UI: enable/disable + hour (0-23) + minute (0-59) dropdowns
+  - ✅ `runNightlyTasks()` performs low-quality album scan
+  - ✅ Scheduler starts/stops based on nightly_enabled setting
+  - ✅ Progress reported via Roon status
 
 - [~] **#15 Storage locations from Roon + full-album FLAC detection.** 
   - ✅ Recursive album scan, whole-album FLAC matching, `x/y` FLAC track counts

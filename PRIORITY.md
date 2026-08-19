@@ -11,10 +11,10 @@ These are ready to implement and have clear acceptance criteria.
 
 | # | Issue | Description | GitHub Label | Branch | Notes |
 |---|-------|-------------|--------------|--------|-------|
-| 25 | Remove "Add an album" from Web UI | Simplify UI - manage wishlist only via Roon tags | `P0` | `feat/ui-cleanup` | Combined with #26 |
-| 26 | Rename UI sections | "Wishlist" & "Low-quality albums" with proper functionality | `P0` | `feat/ui-cleanup` | Combined with #25 |
+| 25 | Remove "Add an album" from Web UI | Simplify UI - manage wishlist only via Roon tags | `P0` | ✅ | Already complete in main |
+| 26 | Rename UI sections | "Wishlist" & "Low-quality albums" with proper functionality | `P0` | ✅ | Already complete in main |
 
-**Next action:** Merge `feat/ui-cleanup` to main (currently out-of-date)
+**Next action:** Continue with P1 - #8 Configuration & logging
 
 ---
 
