@@ -269,7 +269,7 @@ async function searchBandcamp(artist, title) {
   );
 }
 
-async function searchQobuz(artist, title, region = "fr") {
+async function searchQobuz(artist, title) {
   const query = buildQuery(artist, title);
   if (!query) return [];
 
@@ -282,7 +282,6 @@ async function searchQobuz(artist, title, region = "fr") {
         limit: 25,
         offset: 0,
         app_id: appId,
-        geo_country_code: region,
       },
     });
 
@@ -327,8 +326,8 @@ async function searchQobuz(artist, title, region = "fr") {
   return [];
 }
 
-async function searchAll(artist, title, region = "fr") {
-  const [bandcamp, qobuz] = await Promise.all([searchBandcamp(artist, title), searchQobuz(artist, title, region)]);
+async function searchAll(artist, title) {
+  const [bandcamp, qobuz] = await Promise.all([searchBandcamp(artist, title), searchQobuz(artist, title)]);
   return [...bandcamp, ...qobuz];
 }
 

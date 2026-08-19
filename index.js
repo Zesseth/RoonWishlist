@@ -11,7 +11,6 @@ const lowQualityIgnore = require("./src/ignored_low_quality");
 const { ROON_WISHLIST_TAG, SyncError, syncTaggedAlbums, rebuildTaggedAlbums } = require("./src/roon_tag_sync");
 const { reconcileOnStartup, trackSyncHealth } = require("./src/roon_reconciliation");
 const { getStorageLocations } = require("./src/roon_storage");
-const { startScheduler, stopScheduler, isActive } = require("./src/nightly_scheduler");
 
 let roon, mysettings, svc_status;
 let pairedCore = null;
@@ -52,10 +51,6 @@ const roonApp = new RoonApi({
 
 mysettings = roonApp.load_config("settings") || {
   music_library_path: "",
-  qobuz_region: "fr",
-  nightly_enabled: false,
-  nightly_hour: 2,
-  nightly_minute: 0,
 };
 
 function renderWishlist(items) {
@@ -109,53 +104,6 @@ function make_layout(settings) {
     setting: "music_library_path",
   });
 
-  l.layout.push({
-    type: "dropdown",
-    title: "Qobuz region",
-    subtitle: "Select your region for better Qobuz search results.",
-    values: [
-      { title: "France", value: "fr" },
-      { title: "United States", value: "us" },
-      { title: "United Kingdom", value: "gb" },
-      { title: "Germany", value: "de" },
-      { title: "Italy", value: "it" },
-      { title: "Spain", value: "es" },
-      { title: "Netherlands", value: "nl" },
-      { title: "Belgium", value: "be" },
-      { title: "Austria", value: "at" },
-      { title: "Switzerland", value: "ch" },
-      { title: "Denmark", value: "dk" },
-      { title: "Sweden", value: "se" },
-      { title: "Norway", value: "no" },
-    ],
-    setting: "qobuz_region",
-  });
-
-  l.layout.push({
-    type: "group",
-    title: "Nightly automation",
-    items: [
-      {
-        type: "boolean",
-        title: "Enable nightly tasks",
-        subtitle: "Automatically refresh store links and scan for low-quality albums",
-        setting: "nightly_enabled",
-      },
-      {
-        type: "integer",
-        title: "Run time (hour)",
-        subtitle: "Hour of day (0-23)",
-        setting: "nightly_hour",
-      },
-      {
-        type: "integer",
-        title: "Run time (minute)",
-        subtitle: "Minute of hour (0-59)",
-        setting: "nightly_minute",
-      },
-    ],
-  });
-
   return l;
 }
 
@@ -185,24 +133,6 @@ async function performAction(values) {
   return "Settings saved";
 }
 
-async function runNightlyTasks() {
-  console.log("[nightly] Starting nightly tasks");
-  try {
-    // Run low-quality scan
-    const result = await runLowQualityScan();
-    console.log(`[nightly] Low-quality scan completed: added ${result.added}, already ${result.alreadyPresent}, ignored ${result.ignored}`);
-    
-    // Refresh store links by calling updateBuyLinks for all albums
-    const items = wishlist.getAll();
-    console.log(`[nightly] Refreshing buy links for ${items.length} albums`);
-    
-    svc_status.set_status(`Nightly tasks: scanned ${items.length} albums`, false);
-  } catch (err) {
-    console.error("[nightly] Error during nightly tasks:", err);
-    svc_status.set_status("Nightly tasks failed: " + err.message, false);
-  }
-}
-
 const svc_settings = new RoonApiSettings(roonApp, {
   get_settings(cb) {
     cb(make_layout(mysettings));
@@ -221,30 +151,11 @@ const svc_settings = new RoonApiSettings(roonApp, {
     req.send_complete(l.has_error ? "NotValid" : "Success", { settings: l });
 
     if (!isdryrun && !l.has_error) {
-      // Persist config
+      // Persist only durable config; action/artist/title are transient.
       mysettings = Object.assign({}, mysettings, {
         music_library_path: settings.values.music_library_path || "",
-        qobuz_region: settings.values.qobuz_region || "fr",
-        nightly_enabled: settings.values.nightly_enabled === true,
-        nightly_hour: Math.max(0, Math.min(23, parseInt(settings.values.nightly_hour, 10) || 2)),
-        nightly_minute: Math.max(0, Math.min(59, parseInt(settings.values.nightly_minute, 10) || 0)),
       });
       roonApp.save_config("settings", mysettings);
-
-      // Start/stop scheduler based on nightly_enabled setting
-      if (mysettings.nightly_enabled) {
-        try {
-          startScheduler(mysettings.nightly_hour, mysettings.nightly_minute, () => {
-            runNightlyTasks().catch((err) => {
-              console.error("[nightly] Task error:", err);
-            });
-          });
-        } catch (err) {
-          console.error("[nightly] Failed to start scheduler:", err);
-        }
-      } else {
-        stopScheduler();
-      }
 
       // A library scan can take a while; show immediate feedback and run it without
       // blocking this callback. Errors are reported via status, not send_complete

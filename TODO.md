@@ -5,7 +5,7 @@
 
 **Status markers:** `[ ]` not started · `[~]` in progress · `[x]` done · `[!]` blocked
 
-Last updated: 2026-08-19
+Last updated: 2026-07-28
 
 ---
 
@@ -85,12 +85,10 @@ Each item maps to a GitHub issue.
   - ❌ Track-level tagging — Not supported by Browse API (album-level only)
   See `ROON_API_LIMITATIONS.md` for details. **PR:** `feat/complete-roon-tagging`
 
-- [x] **#2 Add nightly automation for store link refresh and low-quality scans.** ✅ **COMPLETE (2026-08-19):**
-  - ✅ `src/nightly_scheduler.js` — timeout-based scheduler with daily run time
-  - ✅ Settings UI: enable/disable + hour (0-23) + minute (0-59) dropdowns
-  - ✅ `runNightlyTasks()` performs low-quality album scan
-  - ✅ Scheduler starts/stops based on nightly_enabled setting
-  - ✅ Progress reported via Roon status
+- [ ] **#2 Add nightly automation for store link refresh and low-quality scans.**
+  Add an optional nightly scheduler for the existing manual tasks: store-link refresh
+  / search and low-quality album scan. The user must be able to enable/disable it in
+  Settings and choose the daily run time from a 24-hour dropdown.
 
 - [~] **#15 Storage locations from Roon + full-album FLAC detection.** 
   - ✅ Recursive album scan, whole-album FLAC matching, `x/y` FLAC track counts
@@ -136,12 +134,8 @@ Each item maps to a GitHub issue.
   - ✅ Setup script: `setup.sh` (automated clone, install, verify)
   - ⏭️ Next: mocked HTTP tests for `lossless_checker.js` (deferred to v1.1)
 
-- [x] **#7 CI (GitHub Actions).** ✅ **COMPLETE (2026-08-19):**
-  - ✅ `.github/workflows/ci.yml` created
-  - ✅ Workflow triggers on push to main and pull requests
-  - ✅ Tests against Node.js 20.18.1 (minimum) and 22 (latest)
-  - ✅ Runs: npm ci && npm test
-  - ✅ Merged to main and pushed to GitHub
+- [ ] **#7 CI (GitHub Actions).** Workflow: install + lint + tests on PRs and merges
+  to main. Requires the `workflow` scope (already present on the token).
 
 - [ ] **#8 Configuration & logging.** Configurable port, log levels, environment
   variable / settings support, clean error logging.

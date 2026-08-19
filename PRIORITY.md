@@ -11,10 +11,11 @@ These are ready to implement and have clear acceptance criteria.
 
 | # | Issue | Description | GitHub Label | Branch | Notes |
 |---|-------|-------------|--------------|--------|-------|
-| 25 | Remove "Add an album" from Web UI | Simplify UI - manage wishlist only via Roon tags | `P0` | ✅ | Already complete in main |
-| 26 | Rename UI sections | "Wishlist" & "Low-quality albums" with proper functionality | `P0` | ✅ | Already complete in main |
+| 24 | Add Qobuz location setting | Allow users to set Qobuz region for better search results | `P0` | - | Currently defaults to France |
+| 25 | Remove "Add an album" from Web UI | Simplify UI - manage wishlist only via Roon tags | `P0` | `feat/ui-cleanup` | Combined with #26 |
+| 26 | Rename UI sections | "Wishlist" & "Low-quality albums" with proper functionality | `P0` | `feat/ui-cleanup` | Combined with #25 |
 
-**Next action:** Continue with P1 - #8 Configuration & logging
+**Next action:** Merge `feat/ui-cleanup` to main, then start #24
 
 ---
 
@@ -49,7 +50,6 @@ Nice to have, but not critical for core functionality.
 
 | # | Issue | Description | Completed | Branch |
 |---|-------|-------------|-----------|--------|
-| 24 | Add Qobuz location setting | Allow users to set Qobuz region for better search results | 2026-08-19 | main |
 | 23 | Update testing.md documentation | Clean up and split testing docs | 2026-06-25 | main |
 | 22 | Add low-quality scan to wishlist | Manual scan + web UI section | 2026-06-25 | feat/ui-cleanup |
 | 20 | Import Wishlist-tagged albums | Sync Roon tags to wishlist | 2026-06-22 | main |
