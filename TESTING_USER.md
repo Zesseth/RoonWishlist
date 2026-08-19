@@ -45,6 +45,12 @@ systemctl is-active roon-wishlist          # expect: active
 curl -s http://127.0.0.1:3141/status       # expect: "paired": true
 ```
 
+> **Already verified on this server (2026-08-19):** the service is `active`, paired with
+> `ParadoxRoon`, browse is available, and the deployed files match the branch. The
+> wishlist holds 136 albums (135 low-quality + 1 Roon-tagged). A live `/reconcile` ran
+> clean: it found the tag, added nothing, and — correctly — removed nothing, leaving all
+> 135 low-quality entries alone. So Step 1 and Test 1 are done; start from Test 2.
+
 If you want a fallback before upgrading:
 
 ```bash
@@ -118,6 +124,9 @@ These are quick and catch an upgrade that went wrong.
 6. Press **Remove** on any album
 7. **Expect:** it disappears from the list
 
+(Removing a low-quality album is harmless — the next *Scan low-quality albums now* puts
+it back.)
+
 ### Test 4 — Settings page
 
 1. Go to **Settings**
@@ -130,7 +139,11 @@ These are quick and catch an upgrade that went wrong.
 
 ### Test 5 — Empty states
 
-1. Remove every album from the wishlist
+> Do this **during Part 3**, when the wishlist holds fixture albums, not now. Emptying
+> the list here would throw away your 135 real low-quality entries. Rebuilding them is
+> possible but slow and pointless.
+
+1. With only fixture albums on the list, remove them all
 2. **Expect** in **Wishlist**: *Wishlist is empty. Tag albums with "Wishlist" in Roon to
    populate it.*
 3. **Expect** in **Low-quality albums**: *No low-quality albums on wishlist.*
