@@ -13,7 +13,7 @@ npm test          # node --test
 npm run test:watch
 ```
 
-**101 tests total**, roughly 1–2 seconds.
+**105 tests total**, roughly 1–2 seconds.
 
 ### `test/wishlist.test.js` — 26 tests
 
@@ -28,7 +28,7 @@ Pure unit tests, no network. ~20 ms.
 | `replaceAll()` | 6 | bulk replace, deduplication |
 | persistence | 2 | file I/O and recovery |
 
-### `test/lossless_checker.test.js` — 29 tests
+### `test/lossless_checker.test.js` — 33 tests
 
 Pure unit tests against temporary fixture directories; no network, no Roon.
 
@@ -40,6 +40,7 @@ Pure unit tests against temporary fixture directories; no network, no Roon.
 | `scanLibraries()` | 3 | multiple roots, per-location counts, a missing root |
 | `mergeAlbumsAcrossLocations()` | 2 | best copy wins, duplicates collapse |
 | `checkAndClean()` | 7 | removal rules and the kept-with-reason reporting |
+| persisted `lastCheck` | 4 | status written to the entry, no write when unchanged, survives a module without `upsert()` |
 | `scanLowQualityAlbums()` | 4 | what gets added, the ignore list, recorded quality |
 
 ### `test/scan_locations.test.js` — 29 tests

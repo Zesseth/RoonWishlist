@@ -57,6 +57,38 @@ titled settings entry on some versions. The `not-exposed` diagnostic now prints 
 entries Roon actually offered, which is the evidence needed to answer that without
 shell access to the server logs.
 
+## No list or table widget in the native settings UI — worked around, 2026-08-19
+
+Issue #15 asked for a **per-wishlist-entry status** (not found / found lossy, kept /
+found lossless, removed) inside Roon's own settings screen.
+
+`node-roon-api-settings` does not validate the layout it is given — the Roon client
+decides what it renders — and the client has **no table, list or repeater widget**. So
+an interactive, sortable, per-row status list is genuinely not available.
+
+What *is* available is the `label` widget, which renders multi-line text. The wishlist
+was already shown that way, so the status is appended to each line:
+
+```
+1. Tool — Lateralus
+     ↳ in library, only partly lossless — still wanted (1/2 tracks lossless)
+2. Portishead — Dummy
+     ↳ in library, lossy — still wanted
+3. Nobody — Nothing
+     ↳ not in library
+```
+
+For this to survive a restart the entry has to carry its own state, so `checkAndClean()`
+now writes a `lastCheck` object (`status`, `reason`, `checkedAt`, `foundAt`,
+`losslessTracks`, `totalTracks`) onto each kept wishlist entry. It is skipped when the
+outcome is unchanged, so a scheduled scan over an unchanged library performs no writes.
+`owned-lossless` never appears in this list — those entries have just been removed.
+
+**Remaining limitation:** the status is read-only text with no interaction — you cannot
+click an entry in Roon's settings to act on it. Anything interactive stays in the web
+UI, which was the agreed division of labour: Roon's settings screen carries
+configuration, the web page carries the data.
+
 ## Investigation Results
 
 The Roon Extension SDK (`node-roon-api-browse`) provides:

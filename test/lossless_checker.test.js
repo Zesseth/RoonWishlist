@@ -277,6 +277,52 @@ describe("checkAndClean()", () => {
     assert.deepStrictEqual(result.removed, []);
     assert.deepStrictEqual(result.kept, []);
   });
+
+  it("records the check outcome on the kept wishlist entry", async () => {
+    // The status has to survive a restart: Roon's settings screen can only render
+    // text it is given, so the entry itself must carry its last known state.
+    const stub = makeWishlistStub([{ artist: "Tool", title: "Lateralus" }]);
+    await lossless.checkAndClean(locationPath("libA"), stub);
+
+    const entry = stub._state[0];
+    assert.strictEqual(entry.lastCheck.status, "owned-mixed");
+    assert.strictEqual(entry.lastCheck.losslessTracks, 1);
+    assert.strictEqual(entry.lastCheck.totalTracks, 2);
+    assert.ok(entry.lastCheck.reason.length);
+    assert.ok(!Number.isNaN(Date.parse(entry.lastCheck.checkedAt)));
+  });
+
+  it("records a not-found outcome too", async () => {
+    const stub = makeWishlistStub([{ artist: "Nobody", title: "Nothing" }]);
+    await lossless.checkAndClean(locationPath("libA"), stub);
+
+    assert.strictEqual(stub._state[0].lastCheck.status, "not-found");
+    assert.strictEqual(stub._state[0].lastCheck.foundAt, null);
+  });
+
+  it("does not rewrite the entry when the outcome is unchanged", async () => {
+    // Avoid a wishlist.json write per album on every scheduled scan.
+    const stub = makeWishlistStub([{ artist: "Portishead", title: "Dummy" }]);
+    await lossless.checkAndClean(locationPath("libA"), stub);
+
+    let writes = 0;
+    const inner = stub.upsert;
+    stub.upsert = (album) => {
+      writes += 1;
+      return inner(album);
+    };
+    await lossless.checkAndClean(locationPath("libA"), stub);
+
+    assert.strictEqual(writes, 0);
+  });
+
+  it("survives a wishlist module that cannot persist status", async () => {
+    const stub = makeWishlistStub([{ artist: "Portishead", title: "Dummy" }]);
+    delete stub.upsert;
+    const result = await lossless.checkAndClean(locationPath("libA"), stub);
+
+    assert.strictEqual(result.kept.length, 1);
+  });
 });
 
 describe("scanLowQualityAlbums()", () => {

@@ -373,7 +373,9 @@ async function checkAndClean(locations, wishlistModule) {
       continue;
     }
 
-    kept.push({ ...details, reason: KEEP_REASONS[status] || KEEP_REASONS["not-found"] });
+    const reason = KEEP_REASONS[status] || KEEP_REASONS["not-found"];
+    kept.push({ ...details, reason });
+    persistLastCheck(wishlistModule, item, { status, reason, details });
   }
 
   return {
@@ -386,8 +388,40 @@ async function checkAndClean(locations, wishlistModule) {
   };
 }
 
-async function scanLowQualityAlbums(locations, wishlistModule, ignoreModule) {
-  const roots = normalizeLocations(locations);
+/**
+ * Record the outcome of the last library check on the wishlist entry itself, so the
+ * status survives a restart and can be shown in Roon's settings screen (which can
+ * only render text, not an interactive table).
+ */
+function persistLastCheck(wishlistModule, item, { status, reason, details }) {
+  if (!wishlistModule || typeof wishlistModule.upsert !== "function") return;
+  const lastCheck = {
+    status,
+    reason,
+    checkedAt: new Date().toISOString(),
+    foundAt: details.foundAt,
+    losslessTracks: details.losslessTracks,
+    totalTracks: details.totalTracks,
+  };
+  if (item.lastCheck && sameLastCheck(item.lastCheck, lastCheck)) return;
+  try {
+    wishlistModule.upsert({ artist: item.artist, title: item.title, lastCheck });
+  } catch (err) {
+    // Persisting status is a convenience; never let it fail a scan.
+    console.warn(`Could not persist check status for ${item.artist} — ${item.title}: ${err.message}`);
+  }
+}
+
+function sameLastCheck(a, b) {
+  return (
+    a.status === b.status &&
+    a.foundAt === b.foundAt &&
+    a.losslessTracks === b.losslessTracks &&
+    a.totalTracks === b.totalTracks
+  );
+}
+
+async function scanLowQualityAlbums(locations, wishlistModule, ignoreModule) {  const roots = normalizeLocations(locations);
   const { albums, errors, perLocation } = await scanLibraries(roots);
   const localAlbums = mergeAlbumsAcrossLocations(albums);
   const existingKeys = new Set(

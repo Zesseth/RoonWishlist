@@ -443,6 +443,33 @@ result would not.
 3. **Verify:** Roon -> Settings -> Extensions lists **both** "Wishlist" and
    "Wishlist (test)"
 
+### Test I: Per-album status in Roon's own settings screen
+
+Roon's settings UI has no table widget, so the status is written into the wishlist
+text itself.
+
+1. Run any scan (**Refresh & clean** or **Clear & rebuild low-quality albums**)
+2. Open **Roon -> Settings -> Extensions -> Wishlist -> Settings**
+3. **Verify:** under "Current wishlist", each album now has a second line, e.g.
+
+   ```
+   1. Tool — Lateralus
+        ↳ in library, only partly lossless — still wanted (1/10 tracks lossless)
+   2. Portishead — Dummy
+        ↳ in library, lossy — still wanted
+   3. Nobody — Nothing
+        ↳ not in library
+   ```
+
+4. **Verify:** an album you added by hand and have not scanned yet shows **no** second
+   line (rather than a misleading "not in library")
+5. Restart the extension (`sudo systemctl restart roon-wishlist`) and reopen the
+   settings screen. **Verify:** the statuses are still there — they are stored on the
+   wishlist entry, not held in memory.
+
+Note that albums found as a complete lossless copy never appear here: they have just
+been removed from the wishlist, which is the whole point.
+
 ### What to report
 
 For each test, note pass/fail and — if it failed — what you saw instead. Post it on

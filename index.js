@@ -80,7 +80,28 @@ if (!Array.isArray(mysettings.excluded_storage_locations)) {
 
 function renderWishlist(items) {
   if (!items.length) return "Wishlist is empty.";
-  return items.map((a, i) => `${i + 1}. ${a.artist} — ${a.title}`).join("\n");
+  return items.map((a, i) => `${i + 1}. ${a.artist} — ${a.title}${renderCheckStatus(a.lastCheck)}`).join("\n");
+}
+
+const CHECK_STATUS_LABELS = {
+  "owned-lossy": "in library, lossy — still wanted",
+  "owned-mixed": "in library, only partly lossless — still wanted",
+  "not-audio": "folder found but no audio files",
+  "not-found": "not in library",
+};
+
+/**
+ * Roon's settings UI has no table widget, so the per-album status is appended to the
+ * text label instead. `owned-lossless` never appears here: those entries are removed.
+ */
+function renderCheckStatus(lastCheck) {
+  if (!lastCheck || !lastCheck.status) return "";
+  const label = CHECK_STATUS_LABELS[lastCheck.status];
+  if (!label) return "";
+  if (lastCheck.status === "owned-mixed" && lastCheck.totalTracks) {
+    return `\n     ↳ ${label} (${lastCheck.losslessTracks}/${lastCheck.totalTracks} tracks lossless)`;
+  }
+  return `\n     ↳ ${label}`;
 }
 
 // Read-only summary of where scans will look. Roon has no table widget, so this is
