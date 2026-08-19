@@ -82,7 +82,7 @@ async function loadAllItems(browseService, hierarchy, sessionKey, level) {
   return items;
 }
 
-async function openLevel(browseService, { hierarchy, sessionKey, itemKey, input, popAll }) {
+async function openLevel(browseService, { hierarchy, sessionKey, itemKey, input, popAll, allowEmpty }) {
   const browseOpts = {
     hierarchy,
     multi_session_key: sessionKey,
@@ -93,6 +93,9 @@ async function openLevel(browseService, { hierarchy, sessionKey, itemKey, input,
 
   const body = await browseAsync(browseService, browseOpts);
   if (body.action === "message") {
+    // Roon answers an empty tag with a message rather than an empty list. The caller
+    // already knows the tag exists, so "nothing to show" is a result, not a failure.
+    if (allowEmpty) return { hierarchy, items: [], list: null };
     throw new SyncError(body.message || "Roon browse returned an error.", body.is_error === false ? 400 : 502);
   }
   if (body.action !== "list") {
@@ -136,6 +139,7 @@ async function openTagViaBrowseTree(browseService, tagName, sessionKey) {
     hierarchy: "browse",
     sessionKey,
     itemKey: tagItem.item_key,
+    allowEmpty: true,
   });
 }
 
@@ -153,6 +157,7 @@ async function openTagViaSearch(browseService, tagName, sessionKey) {
       hierarchy: "search",
       sessionKey,
       itemKey: tagItem.item_key,
+      allowEmpty: true,
     });
   }
 
@@ -171,6 +176,7 @@ async function openTagViaSearch(browseService, tagName, sessionKey) {
     hierarchy: "search",
     sessionKey,
     itemKey: tagItem.item_key,
+    allowEmpty: true,
   });
 }
 
@@ -267,8 +273,23 @@ async function listTaggedAlbumsDetailed(browseService, tagName) {
     return { albums: [], tagFound: false };
   }
 
+  // A tag that still exists but holds nothing opens as an empty level. That is not a
+  // failure to read the tag - it is the answer, and it is the whole point of the
+  // "I untagged everything" case, so it must not be reported as an error.
+  const actionable = (tagLevel.items || []).filter(
+    (item) => item && item.item_key && item.hint !== "header" && !isTagAction(item),
+  );
+  if (!actionable.length) {
+    return { albums: [], tagFound: true };
+  }
+
   const albumLevel = await openAlbumLevelFromTag(browseService, tagLevel, sessionKey);
   return { albums: mapAlbumItems(albumLevel.items), tagFound: true };
+}
+
+/** "Play Tag", "Shuffle Tag" and friends are offered even when the tag holds nothing. */
+function isTagAction(item) {
+  return NON_ALBUM_ACTION_TITLES.has(normalizeTitle(item && item.title));
 }
 
 async function listTaggedAlbums(browseService, tagName) {

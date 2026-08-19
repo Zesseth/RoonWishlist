@@ -107,6 +107,53 @@ describe("listTaggedAlbumsDetailed()", () => {
     assert.deepStrictEqual(albums, []);
   });
 
+  it("reads a tag that still exists but holds nothing as empty", async () => {
+    // Untagging every album leaves the tag in place but with no albums under it. This
+    // used to throw "the album list could not be opened" - the one case where the
+    // wishlist most needs clearing was the case that failed.
+    const browse = fakeBrowse({
+      root: [{ item_key: "lib", title: "Library" }],
+      lib: [{ item_key: "tags", title: "Tags" }],
+      tags: [{ item_key: "tag", title: "Wishlist" }],
+      tag: [],
+    });
+
+    const { albums, tagFound } = await tagSync.listTaggedAlbumsDetailed(browse, "Wishlist");
+    assert.strictEqual(tagFound, true);
+    assert.deepStrictEqual(albums, []);
+  });
+
+  it("treats an empty tag offering only Play/Shuffle actions as empty", async () => {
+    // Roon still offers the tag's actions when it holds no albums.
+    const browse = fakeBrowse({
+      root: [{ item_key: "lib", title: "Library" }],
+      lib: [{ item_key: "tags", title: "Tags" }],
+      tags: [{ item_key: "tag", title: "Wishlist" }],
+      tag: [
+        { item_key: "p", title: "Play Tag" },
+        { item_key: "s", title: "Shuffle Tag" },
+      ],
+    });
+
+    const { albums, tagFound } = await tagSync.listTaggedAlbumsDetailed(browse, "Wishlist");
+    assert.strictEqual(tagFound, true);
+    assert.deepStrictEqual(albums, []);
+  });
+
+  it("treats a Roon 'nothing to show' message on the tag as empty", async () => {
+    // Roon answers an empty tag with a message rather than an empty list.
+    const browse = fakeBrowse({
+      root: [{ item_key: "lib", title: "Library" }],
+      lib: [{ item_key: "tags", title: "Tags" }],
+      tags: [{ item_key: "tag", title: "Wishlist" }],
+      // "tag" is absent from levels, so the stub replies with a message action.
+    });
+
+    const { albums, tagFound } = await tagSync.listTaggedAlbumsDetailed(browse, "Wishlist");
+    assert.strictEqual(tagFound, true);
+    assert.deepStrictEqual(albums, []);
+  });
+
   it("still throws when there is no browse service at all", async () => {
     // Not being able to look must never be mistaken for an empty tag.
     await assert.rejects(() => tagSync.listTaggedAlbumsDetailed(null, "Wishlist"), /browse access/i);
