@@ -8,10 +8,16 @@ A Roon Extension — a wishlist for albums you don't yet own in lossless quality
 - **Web UI**: A simple browser interface to view, add, remove and search albums
 - **Roon tag sync**: Import albums tagged `Wishlist` from Roon into the app wishlist
 - **Search**: Looks up the album on Bandcamp and Qobuz
-- **Low-quality scan**: Finds local albums that are not fully FLAC and adds them to
-  the wishlist
-- **Auto-clean**: When a wishlist album is fully FLAC in your local library, it is
-  automatically removed from the wishlist
+- **Low-quality scan**: Finds local albums that are not fully lossless and adds them
+  to the wishlist
+- **Auto-clean**: When you own a **complete lossless copy** of a wishlist album, it is
+  automatically removed from the wishlist. An album that is only partly lossless is
+  kept, and the result says why.
+- **Music folders you configure**: You tell the extension which folders to scan.
+  Several folders can be given, separated by a semicolon, and any of them excluded.
+  Roon does **not** hand its storage folders to extensions — measured on Roon 2.71, and
+  the SDK registers no service that could carry them — so this is set here, not read
+  from Roon. See [issue #15](https://github.com/Zesseth/RoonWishlist/issues/15).
 
 > **Where is the UI in Roon?** Roon's public extension API only lets an extension draw
 > a UI on its **Settings** screen — it does **not** allow extensions to add their own
@@ -143,9 +149,10 @@ existing install and restarts the service.
 After either option, on any device with Roon open:
 
 1. Go to **Settings → Extensions**. You should see **Wishlist** listed and paired.
-2. Click its **Settings**. Set the **Music library path** (the folder where your
-   music files live on that machine, e.g. `/mnt/music`).
-3. Use the **Action** menu to add/remove albums, run *Refresh & clean*, or run the
+2. Click its **Settings**. Set the **Music library path** to where your music lives
+   (e.g. `/music`), separating several folders with a semicolon. The list above it
+   shows what will actually be scanned, and any folder can be excluded.
+3. Use the **Action** menu to remove an album, run *Refresh & clean*, or run the
    low-quality scan. The menu is drawn by Roon itself — pick an action, fill the
    fields if they appear, press **Save**.
 
@@ -155,12 +162,15 @@ The extension also serves a small **web interface** — this is the easiest way 
 the wishlist. The top-left menu has three views: **Wishlist** (home, current wishlist
 and low-quality scan section), **Add an album** (add/search), and **Settings** (library
 path + scan/clean). From the browser you can view the list, add/remove albums,
-**search Bandcamp/Qobuz and add straight from the results**, **sync albums tagged
-`Wishlist` from Roon**, set the **music library path**, run a **library scan & clean**,
-run a **low-quality scan** that adds albums which are not fully FLAC, and see whether
-the extension is **paired** with your Roon Core. The Wishlist view also shows the
-stored buy links for synced albums and, for low-quality finds, the current **FLAC x/y**
-track count plus an **Ignore** action so that a special version is not re-added on the
+**search Bandcamp/Qobuz for buy links**, **sync albums tagged
+`Wishlist` from Roon**, set your **music folders**, rebuild the **low-quality
+albums** list,
+run a **low-quality scan** that adds albums which are not fully lossless, and see
+whether the extension is **paired** with your Roon Core. The **Settings** view is where
+you configure the **music folders** to scan; it accepts **several folders separated by a
+semicolon**, and each one can be excluded without deleting it.
+The Wishlist view shows the stored buy links for synced albums and, for low-quality
+finds, the current **x/y lossless tracks** count plus an **Ignore** action so that a special version is not re-added on the
 next scan. The **Settings** view also includes a **Danger Zone** action that clears the
 whole wishlist and rebuilds it from scratch using only albums currently tagged
 `Wishlist` in Roon.
@@ -291,9 +301,10 @@ Leave this window open — the extension runs as long as this command runs. Pres
 
 1. Open Roon → **Settings → Extensions → Wishlist** (it should appear and pair
    automatically).
-2. Open its **Settings**, set the **Music library path** (e.g. `D:\Music` on Windows,
-   `/Users/you/Music` on macOS).
-3. Use the **Action** menu to add/remove albums or run *Refresh & clean* — pick an
+2. Open its **Settings** and set the **Music library path** (e.g. `D:\Music` on
+   Windows, `/Users/you/Music` on macOS). Roon does not supply this, so it has to be
+   set here.
+3. Use the **Action** menu to remove an album or run *Refresh & clean* — pick an
    action, fill the fields if shown, press **Save**.
 
 ---
@@ -307,10 +318,31 @@ Leave this window open — the extension runs as long as this command runs. Pres
 | `ROON_WISHLIST_DATA_DIR` | `<repo>/data` | Where `wishlist.json` is stored. |
 | `ROON_WISHLIST_HTTP_HOST` | `127.0.0.1` | HTTP API bind address. Set to `0.0.0.0` to expose it on the LAN (⚠️ this makes the control API reachable by other machines — use with care). |
 | `ROON_WISHLIST_HTTP_PORT` | `3141` | HTTP API port. |
+| `ROON_WISHLIST_EXTENSION_ID` | `com.zesseth.roon-wishlist` | How Roon identifies this extension. Change it **only** to run a second instance beside the first — two processes sharing an id fight over the pairing. `install.sh --instance NAME` sets this for you. |
+| `ROON_WISHLIST_DISPLAY_NAME` | `Wishlist` | Name shown in Roon's extension list and in the web UI header. |
 
 > Note: the Roon pairing token is stored in `config.json` in the service's working
 > directory, so the service user must own the install directory (the script handles
 > this).
+
+### Running a second instance
+
+To try a branch without disturbing the install you rely on, install it under an
+instance name:
+
+```bash
+sudo ./install.sh --web --instance test
+```
+
+Each named instance gets its own systemd service, install directory, data directory,
+default port (3142) and Roon extension id, so both appear separately in Roon's
+extension list and neither disturbs the other. Remove it again with:
+
+```bash
+sudo ./install.sh --uninstall --instance test
+```
+
+The data directory is deliberately left behind so nothing is lost.
 
 You can override the install location and these settings by passing them to either
 script:
@@ -351,10 +383,17 @@ use can go through the native Roon settings menu described above.
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/wishlist` | Get all wishlist albums |
-| POST | `/wishlist/add` | Add an album `{"artist":"...","title":"..."}` |
+| GET | `/wishlist/roon-tag` | Tagged albums still worth buying |
+| GET | `/wishlist/owned-lossless` | Tagged albums already owned in full lossless |
+| GET | `/wishlist/low-quality` | Albums the library scan found in less than lossless |
 | POST | `/wishlist/remove` | Remove an album `{"artist":"...","title":"..."}` |
 | GET | `/search?artist=&title=` | Get buy links from Bandcamp/Qobuz |
 | POST | `/check-lossless` | Check the library and clean up the wishlist |
+| GET | `/roon-tag/write-support` | Ask Roon, read-only, whether it offers any tag-editing action |
+
+There is deliberately no "add an album" endpoint. The wishlist is derived from Roon's
+`Wishlist` tag and from the library scan; adding entries by hand would only produce
+rows that neither source can ever clean up.
 
 ## Project structure
 
@@ -366,7 +405,7 @@ src/
   lossless_checker.js ← Library check, auto-remove
   roon_tag_sync.js    ← Sync albums from Roon's "Wishlist" tag
   roon_reconciliation.js ← Auto-sync on startup, sync health tracking
-  roon_storage.js     ← Read storage locations from Roon
+  roon_storage.js     ← Probe: does this Roon expose storage folders? (it does not)
 deploy/
   roon-wishlist.service ← systemd unit template (manual installs)
 bootstrap.sh          ← one-command Linux installer (installs git/Node, clones, runs install.sh)
@@ -377,16 +416,19 @@ data/
 
 ## Documentation
 
-- [`ROON_API_LIMITATIONS.md`](./ROON_API_LIMITATIONS.md) — Known limitations with Roon Extension SDK (e.g., tag write-back not supported)
-- [`TESTING_USER.md`](./TESTING_USER.md) — User-facing testing guide
-- [`TESTING_TECH.md`](./TESTING_TECH.md) — Technical testing and development guide
+- [`docs/DEVELOPMENT.md`](./docs/DEVELOPMENT.md) — Running it locally, automated tests, environment variables
+- [`docs/ROON_API_LIMITATIONS.md`](./docs/ROON_API_LIMITATIONS.md) — Known limitations with the Roon Extension SDK (e.g., tag write-back not supported)
 
-### Planning and issue tracking
+### Planning, issue tracking and manual testing
 
 All planning, priorities and status live in
 **[GitHub Issues](https://github.com/Zesseth/RoonWishlist/issues)** — that is the single
 source of truth. The repository intentionally contains no `TODO.md` or `PRIORITY.md`,
 because duplicated tracking files drift out of sync with the issues.
+
+Manual test checklists live on the issue or pull request they belong to, for the same
+reason: a checklist committed to the repo describes one branch at one moment. See
+[`docs/DEVELOPMENT.md`](./docs/DEVELOPMENT.md#manual-acceptance-testing).
 
 ## License
 

@@ -35,15 +35,10 @@ async function reconcileOnStartup({ browseService, wishlist, searchAll, tagName,
   try {
     // Try to get Roon-tagged albums
     const roonTagSync = require("./roon_tag_sync");
-    const taggedAlbums = await roonTagSync.listTaggedAlbums(browseService, tagName);
-
-    if (!taggedAlbums || taggedAlbums.length === 0) {
-      return {
-        status: "completed",
-        reconciled: 0,
-        reason: "No Roon-tagged albums found",
-      };
-    }
+    const { albums: taggedAlbums, tagFound } = await roonTagSync.listTaggedAlbumsDetailed(
+      browseService,
+      tagName,
+    );
 
     // Check for discrepancies
     const currentWishlist = wishlist.getAll();
@@ -83,13 +78,31 @@ async function reconcileOnStartup({ browseService, wishlist, searchAll, tagName,
       }
     }
 
+    // Roon is the master: an album untagged in Roon has to go from the wishlist too.
+    // Only entries that came from the tag are eligible - manual ones belong to the user.
+    const removedAlbums = [];
+    for (const entry of currentWishlist) {
+      if (entry.source !== "roon-tag") continue;
+      if (roonMap.has(normalizeKey(entry.artist, entry.title))) continue;
+      try {
+        if (wishlist.remove(entry)) {
+          removedAlbums.push({ artist: entry.artist, title: entry.title });
+        }
+      } catch {
+        // Ignore individual remove errors
+      }
+    }
+
     return {
       status: "completed",
       reconciled: added,
       tagName,
+      tagFound,
       totalRoonTagged: taggedAlbums.length,
       currentWishlist: currentWishlist.length,
       newlyAdded: added,
+      removed: removedAlbums.length,
+      removedAlbums,
     };
   } catch (err) {
     console.warn("Reconciliation error:", err.message);

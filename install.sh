@@ -14,6 +14,12 @@
 #   sudo ./install.sh
 #   sudo ./install.sh --web
 #
+# To try a branch without disturbing the install you rely on, give it an instance
+# name. Each instance gets its own service, port, data directory and Roon extension
+# id, so both can be paired in Roon at the same time:
+#   sudo ./install.sh --web --instance test
+#   sudo ./install.sh --uninstall --instance test
+#
 # Override defaults with environment variables:
 #   INSTALL_DIR=/opt/roon-wishlist \
 #   DATA_DIR=/var/lib/roon-wishlist \
@@ -28,11 +34,17 @@ info() { echo ">>> $*"; }
 show_help() {
   cat <<'EOF'
 Usage:
-  sudo ./install.sh [--web]
+  sudo ./install.sh [--web] [--instance NAME]
+  sudo ./install.sh --uninstall [--instance NAME]
 
 Options:
-  --web, -web, -w   Expose the web UI/API on the LAN by setting HTTP_HOST=0.0.0.0
-  --help, -h        Show this help
+  --web, -web, -w    Expose the web UI/API on the LAN by setting HTTP_HOST=0.0.0.0
+  --instance NAME    Install as a separate, parallel instance. Gets its own service
+                     name, install dir, data dir, default port and Roon extension id,
+                     so it can run beside the main install without either disturbing
+                     the other. Omit for the normal single install.
+  --uninstall        Stop, disable and remove the (optionally named) instance.
+  --help, -h         Show this help
 
 Environment overrides:
   INSTALL_DIR=/opt/roon-wishlist
@@ -45,22 +57,37 @@ Examples:
   sudo ./install.sh
   sudo ./install.sh --web
   sudo HTTP_PORT=4242 ./install.sh --web
+  sudo ./install.sh --web --instance test
+  sudo ./install.sh --uninstall --instance test
 EOF
 }
 
-INSTALL_DIR="${INSTALL_DIR:-/opt/roon-wishlist}"
-DATA_DIR="${DATA_DIR:-/var/lib/roon-wishlist}"
 SERVICE_USER="${SERVICE_USER:-roon}"
-SERVICE_NAME="roon-wishlist"
-HTTP_HOST="${HTTP_HOST:-127.0.0.1}"
-HTTP_PORT="${HTTP_PORT:-3141}"
+HTTP_HOST_SET="${HTTP_HOST:-}"
+HTTP_PORT_SET="${HTTP_PORT:-}"
+INSTALL_DIR_SET="${INSTALL_DIR:-}"
+DATA_DIR_SET="${DATA_DIR:-}"
+INSTANCE=""
+UNINSTALL="no"
+WEB="no"
 
 SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --web|-web|-w)
-      HTTP_HOST="0.0.0.0"
+      WEB="yes"
+      ;;
+    --instance)
+      shift
+      [ "$#" -gt 0 ] || err "--instance needs a name, e.g. '--instance test'"
+      INSTANCE="$1"
+      ;;
+    --instance=*)
+      INSTANCE="${1#*=}"
+      ;;
+    --uninstall)
+      UNINSTALL="yes"
       ;;
     --help|-h)
       show_help
@@ -73,7 +100,54 @@ while [ "$#" -gt 0 ]; do
   shift
 done
 
+# An instance name must be safe to embed in a unit name and a path.
+if [ -n "$INSTANCE" ]; then
+  case "$INSTANCE" in
+    *[!A-Za-z0-9_-]*) err "Instance name may only contain letters, digits, '-' and '_': $INSTANCE" ;;
+  esac
+fi
+
+# Named instances are fully separate: different service, paths, port and Roon
+# extension id. Sharing an extension id would make the two instances fight over the
+# Roon pairing, which is exactly what a side-by-side test must avoid.
+if [ -n "$INSTANCE" ]; then
+  SERVICE_NAME="roon-wishlist-${INSTANCE}"
+  INSTALL_DIR="${INSTALL_DIR_SET:-/opt/roon-wishlist-${INSTANCE}}"
+  DATA_DIR="${DATA_DIR_SET:-/var/lib/roon-wishlist-${INSTANCE}}"
+  DEFAULT_PORT=3142
+  EXTENSION_ID="com.zesseth.roon-wishlist.${INSTANCE}"
+  DISPLAY_NAME="Wishlist (${INSTANCE})"
+else
+  SERVICE_NAME="roon-wishlist"
+  INSTALL_DIR="${INSTALL_DIR_SET:-/opt/roon-wishlist}"
+  DATA_DIR="${DATA_DIR_SET:-/var/lib/roon-wishlist}"
+  DEFAULT_PORT=3141
+  EXTENSION_ID="com.zesseth.roon-wishlist"
+  DISPLAY_NAME="Wishlist"
+fi
+
+HTTP_PORT="${HTTP_PORT_SET:-$DEFAULT_PORT}"
+HTTP_HOST="${HTTP_HOST_SET:-127.0.0.1}"
+[ "$WEB" = "yes" ] && HTTP_HOST="0.0.0.0"
+
 [ "$(id -u)" -eq 0 ] || err "Please run as root (e.g. 'sudo ./install.sh')."
+
+if [ "$UNINSTALL" = "yes" ]; then
+  info "Removing ${SERVICE_NAME}"
+  systemctl disable --now "${SERVICE_NAME}.service" 2>/dev/null || true
+  rm -f "/etc/systemd/system/${SERVICE_NAME}.service"
+  systemctl daemon-reload
+  rm -rf "$INSTALL_DIR"
+  cat <<EOF
+
+Removed service ${SERVICE_NAME} and ${INSTALL_DIR}.
+
+The data directory was kept so nothing is lost:
+  ${DATA_DIR}
+Delete it yourself if you really want the wishlist gone.
+EOF
+  exit 0
+fi
 
 # --- Prerequisites -----------------------------------------------------------
 # Detect the system package manager (best-effort; used to auto-install git/node).
@@ -180,13 +254,28 @@ fi
 info "Installing application to $INSTALL_DIR"
 mkdir -p "$INSTALL_DIR"
 # Copy the repo contents but never the local node_modules / .git / data.
+#
+# config.json must survive an upgrade: node-roon-api writes the Roon pairing token
+# there, inside the working directory. Without the exclusion below, `rsync --delete`
+# removes it on every upgrade and the extension silently falls back to unpaired,
+# forcing the user to re-enable it in Roon and losing the tag sync until they notice.
 if command -v rsync >/dev/null 2>&1; then
   rsync -a --delete \
     --exclude '.git' --exclude 'node_modules' --exclude 'data' \
+    --exclude 'config.json' \
     "$SRC_DIR"/ "$INSTALL_DIR"/
 else
+  PRESERVED_CONFIG=""
+  if [ -f "$INSTALL_DIR/config.json" ]; then
+    PRESERVED_CONFIG="$(mktemp)"
+    cp -a "$INSTALL_DIR/config.json" "$PRESERVED_CONFIG"
+  fi
   cp -a "$SRC_DIR"/. "$INSTALL_DIR"/
   rm -rf "$INSTALL_DIR/.git" "$INSTALL_DIR/node_modules" "$INSTALL_DIR/data"
+  if [ -n "$PRESERVED_CONFIG" ]; then
+    cp -a "$PRESERVED_CONFIG" "$INSTALL_DIR/config.json"
+    rm -f "$PRESERVED_CONFIG"
+  fi
 fi
 
 # --- Install production dependencies (https only, no SSH keys needed) ---------
@@ -217,6 +306,8 @@ Environment=NODE_ENV=production
 Environment=ROON_WISHLIST_DATA_DIR=${DATA_DIR}
 Environment=ROON_WISHLIST_HTTP_HOST=${HTTP_HOST}
 Environment=ROON_WISHLIST_HTTP_PORT=${HTTP_PORT}
+Environment=ROON_WISHLIST_EXTENSION_ID=${EXTENSION_ID}
+Environment=ROON_WISHLIST_DISPLAY_NAME=${DISPLAY_NAME}
 # Be a quiet neighbour to Roon Server on the same box: lower CPU/IO priority and cap
 # the V8 heap. Soft/relative limits so the extension yields under contention without
 # being OOM-killed mid-scan.
@@ -251,7 +342,7 @@ cat <<EOF
 Done. RoonWishlist is installed and running.
 
 Next steps:
-  1. Open Roon -> Settings -> Extensions and confirm "Wishlist" is enabled/paired.
+  1. Open Roon -> Settings -> Extensions and confirm "${DISPLAY_NAME}" is enabled/paired.
   2. Open its settings to set the "Music library path" and use the Actions menu.
   3. Open the web UI in a browser: http://${HTTP_HOST}:${HTTP_PORT}
      (to reach it from another computer, re-run with HTTP_HOST=0.0.0.0 and use
@@ -262,6 +353,8 @@ Useful commands:
   journalctl -u ${SERVICE_NAME} -f        # live logs
   systemctl restart ${SERVICE_NAME}       # restart after an update
 
+Service:      ${SERVICE_NAME}
+Roon shows:   ${DISPLAY_NAME}
 Install dir:  ${INSTALL_DIR}
 Data dir:     ${DATA_DIR}
 Web UI / API: http://${HTTP_HOST}:${HTTP_PORT}
