@@ -416,16 +416,19 @@ data/
 
 ## Documentation
 
-- [`ROON_API_LIMITATIONS.md`](./ROON_API_LIMITATIONS.md) — Known limitations with Roon Extension SDK (e.g., tag write-back not supported)
-- [`TESTING_USER.md`](./TESTING_USER.md) — User-facing testing guide
-- [`TESTING_TECH.md`](./TESTING_TECH.md) — Technical testing and development guide
+- [`docs/DEVELOPMENT.md`](./docs/DEVELOPMENT.md) — Running it locally, automated tests, environment variables
+- [`docs/ROON_API_LIMITATIONS.md`](./docs/ROON_API_LIMITATIONS.md) — Known limitations with the Roon Extension SDK (e.g., tag write-back not supported)
 
-### Planning and issue tracking
+### Planning, issue tracking and manual testing
 
 All planning, priorities and status live in
 **[GitHub Issues](https://github.com/Zesseth/RoonWishlist/issues)** — that is the single
 source of truth. The repository intentionally contains no `TODO.md` or `PRIORITY.md`,
 because duplicated tracking files drift out of sync with the issues.
+
+Manual test checklists live on the issue or pull request they belong to, for the same
+reason: a checklist committed to the repo describes one branch at one moment. See
+[`docs/DEVELOPMENT.md`](./docs/DEVELOPMENT.md#manual-acceptance-testing).
 
 ## License
 

@@ -436,7 +436,7 @@ const TAG_EDIT_TITLES = new Set([
 /**
  * Asks Roon, read-only, whether an album offers any tag-editing action.
  *
- * `ROON_API_LIMITATIONS.md` records that the Browse API exposes no tag writes, so the
+ * `docs/ROON_API_LIMITATIONS.md` records that the Browse API exposes no tag writes, so the
  * extension cannot untag an album on the user's behalf. That claim was made from
  * reading the SDK rather than from asking a real core, and it decides a feature the
  * user asked for, so this measures it instead: it navigates into the first tagged

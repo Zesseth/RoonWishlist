@@ -114,8 +114,27 @@ a music server — be a quiet neighbour):**
 >   the same as the issue being accepted.
 
 The only permitted in-repo documentation is: `README.md`, `AGENTS.md`,
-`ROON_API_LIMITATIONS.md` (a permanent technical constraint), the two testing guides
-`TESTING_USER.md` and `TESTING_TECH.md`, plus the licence files.
+`docs/DEVELOPMENT.md` (how to run and test the software), `docs/ROON_API_LIMITATIONS.md`
+(a permanent technical constraint), plus the licence files. Everything committed as
+documentation must describe the software **as it is**, permanently — never the state of
+one branch.
+
+## Manual test checklists belong on the issue, not in the repo
+
+> **A manual/acceptance test checklist is written as a comment on the GitHub issue or
+> pull request it verifies. Never commit one.** `TESTING_USER.md` and `TESTING_TECH.md`
+> were removed for this reason: they documented one branch's verification, referenced a
+> branch name in their install instructions, and were obsolete the moment that branch
+> merged — the same failure that made `TODO.md` and `PRIORITY.md` dangerous.
+>
+> - **Automated tests are the technical test suite.** `npm test` is the authoritative
+>   statement of coverage. Do not maintain a markdown file that re-lists the tests or
+>   their counts; it only goes stale.
+> - **Manual checks that need a live Roon Core** go in the issue comment, with the
+>   result reported as a reply.
+> - **Anything that fails becomes its own issue**, linked from that comment.
+> - Durable, version-independent facts (environment variables, how to run the fixture
+>   script, what is deliberately not covered) belong in `docs/DEVELOPMENT.md`.
 
 ## Workflow rules (global + project-specific)
 
