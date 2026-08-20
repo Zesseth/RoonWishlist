@@ -265,17 +265,18 @@ if command -v rsync >/dev/null 2>&1; then
     --exclude 'config.json' \
     "$SRC_DIR"/ "$INSTALL_DIR"/
 else
-  PRESERVED_CONFIG=""
-  if [ -f "$INSTALL_DIR/config.json" ]; then
-    PRESERVED_CONFIG="$(mktemp)"
-    cp -a "$INSTALL_DIR/config.json" "$PRESERVED_CONFIG"
-  fi
-  cp -a "$SRC_DIR"/. "$INSTALL_DIR"/
-  rm -rf "$INSTALL_DIR/.git" "$INSTALL_DIR/node_modules" "$INSTALL_DIR/data"
-  if [ -n "$PRESERVED_CONFIG" ]; then
-    cp -a "$PRESERVED_CONFIG" "$INSTALL_DIR/config.json"
-    rm -f "$PRESERVED_CONFIG"
-  fi
+  # `cp -a` only ever adds. Without the prune below this branch never removed
+  # anything, so a file deleted from the repo lived on in the install forever:
+  # TODO.md and PRIORITY.md were deleted in June and were still sitting in
+  # $INSTALL_DIR months later, presenting retired planning documents as current.
+  # That is the exact drift GitHub-as-single-source-of-truth exists to prevent.
+  # Mirror the rsync branch: delete what is gone, keep what must survive.
+  find "$INSTALL_DIR" -mindepth 1 -maxdepth 1 \
+    ! -name 'node_modules' ! -name 'data' ! -name 'config.json' \
+    -exec rm -rf {} +
+  find "$SRC_DIR" -mindepth 1 -maxdepth 1 \
+    ! -name '.git' ! -name 'node_modules' ! -name 'data' ! -name 'config.json' \
+    -exec cp -a {} "$INSTALL_DIR"/ \;
 fi
 
 # --- Install production dependencies (https only, no SSH keys needed) ---------
