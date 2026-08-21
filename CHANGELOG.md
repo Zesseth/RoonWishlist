@@ -7,14 +7,11 @@ for what that means for a pre-1.0 Roon extension).
 
 ## [Unreleased]
 
-- Distribution & documentation: versioning/release process, changelog, this file
-  (issue #9).
-
-## [0.1.0] - 2026-08-21
+## [1.0.0] - 2026-08-21
 
 First tagged release. Prior to this, the project had no version tags or releases —
 this tag marks the codebase at the point where all of the [v1.0 milestone](https://github.com/Zesseth/RoonWishlist/milestone/1)'s
-originally planned issues were closed except distribution/documentation polish (#9).
+originally planned issues were closed, including distribution/documentation polish (#9).
 
 ### Added
 
@@ -37,6 +34,8 @@ originally planned issues were closed except distribution/documentation polish (
 - Nightly automation: scheduled low-quality scan + Roon tag sync (issue #2).
 - Configurable HTTP port, leveled/structured logging with a size-capped log file,
   and settings persistence (issue #8).
+- Distribution & documentation: install/versioning/release process, changelog,
+  single source of truth for the version number (issue #9).
 
-[Unreleased]: https://github.com/Zesseth/RoonWishlist/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/Zesseth/RoonWishlist/releases/tag/v0.1.0
+[Unreleased]: https://github.com/Zesseth/RoonWishlist/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/Zesseth/RoonWishlist/releases/tag/v1.0.0
