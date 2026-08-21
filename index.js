@@ -194,6 +194,29 @@ function summarizeNightlyTask(name, task) {
   return `${name}: added ${task.added}, updated ${task.updated}`;
 }
 
+// Counts-only view of a nightly run, for logging (see summarizeReconciliation above
+// for why: `tasks.roonTagSync.removedAlbums`/`ownedCheck.owned`/`.cleared` are
+// per-album arrays that don't belong in a log line, only in /status).
+function summarizeNightlyRun(run) {
+  if (!run || typeof run !== "object") return run;
+  const summarizeOwnedCheck = (oc) => oc && {
+    checked: oc.checked,
+    owned: Array.isArray(oc.owned) ? oc.owned.length : oc.owned,
+    cleared: Array.isArray(oc.cleared) ? oc.cleared.length : oc.cleared,
+    errors: oc.errors,
+  };
+  const lq = run.tasks && run.tasks.lowQuality;
+  const rt = run.tasks && run.tasks.roonTagSync;
+  return {
+    startedAt: run.startedAt,
+    finishedAt: run.finishedAt,
+    lowQuality: lq && (lq.error ? { error: lq.error } : lq.skipped ? { skipped: true, reason: lq.reason } :
+      { added: lq.added, alreadyPresent: lq.alreadyPresent, ignored: lq.ignored }),
+    roonTagSync: rt && (rt.error ? { error: rt.error } : rt.skipped ? { skipped: true, reason: rt.reason } :
+      { added: rt.added, updated: rt.updated, unchanged: rt.unchanged, removed: rt.removed, ownedCheck: summarizeOwnedCheck(rt.ownedCheck) }),
+  };
+}
+
 function renderNightlyStatus() {
   const lines = [mysettings.nightly_enabled ? "Enabled" : "Disabled"];
   if (mysettings.nightly_enabled) {
@@ -548,6 +571,27 @@ function getBrowseService() {
   return pairedCore && pairedCore.services ? pairedCore.services.RoonApiBrowse : null;
 }
 
+// Reduces a reconciliation/ownership-check result to counts only, for logging. The
+// full result (kept in `lastReconciliation`/`lastNightlyRun` for the UI) can include a
+// per-album array — that belongs in `/status`, not in every log line.
+function summarizeReconciliation(result) {
+  if (!result || typeof result !== "object") return result;
+  const ownedCheck = result.ownedCheck || {};
+  return {
+    status: result.status,
+    tagFound: result.tagFound,
+    totalRoonTagged: result.totalRoonTagged,
+    added: result.newlyAdded ?? result.reconciled,
+    removed: result.removed,
+    ownedCheck: {
+      checked: ownedCheck.checked,
+      owned: Array.isArray(ownedCheck.owned) ? ownedCheck.owned.length : ownedCheck.owned,
+      cleared: Array.isArray(ownedCheck.cleared) ? ownedCheck.cleared.length : ownedCheck.cleared,
+      errors: ownedCheck.errors,
+    },
+  };
+}
+
 async function triggerReconciliation() {
   if (reconciliationInProgress) {
     return { status: "already_running" };
@@ -569,7 +613,11 @@ async function triggerReconciliation() {
       timestamp: new Date().toISOString(),
       result: { ...result, ownedCheck },
     };
-    log.info("Reconciliation completed:", lastReconciliation.result);
+    // Log a compact summary, not the full result: `result`/`ownedCheck` can carry a
+    // per-album array (buy links, formats, track counts) for the whole tagged
+    // wishlist, which would otherwise flood the bounded log file with the same
+    // near-unchanged dump on every reconciliation run.
+    log.info("Reconciliation completed:", summarizeReconciliation(lastReconciliation.result));
     return lastReconciliation.result;
   } finally {
     reconciliationInProgress = false;
@@ -879,7 +927,10 @@ async function runNightlyAutomation() {
   }
 
   lastNightlyRun = { startedAt, finishedAt: new Date().toISOString(), tasks };
-  log.info("Nightly automation finished:", lastNightlyRun);
+  // Summary only — `tasks.lowQuality`/`tasks.roonTagSync` can each carry per-album
+  // arrays (removedAlbums, ownedCheck.owned/cleared), same reason as reconciliation
+  // above. The full detail is still available via /status and the settings screen.
+  log.info("Nightly automation finished:", summarizeNightlyRun(lastNightlyRun));
   svc_status.set_status("Nightly automation finished", false);
   try { svc_settings.update_settings(make_layout(mysettings)); } catch {}
   return lastNightlyRun;
