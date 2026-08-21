@@ -19,6 +19,7 @@ const { reconcileOnStartup, trackSyncHealth } = require("./src/roon_reconciliati
 const { getStorageLocationsDetailed } = require("./src/roon_storage");
 const scanLocations = require("./src/scan_locations");
 const { createScheduler, isValidTime: isValidNightlyTime } = require("./src/nightly_scheduler");
+const log = require("./src/logger").defaultLogger;
 
 let roon, mysettings, svc_status;
 let pairedCore = null;
@@ -62,24 +63,24 @@ const roonApp = new RoonApi({
 
   core_paired(core) {
     pairedCore = core;
-    console.log("Paired with Roon core:", core.display_name);
+    log.info("Paired with Roon core:", core.display_name);
     svc_status.set_status("Paired", false);
     
     // Trigger reconciliation on pairing (async, don't wait)
     triggerReconciliation().catch((err) => {
-      console.warn("Reconciliation after pairing failed:", err.message);
+      log.warn("Reconciliation after pairing failed:", err.message);
     });
 
     // One probe per pairing: if a future Roon ever exposes storage, this is where we
     // would notice. Everyday scans do not ask again — the answer does not change.
     resolveActiveScanLocations({ refresh: true }).catch((err) => {
-      console.warn("Could not resolve scan locations after pairing:", err.message);
+      log.warn("Could not resolve scan locations after pairing:", err.message);
     });
   },
 
   core_unpaired(core) {
     pairedCore = null;
-    console.log("Unpaired from Roon core:", core.display_name);
+    log.info("Unpaired from Roon core:", core.display_name);
     svc_status.set_status("Not paired", false);
   },
 });
@@ -99,11 +100,21 @@ if (typeof mysettings.nightly_enabled !== "boolean") {
 if (!isValidNightlyTime(mysettings.nightly_time)) {
   mysettings.nightly_time = "03:00";
 }
+// Log level (issue #8): persisted so it survives restarts without needing the
+// ROON_WISHLIST_LOG_LEVEL env var set every time. The env var, if present, still wins
+// at process startup (it configured `log` above already); this setting only takes
+// effect for the rest of the process once loaded/changed here.
+if (!log.levels.includes(mysettings.log_level)) {
+  mysettings.log_level = log.getLevel();
+} else {
+  log.setLevel(mysettings.log_level);
+}
 
 // Hourly granularity for the run-time picker — precise enough for a background
 // scan/sync, and small enough to render as a plain dropdown in both Roon's settings
 // UI (which has no native time widget) and the web UI.
 const NIGHTLY_TIME_OPTIONS = Array.from({ length: 24 }, (_, hour) => `${String(hour).padStart(2, "0")}:00`);
+const LOG_LEVEL_OPTIONS = log.levels;
 
 function renderWishlist(items) {
   if (!items.length) return "Wishlist is empty.";
@@ -197,7 +208,7 @@ function make_layout(settings) {
   // by its string `value`, so both directions (loading from disk vs. echoing a
   // live edit back from Roon) need to land on the same "true"/"false" string.
   const values = Object.assign(
-    { nightly_time: "03:00" },
+    { nightly_time: "03:00", log_level: log.getLevel() },
     settings,
     { nightly_enabled: settings.nightly_enabled === true || settings.nightly_enabled === "true" ? "true" : "false" },
   );
@@ -303,6 +314,28 @@ function make_layout(settings) {
     ],
   });
 
+  // --- Logging (issue #8) ---
+  l.layout.push({
+    type: "group",
+    title: "Logging",
+    items: [
+      {
+        type: "label",
+        title:
+          `Current level: ${(mysettings.log_level || log.getLevel())}. ` +
+          "Controls how much detail is written to the process log (stdout/stderr / systemd journal). " +
+          "\"error\" is quietest, \"debug\" is most verbose.",
+      },
+      {
+        type: "dropdown",
+        title: "Log level",
+        subtitle: "Takes effect immediately on Save, no restart needed.",
+        values: LOG_LEVEL_OPTIONS.map((lvl) => ({ title: lvl, value: lvl })),
+        setting: "log_level",
+      },
+    ],
+  });
+
   return l;
 }
 
@@ -359,8 +392,12 @@ const svc_settings = new RoonApiSettings(roonApp, {
         nightly_time: isValidNightlyTime(settings.values.nightly_time)
           ? settings.values.nightly_time
           : mysettings.nightly_time,
+        log_level: log.levels.includes(settings.values.log_level)
+          ? settings.values.log_level
+          : mysettings.log_level,
       });
       roonApp.save_config("settings", mysettings);
+      log.setLevel(mysettings.log_level);
 
       // Re-read settings and reschedule so an enable/disable or time change here takes
       // effect immediately, without restarting the extension (issue #2).
@@ -503,7 +540,7 @@ async function triggerReconciliation() {
       timestamp: new Date().toISOString(),
       result: { ...result, ownedCheck },
     };
-    console.log("Reconciliation completed:", lastReconciliation.result);
+    log.info("Reconciliation completed:", lastReconciliation.result);
     return lastReconciliation.result;
   } finally {
     reconciliationInProgress = false;
@@ -797,7 +834,7 @@ async function runNightlyTagSync() {
  */
 async function runNightlyAutomation() {
   const startedAt = new Date().toISOString();
-  console.log("Nightly automation starting…");
+  log.info("Nightly automation starting…");
   svc_status.set_status("Nightly automation starting…", false);
 
   const tasks = {};
@@ -813,7 +850,7 @@ async function runNightlyAutomation() {
   }
 
   lastNightlyRun = { startedAt, finishedAt: new Date().toISOString(), tasks };
-  console.log("Nightly automation finished:", lastNightlyRun);
+  log.info("Nightly automation finished:", lastNightlyRun);
   svc_status.set_status("Nightly automation finished", false);
   try { svc_settings.update_settings(make_layout(mysettings)); } catch {}
   return lastNightlyRun;
@@ -1118,6 +1155,10 @@ const server = http.createServer(async (req, res) => {
         ? nightlyScheduler.getNextRunAt().toISOString()
         : null,
       lastNightlyRun,
+      logLevel: mysettings.log_level || log.getLevel(),
+      logLevelOptions: LOG_LEVEL_OPTIONS,
+      httpPort: HTTP_PORT,
+      httpHost: HTTP_HOST,
     }));
     return;
   }
@@ -1259,6 +1300,8 @@ const server = http.createServer(async (req, res) => {
       nightly_enabled: !!mysettings.nightly_enabled,
       nightly_time: mysettings.nightly_time,
       nightly_time_options: NIGHTLY_TIME_OPTIONS,
+      log_level: mysettings.log_level || log.getLevel(),
+      log_level_options: LOG_LEVEL_OPTIONS,
     }));
     return;
   }
@@ -1283,9 +1326,16 @@ const server = http.createServer(async (req, res) => {
           }
           update.nightly_time = data.nightly_time;
         }
+        if (data.log_level !== undefined) {
+          if (!log.levels.includes(data.log_level)) {
+            throw makeHttpError(400, `log_level must be one of: ${log.levels.join(", ")}`);
+          }
+          update.log_level = data.log_level;
+        }
 
         mysettings = Object.assign({}, mysettings, update);
         roonApp.save_config("settings", mysettings);
+        if (update.log_level) log.setLevel(update.log_level);
         resolveActiveScanLocations({ refresh: false }).catch(() => {});
         if (nightlyScheduler) nightlyScheduler.reschedule();
         const cleared = Object.assign({}, mysettings, { action: "none", artist: "", title: "" });
@@ -1294,6 +1344,7 @@ const server = http.createServer(async (req, res) => {
           music_library_path: mysettings.music_library_path,
           nightly_enabled: !!mysettings.nightly_enabled,
           nightly_time: mysettings.nightly_time,
+          log_level: mysettings.log_level,
         }));
       } catch (e) {
         res.statusCode = e.statusCode || 500;
@@ -1309,11 +1360,20 @@ const server = http.createServer(async (req, res) => {
 
 // HTTP bind is configurable for running on a server. Defaults to localhost-only for
 // safety; set ROON_WISHLIST_HTTP_HOST=0.0.0.0 to expose it on the LAN (see README).
-const HTTP_PORT = parseInt(process.env.ROON_WISHLIST_HTTP_PORT || "3141", 10);
+const DEFAULT_HTTP_PORT = 3141;
+const parsedHttpPort = parseInt(process.env.ROON_WISHLIST_HTTP_PORT || String(DEFAULT_HTTP_PORT), 10);
+if (process.env.ROON_WISHLIST_HTTP_PORT && (!Number.isInteger(parsedHttpPort) || parsedHttpPort < 1 || parsedHttpPort > 65535)) {
+  log.warn(
+    `Invalid ROON_WISHLIST_HTTP_PORT "${process.env.ROON_WISHLIST_HTTP_PORT}" — falling back to ${DEFAULT_HTTP_PORT}.`
+  );
+}
+const HTTP_PORT = Number.isInteger(parsedHttpPort) && parsedHttpPort >= 1 && parsedHttpPort <= 65535
+  ? parsedHttpPort
+  : DEFAULT_HTTP_PORT;
 const HTTP_HOST = process.env.ROON_WISHLIST_HTTP_HOST || "127.0.0.1";
 
 server.listen(HTTP_PORT, HTTP_HOST, () => {
-  console.log(`Wishlist web UI + API listening on http://${HTTP_HOST}:${HTTP_PORT}`);
+  log.info(`Wishlist web UI + API listening on http://${HTTP_HOST}:${HTTP_PORT}`);
   svc_status.set_status(`Running — web UI on http://${HTTP_HOST}:${HTTP_PORT}`, false);
   // Seed the location view from saved settings so the settings screen is populated
   // before Roon pairs. Refreshing from Roon happens on pairing.

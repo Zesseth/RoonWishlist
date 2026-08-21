@@ -1,5 +1,7 @@
 "use strict";
 
+const log = require("./logger").defaultLogger;
+
 /**
  * Roon Tag Sync Reconciliation
  * Ensures wishlist stays in sync with Roon tags on startup and periodically
@@ -105,7 +107,7 @@ async function reconcileOnStartup({ browseService, wishlist, searchAll, tagName,
       removedAlbums,
     };
   } catch (err) {
-    console.warn("Reconciliation error:", err.message);
+    log.warn("Reconciliation error:", err.message);
     return {
       status: "error",
       reason: err.message,
@@ -165,7 +167,7 @@ async function trackSyncHealth({ browseService, wishlist, tagName }) {
       orphaned,
     };
   } catch (err) {
-    console.warn("Could not check sync health:", err.message);
+    log.warn("Could not check sync health:", err.message);
     return {
       healthy: null, // Unknown
       reason: err.message,

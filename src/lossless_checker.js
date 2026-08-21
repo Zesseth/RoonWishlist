@@ -2,6 +2,7 @@
 
 const fsp = require("fs/promises");
 const path = require("path");
+const log = require("./logger").defaultLogger;
 
 // Formats that preserve the original signal bit-for-bit. An album counts as "owned"
 // (and is therefore dropped from the wishlist) only when every one of its tracks is
@@ -432,7 +433,7 @@ function persistLastCheck(wishlistModule, item, { status, reason, details }) {
     wishlistModule.upsert({ artist: item.artist, title: item.title, lastCheck });
   } catch (err) {
     // Persisting status is a convenience; never let it fail a scan.
-    console.warn(`Could not persist check status for ${item.artist} — ${item.title}: ${err.message}`);
+    log.warn(`Could not persist check status for ${item.artist} — ${item.title}: ${err.message}`);
   }
 }
 
@@ -649,7 +650,7 @@ async function markOwnedTaggedAlbums(locations, wishlistModule) {
             : { artist: item.artist, title: item.title, ownedLossless: false },
         );
       } catch (err) {
-        console.warn(`Could not flag ${item.artist} — ${item.title} as owned: ${err.message}`);
+        log.warn(`Could not flag ${item.artist} — ${item.title} as owned: ${err.message}`);
       }
     }
 

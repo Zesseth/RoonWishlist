@@ -335,6 +335,18 @@
         </form>
         <div class="sync-note" id="nightly-note"></div>
       </div>
+      <div style="margin-top:20px;">
+        <h3 style="margin:0 0 8px;font-size:14px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;">Logging</h3>
+        <p class="hint">Controls how much detail is written to the process log (stdout/stderr, or the systemd journal on a server install). "error" is quietest, "debug" is most verbose. Takes effect immediately, no restart needed.</p>
+        <form id="log-level-form" class="row" autocomplete="off" style="align-items:center;">
+          <label style="display:flex;align-items:center;gap:6px;">
+            Log level
+            <select id="log-level"></select>
+          </label>
+          <button type="submit" class="secondary small">Save</button>
+        </form>
+        <div class="sync-note" id="log-level-note"></div>
+      </div>
       <div class="danger-zone">
         <h3>Danger Zone</h3>
         <p>These actions <strong>empty and rebuild</strong> their respective sections from scratch.</p>
@@ -644,6 +656,12 @@
         if (document.activeElement !== $("nightly-time")) {
           $("nightly-time").value = s.nightly_time || "03:00";
         }
+        if (Array.isArray(s.log_level_options)) {
+          populateLogLevelOptions(s.log_level_options);
+        }
+        if (document.activeElement !== $("log-level")) {
+          $("log-level").value = s.log_level || "info";
+        }
       } catch { /* ignore */ }
     }
 
@@ -659,6 +677,19 @@
         select.appendChild(opt);
       }
     })();
+
+    // Populated from GET /settings (log_level_options) rather than hardcoded here, so
+    // it always matches the levels the logger in src/logger.js actually supports.
+    function populateLogLevelOptions(levels) {
+      const select = $("log-level");
+      if (!select || select.options.length) return;
+      for (const level of levels) {
+        const opt = document.createElement("option");
+        opt.value = level;
+        opt.textContent = level;
+        select.appendChild(opt);
+      }
+    }
 
     function summarizeNightlyTask(name, task) {
       if (!task) return "";
@@ -1061,6 +1092,24 @@
         await loadStatus();
         toast("Nightly automation settings saved.", "ok");
       } catch (e) {
+        toast("Save failed: " + e.message, "err");
+      }
+    });
+
+    $("log-level-form").addEventListener("submit", async (ev) => {
+      ev.preventDefault();
+      try {
+        const r = await api("/settings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ log_level: $("log-level").value }),
+        });
+        $("log-level-note").textContent = "Log level set to \"" + r.log_level + "\".";
+        $("log-level-note").className = "sync-note ok";
+        toast("Log level saved.", "ok");
+      } catch (e) {
+        $("log-level-note").textContent = "Save failed: " + e.message;
+        $("log-level-note").className = "sync-note err";
         toast("Save failed: " + e.message, "err");
       }
     });

@@ -1,5 +1,7 @@
 "use strict";
 
+const log = require("./logger").defaultLogger;
+
 const HTTP_HEADERS = {
   "User-Agent":
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
@@ -320,7 +322,7 @@ async function searchQobuz(artist, title) {
   }
 
   if (hadFailures) {
-    console.warn("[search] Qobuz search failed for all configured app IDs.");
+    log.warn("[search] Qobuz search failed for all configured app IDs.");
   }
 
   return [];

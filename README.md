@@ -317,9 +317,10 @@ Leave this window open — the extension runs as long as this command runs. Pres
 |----------|---------|-------------|
 | `ROON_WISHLIST_DATA_DIR` | `<repo>/data` | Where `wishlist.json` is stored. |
 | `ROON_WISHLIST_HTTP_HOST` | `127.0.0.1` | HTTP API bind address. Set to `0.0.0.0` to expose it on the LAN (⚠️ this makes the control API reachable by other machines — use with care). |
-| `ROON_WISHLIST_HTTP_PORT` | `3141` | HTTP API port. |
+| `ROON_WISHLIST_HTTP_PORT` | `3141` | HTTP API port. Falls back to the default with a warning if the value is not a valid port number. |
 | `ROON_WISHLIST_EXTENSION_ID` | `com.zesseth.roon-wishlist` | How Roon identifies this extension. Change it **only** to run a second instance beside the first — two processes sharing an id fight over the pairing. `install.sh --instance NAME` sets this for you. |
 | `ROON_WISHLIST_DISPLAY_NAME` | `Wishlist` | Name shown in Roon's extension list and in the web UI header. |
+| `ROON_WISHLIST_LOG_LEVEL` | `info` | Startup log level: `error`, `warn`, `info`, or `debug`. Falls back to `info` with a warning if set to anything else. Can also be changed at runtime from Settings (Roon-native settings screen or the web UI), which persists it and takes effect immediately without a restart. |
 
 > Note: the Roon pairing token is stored in `config.json` in the service's working
 > directory, so the service user must own the install directory (the script handles
