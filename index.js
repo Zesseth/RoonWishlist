@@ -18,6 +18,7 @@ const {
 const { reconcileOnStartup, trackSyncHealth } = require("./src/roon_reconciliation");
 const { getStorageLocationsDetailed } = require("./src/roon_storage");
 const scanLocations = require("./src/scan_locations");
+const { createScheduler, isValidTime: isValidNightlyTime } = require("./src/nightly_scheduler");
 
 let roon, mysettings, svc_status;
 let pairedCore = null;
@@ -28,6 +29,9 @@ let syncInProgress = false;
 let reconciliationInProgress = false;
 let lastLowQualityScan = null;
 let lastReconciliation = null;
+let lastNightlyRun = null;
+// Assigned once mysettings and the nightly action functions exist (issue #2).
+let nightlyScheduler = null;
 let roonStorageLocations = [];
 // Why the last Roon storage lookup produced what it did. Kept so the UI can explain a
 // fallback instead of just showing an empty list.
@@ -87,6 +91,19 @@ mysettings = roonApp.load_config("settings") || {
 if (!Array.isArray(mysettings.excluded_storage_locations)) {
   mysettings.excluded_storage_locations = [];
 }
+// Nightly automation (issue #2): off by default, so upgrading never starts unattended
+// scans/syncs a user did not ask for.
+if (typeof mysettings.nightly_enabled !== "boolean") {
+  mysettings.nightly_enabled = false;
+}
+if (!isValidNightlyTime(mysettings.nightly_time)) {
+  mysettings.nightly_time = "03:00";
+}
+
+// Hourly granularity for the run-time picker — precise enough for a background
+// scan/sync, and small enough to render as a plain dropdown in both Roon's settings
+// UI (which has no native time widget) and the web UI.
+const NIGHTLY_TIME_OPTIONS = Array.from({ length: 24 }, (_, hour) => `${String(hour).padStart(2, "0")}:00`);
 
 function renderWishlist(items) {
   if (!items.length) return "Wishlist is empty.";
@@ -141,12 +158,51 @@ function renderScanLocations() {
   return lines.join("\n");
 }
 
+/**
+ * Summarizes the last nightly automation run for the Roon settings label — mirrors
+ * what the web UI shows via `/status` (issue #2).
+ */
+function summarizeNightlyTask(name, task) {
+  if (!task) return null;
+  if (task.error) return `${name} failed: ${task.error}`;
+  if (task.skipped) return `${name} skipped: ${task.reason}`;
+  if (name === "Low-quality scan") {
+    return `${name}: added ${task.added}, already on wishlist ${task.alreadyPresent}, ignored ${task.ignored}`;
+  }
+  return `${name}: added ${task.added}, updated ${task.updated}`;
+}
+
+function renderNightlyStatus() {
+  const lines = [mysettings.nightly_enabled ? "Enabled" : "Disabled"];
+  if (mysettings.nightly_enabled) {
+    const next = nightlyScheduler ? nightlyScheduler.getNextRunAt() : null;
+    lines.push(next ? `Next run: ${next.toLocaleString()}` : "Next run: not scheduled");
+  }
+  if (lastNightlyRun) {
+    lines.push(`Last run: ${new Date(lastNightlyRun.finishedAt).toLocaleString()}`);
+    const tasks = lastNightlyRun.tasks || {};
+    const lq = summarizeNightlyTask("Low-quality scan", tasks.lowQuality);
+    const rt = summarizeNightlyTask("Roon tag sync", tasks.roonTagSync);
+    if (lq) lines.push(lq);
+    if (rt) lines.push(rt);
+  }
+  return lines.join("\n");
+}
+
 // Builds the native Roon settings layout. Roon renders this UI itself, so we get a
 // menu without writing any custom graphics. Actions are performed when the user
 // presses Save (the standard Roon idiom — the basic layout has no button widget).
 function make_layout(settings) {
+  // `nightly_enabled` is persisted as a boolean, but the dropdown widget below matches
+  // by its string `value`, so both directions (loading from disk vs. echoing a
+  // live edit back from Roon) need to land on the same "true"/"false" string.
+  const values = Object.assign(
+    { nightly_time: "03:00" },
+    settings,
+    { nightly_enabled: settings.nightly_enabled === true || settings.nightly_enabled === "true" ? "true" : "false" },
+  );
   const l = {
-    values: settings,
+    values,
     layout: [],
     has_error: false,
   };
@@ -221,6 +277,32 @@ function make_layout(settings) {
 
   l.layout.push({ type: "group", title: "Music storage locations", items: storageItems });
 
+  // --- Nightly automation (issue #2) ---
+  l.layout.push({
+    type: "group",
+    title: "Nightly automation",
+    items: [
+      { type: "label", title: renderNightlyStatus() },
+      {
+        type: "dropdown",
+        title: "Nightly automation",
+        subtitle: "Runs a low-quality album scan, then a Roon tag sync (which also refreshes store links), once per day.",
+        values: [
+          { title: "Disabled", value: "false" },
+          { title: "Enabled", value: "true" },
+        ],
+        setting: "nightly_enabled",
+      },
+      {
+        type: "dropdown",
+        title: "Run time (24h)",
+        subtitle: "Local time. Takes effect on the next Save without restarting the extension.",
+        values: NIGHTLY_TIME_OPTIONS.map((time) => ({ title: time, value: time })),
+        setting: "nightly_time",
+      },
+    ],
+  });
+
   return l;
 }
 
@@ -273,8 +355,16 @@ const svc_settings = new RoonApiSettings(roonApp, {
       mysettings = Object.assign({}, mysettings, {
         music_library_path: settings.values.music_library_path || "",
         excluded_storage_locations: excluded,
+        nightly_enabled: settings.values.nightly_enabled === "true",
+        nightly_time: isValidNightlyTime(settings.values.nightly_time)
+          ? settings.values.nightly_time
+          : mysettings.nightly_time,
       });
       roonApp.save_config("settings", mysettings);
+
+      // Re-read settings and reschedule so an enable/disable or time change here takes
+      // effect immediately, without restarting the extension (issue #2).
+      if (nightlyScheduler) nightlyScheduler.reschedule();
 
       // Recompute from the cached Roon list so the layout pushed below already
       // reflects the exclusion the user just made.
@@ -653,6 +743,87 @@ async function runRoonTagAction(res, { verb, successStatus, action }) {
   }
 }
 
+/**
+ * Nightly automation's low-quality step (issue #2). This is the exact action behind
+ * "Scan low-quality albums now" — a scan already in progress (manual or nightly) is
+ * treated as a skip, not an error, so nightly automation never fights a manual click.
+ */
+async function runNightlyLowQualityScan() {
+  if (scanInProgress) {
+    return { skipped: true, reason: "A library scan was already running" };
+  }
+  return runLowQualityScan();
+}
+
+/**
+ * Nightly automation's Roon-tag step (issue #2). This is the exact action behind the
+ * "Sync Roon tag" button — including the store-link refresh via `wantsBuyLinks()` and
+ * the post-sync ownership check — just without an HTTP response to write the result to.
+ */
+async function runNightlyTagSync() {
+  if (!pairedCore) {
+    return { skipped: true, reason: "Roon is not paired" };
+  }
+  if (syncInProgress) {
+    return { skipped: true, reason: "A Roon tag sync was already running" };
+  }
+
+  const browseService = getBrowseService();
+  syncInProgress = true;
+  svc_status.set_status(`Nightly automation: syncing Roon tag "${ROON_WISHLIST_TAG}"…`, false);
+  try {
+    const result = await syncTaggedAlbums({
+      browseService,
+      wishlist,
+      searchAll,
+      tagName: ROON_WISHLIST_TAG,
+      onProgress() {},
+      shouldFindLinks: wantsBuyLinks(),
+    });
+    const ownedCheck = await flagOwnedTaggedAlbums();
+    return { ...result, ownedCheck };
+  } catch (e) {
+    return { error: e.message };
+  } finally {
+    syncInProgress = false;
+  }
+}
+
+/**
+ * Runs the two manual actions nightly automation replaces (issue #2): a low-quality
+ * scan first, then a Roon tag sync — in that order, so an album the scan just added to
+ * the low-quality wishlist can still benefit from the sync's ownership check, and so a
+ * freshly-tagged album gets a store link the same night it is added.
+ */
+async function runNightlyAutomation() {
+  const startedAt = new Date().toISOString();
+  console.log("Nightly automation starting…");
+  svc_status.set_status("Nightly automation starting…", false);
+
+  const tasks = {};
+  try {
+    tasks.lowQuality = await runNightlyLowQualityScan();
+  } catch (e) {
+    tasks.lowQuality = { error: e.message };
+  }
+  try {
+    tasks.roonTagSync = await runNightlyTagSync();
+  } catch (e) {
+    tasks.roonTagSync = { error: e.message };
+  }
+
+  lastNightlyRun = { startedAt, finishedAt: new Date().toISOString(), tasks };
+  console.log("Nightly automation finished:", lastNightlyRun);
+  svc_status.set_status("Nightly automation finished", false);
+  try { svc_settings.update_settings(make_layout(mysettings)); } catch {}
+  return lastNightlyRun;
+}
+
+nightlyScheduler = createScheduler({
+  getSettings: () => ({ enabled: !!mysettings.nightly_enabled, time: mysettings.nightly_time }),
+  run: runNightlyAutomation,
+});
+
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://localhost`);
 
@@ -941,6 +1112,12 @@ const server = http.createServer(async (req, res) => {
       version: "0.1.0",
       extensionId: EXTENSION_ID,
       displayName: DISPLAY_NAME,
+      nightlyEnabled: !!mysettings.nightly_enabled,
+      nightlyTime: mysettings.nightly_time,
+      nightlyNextRun: nightlyScheduler && nightlyScheduler.getNextRunAt()
+        ? nightlyScheduler.getNextRunAt().toISOString()
+        : null,
+      lastNightlyRun,
     }));
     return;
   }
@@ -1079,21 +1256,49 @@ const server = http.createServer(async (req, res) => {
     res.end(JSON.stringify({
       music_library_path: mysettings.music_library_path || "",
       excluded_storage_locations: mysettings.excluded_storage_locations || [],
+      nightly_enabled: !!mysettings.nightly_enabled,
+      nightly_time: mysettings.nightly_time,
+      nightly_time_options: NIGHTLY_TIME_OPTIONS,
     }));
     return;
   }
 
-  // Update the music library path from the web UI and persist it (same store the
-  // Roon settings screen uses), then push a refreshed layout if that screen is open.
+  // Update settings from the web UI and persist them (same store the Roon settings
+  // screen uses), then push a refreshed layout if that screen is open. Only fields
+  // actually present in the body are touched, so posting a nightly-automation change
+  // does not clobber the music library path (or vice versa).
   if (req.method === "POST" && url.pathname === "/settings") {
     readJsonBody(req, res, (data) => {
-      const p = typeof data.music_library_path === "string" ? data.music_library_path.trim() : "";
-      mysettings = Object.assign({}, mysettings, { music_library_path: p });
-      roonApp.save_config("settings", mysettings);
-      resolveActiveScanLocations({ refresh: false }).catch(() => {});
-      const cleared = Object.assign({}, mysettings, { action: "none", artist: "", title: "" });
-      try { svc_settings.update_settings(make_layout(cleared)); } catch {}
-      res.end(JSON.stringify({ music_library_path: mysettings.music_library_path }));
+      try {
+        const update = {};
+        if (typeof data.music_library_path === "string") {
+          update.music_library_path = data.music_library_path.trim();
+        }
+        if (typeof data.nightly_enabled === "boolean") {
+          update.nightly_enabled = data.nightly_enabled;
+        }
+        if (data.nightly_time !== undefined) {
+          if (!isValidNightlyTime(data.nightly_time)) {
+            throw makeHttpError(400, "nightly_time must be 24-hour HH:MM");
+          }
+          update.nightly_time = data.nightly_time;
+        }
+
+        mysettings = Object.assign({}, mysettings, update);
+        roonApp.save_config("settings", mysettings);
+        resolveActiveScanLocations({ refresh: false }).catch(() => {});
+        if (nightlyScheduler) nightlyScheduler.reschedule();
+        const cleared = Object.assign({}, mysettings, { action: "none", artist: "", title: "" });
+        try { svc_settings.update_settings(make_layout(cleared)); } catch {}
+        res.end(JSON.stringify({
+          music_library_path: mysettings.music_library_path,
+          nightly_enabled: !!mysettings.nightly_enabled,
+          nightly_time: mysettings.nightly_time,
+        }));
+      } catch (e) {
+        res.statusCode = e.statusCode || 500;
+        res.end(JSON.stringify({ error: e.message }));
+      }
     });
     return;
   }
@@ -1113,4 +1318,7 @@ server.listen(HTTP_PORT, HTTP_HOST, () => {
   // Seed the location view from saved settings so the settings screen is populated
   // before Roon pairs. Refreshing from Roon happens on pairing.
   resolveActiveScanLocations({ refresh: false }).catch(() => {});
+  // Schedule the first nightly run (if enabled) based on the settings loaded at
+  // startup (issue #2). Any later settings change reschedules via the same call.
+  nightlyScheduler.start();
 });

@@ -322,6 +322,19 @@
       <div id="storage-locations" style="margin-top: 12px;">
         <div class="empty">Loading music folders…</div>
       </div>
+      <div style="margin-top:20px;">
+        <h3 style="margin:0 0 8px;font-size:14px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;">Nightly automation</h3>
+        <p class="hint">Runs a low-quality album scan, then a Roon tag sync (which also refreshes store links), once per day at the time below. A change here takes effect without restarting the extension.</p>
+        <form id="nightly-form" class="row" autocomplete="off" style="align-items:center;">
+          <label style="display:flex;align-items:center;gap:6px;">
+            <input type="checkbox" id="nightly-enabled" />
+            Enable nightly automation
+          </label>
+          <select id="nightly-time"></select>
+          <button type="submit" class="secondary small">Save</button>
+        </form>
+        <div class="sync-note" id="nightly-note"></div>
+      </div>
       <div class="danger-zone">
         <h3>Danger Zone</h3>
         <p>These actions <strong>empty and rebuild</strong> their respective sections from scratch.</p>
@@ -593,6 +606,7 @@
           cleanBtn.disabled = !hasScanLocation() || !!s.scanInProgress;
         }
         renderLowQualitySection();
+        renderNightlySection();
       } catch {
         latestStatus = {
           online: false,
@@ -614,6 +628,7 @@
         $("rebuild-roon-btn").disabled = true;
         $("clean-btn").disabled = true;
         renderLowQualitySection();
+        renderNightlySection();
       }
     }
 
@@ -623,7 +638,60 @@
         if (document.activeElement !== $("lib-path")) {
           $("lib-path").value = s.music_library_path || "";
         }
+        if (document.activeElement !== $("nightly-enabled")) {
+          $("nightly-enabled").checked = !!s.nightly_enabled;
+        }
+        if (document.activeElement !== $("nightly-time")) {
+          $("nightly-time").value = s.nightly_time || "03:00";
+        }
       } catch { /* ignore */ }
+    }
+
+    // Hourly options, 00:00 through 23:00 — matches NIGHTLY_TIME_OPTIONS in index.js.
+    (function populateNightlyTimeOptions() {
+      const select = $("nightly-time");
+      if (!select || select.options.length) return;
+      for (let hour = 0; hour < 24; hour++) {
+        const value = String(hour).padStart(2, "0") + ":00";
+        const opt = document.createElement("option");
+        opt.value = value;
+        opt.textContent = value;
+        select.appendChild(opt);
+      }
+    })();
+
+    function summarizeNightlyTask(name, task) {
+      if (!task) return "";
+      if (task.error) return name + " failed: " + task.error;
+      if (task.skipped) return name + " skipped: " + task.reason;
+      if (name === "Low-quality scan") {
+        return name + ": added " + task.added + ", already on wishlist " + task.alreadyPresent + ", ignored " + task.ignored;
+      }
+      return name + ": added " + task.added + ", updated " + task.updated;
+    }
+
+    function renderNightlySection() {
+      const note = $("nightly-note");
+      if (!note) return;
+      const s = latestStatus;
+      const lines = [];
+      if (s.nightlyEnabled) {
+        lines.push(s.nightlyNextRun
+          ? "Next run: " + new Date(s.nightlyNextRun).toLocaleString()
+          : "Next run: not scheduled");
+      } else {
+        lines.push("Nightly automation is disabled.");
+      }
+      const last = s.lastNightlyRun;
+      if (last) {
+        lines.push("Last run: " + new Date(last.finishedAt).toLocaleString());
+        const tasks = last.tasks || {};
+        const lq = summarizeNightlyTask("Low-quality scan", tasks.lowQuality);
+        const rt = summarizeNightlyTask("Roon tag sync", tasks.roonTagSync);
+        if (lq) lines.push(lq);
+        if (rt) lines.push(rt);
+      }
+      note.innerHTML = lines.map((line) => esc(line)).join("<br>");
     }
 
     function renderStorageLocations(data) {
@@ -974,6 +1042,24 @@
         await loadStorageLocations();
         await loadStatus();
         toast("Library path saved.", "ok");
+      } catch (e) {
+        toast("Save failed: " + e.message, "err");
+      }
+    });
+
+    $("nightly-form").addEventListener("submit", async (ev) => {
+      ev.preventDefault();
+      try {
+        await api("/settings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            nightly_enabled: $("nightly-enabled").checked,
+            nightly_time: $("nightly-time").value,
+          }),
+        });
+        await loadStatus();
+        toast("Nightly automation settings saved.", "ok");
       } catch (e) {
         toast("Save failed: " + e.message, "err");
       }
