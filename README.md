@@ -426,6 +426,17 @@ data/
 
 - [`docs/DEVELOPMENT.md`](./docs/DEVELOPMENT.md) — Running it locally, automated tests, environment variables
 - [`docs/ROON_API_LIMITATIONS.md`](./docs/ROON_API_LIMITATIONS.md) — Known limitations with the Roon Extension SDK (e.g., tag write-back not supported)
+- [`docs/RELEASING.md`](./docs/RELEASING.md) — Versioning scheme and the release process
+- [`CHANGELOG.md`](./CHANGELOG.md) — What changed in each release
+
+### Releases
+
+Releases are tagged on GitHub (`vX.Y.Z`) — see [Releases](https://github.com/Zesseth/RoonWishlist/releases)
+for the current version and [`CHANGELOG.md`](./CHANGELOG.md) for what changed. The
+install/update instructions above always track the `main` branch, which is the latest
+release plus anything merged since. See [`docs/RELEASING.md`](./docs/RELEASING.md) for
+how a release is cut, and why this project uses `0.x` versions until the
+[v1.0 milestone](https://github.com/Zesseth/RoonWishlist/milestone/1) is complete.
 
 ### Planning, issue tracking and manual testing
 

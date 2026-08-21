@@ -368,6 +368,7 @@
 
   <footer>
     <a href="https://github.com/Zesseth/RoonWishlist" target="_blank" rel="noopener">RoonWishlist on GitHub</a>
+    <span id="footer-version"></span>
   </footer>
 
   <div id="toasts"></div>
@@ -598,6 +599,8 @@
             ? "Roon extension - " + s.displayName
             : "Roon extension - lossless album wishlist";
         }
+        const footerVersion = $("footer-version");
+        if (footerVersion && s.version) footerVersion.textContent = " · v" + s.version;
         if (syncBtn) {
           syncBtn.textContent = s.syncInProgress ? "Syncing…" : "Sync Roon tag";
           syncBtn.disabled = !!s.syncInProgress;
