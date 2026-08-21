@@ -19,6 +19,8 @@ const { reconcileOnStartup, trackSyncHealth } = require("./src/roon_reconciliati
 const { getStorageLocationsDetailed } = require("./src/roon_storage");
 const scanLocations = require("./src/scan_locations");
 const { createScheduler, isValidTime: isValidNightlyTime } = require("./src/nightly_scheduler");
+const loggerModule = require("./src/logger");
+const log = loggerModule.defaultLogger;
 
 let roon, mysettings, svc_status;
 let pairedCore = null;
@@ -62,24 +64,24 @@ const roonApp = new RoonApi({
 
   core_paired(core) {
     pairedCore = core;
-    console.log("Paired with Roon core:", core.display_name);
+    log.info("Paired with Roon core:", core.display_name);
     svc_status.set_status("Paired", false);
     
     // Trigger reconciliation on pairing (async, don't wait)
     triggerReconciliation().catch((err) => {
-      console.warn("Reconciliation after pairing failed:", err.message);
+      log.warn("Reconciliation after pairing failed:", err.message);
     });
 
     // One probe per pairing: if a future Roon ever exposes storage, this is where we
     // would notice. Everyday scans do not ask again — the answer does not change.
     resolveActiveScanLocations({ refresh: true }).catch((err) => {
-      console.warn("Could not resolve scan locations after pairing:", err.message);
+      log.warn("Could not resolve scan locations after pairing:", err.message);
     });
   },
 
   core_unpaired(core) {
     pairedCore = null;
-    console.log("Unpaired from Roon core:", core.display_name);
+    log.info("Unpaired from Roon core:", core.display_name);
     svc_status.set_status("Not paired", false);
   },
 });
@@ -99,11 +101,31 @@ if (typeof mysettings.nightly_enabled !== "boolean") {
 if (!isValidNightlyTime(mysettings.nightly_time)) {
   mysettings.nightly_time = "03:00";
 }
+// Log level (issue #8): persisted so it survives restarts without needing the
+// ROON_WISHLIST_LOG_LEVEL env var set every time. The env var, if present, still wins
+// at process startup (it configured `log` above already); this setting only takes
+// effect for the rest of the process once loaded/changed here.
+if (!log.levels.includes(mysettings.log_level)) {
+  mysettings.log_level = log.getLevel();
+} else {
+  log.setLevel(mysettings.log_level);
+}
+
+// Log file max size (issue #8 follow-up): a bounded log file on disk, trimmed once it
+// exceeds this many MB, so a long-running install never grows an unbounded log file.
+// Roon's settings API has no numeric widget, so this is validated as a numeric string,
+// same as `music_library_path`.
+if (!(loggerModule.normalizeMaxSizeMb(mysettings.log_max_size_mb) > 0)) {
+  mysettings.log_max_size_mb = loggerModule.DEFAULT_MAX_SIZE_MB;
+}
+const logFileSink = loggerModule.createFileSink({ maxSizeMb: mysettings.log_max_size_mb });
+log.attachFileSink(logFileSink);
 
 // Hourly granularity for the run-time picker — precise enough for a background
 // scan/sync, and small enough to render as a plain dropdown in both Roon's settings
 // UI (which has no native time widget) and the web UI.
 const NIGHTLY_TIME_OPTIONS = Array.from({ length: 24 }, (_, hour) => `${String(hour).padStart(2, "0")}:00`);
+const LOG_LEVEL_OPTIONS = log.levels;
 
 function renderWishlist(items) {
   if (!items.length) return "Wishlist is empty.";
@@ -172,6 +194,29 @@ function summarizeNightlyTask(name, task) {
   return `${name}: added ${task.added}, updated ${task.updated}`;
 }
 
+// Counts-only view of a nightly run, for logging (see summarizeReconciliation above
+// for why: `tasks.roonTagSync.removedAlbums`/`ownedCheck.owned`/`.cleared` are
+// per-album arrays that don't belong in a log line, only in /status).
+function summarizeNightlyRun(run) {
+  if (!run || typeof run !== "object") return run;
+  const summarizeOwnedCheck = (oc) => oc && {
+    checked: oc.checked,
+    owned: Array.isArray(oc.owned) ? oc.owned.length : oc.owned,
+    cleared: Array.isArray(oc.cleared) ? oc.cleared.length : oc.cleared,
+    errors: oc.errors,
+  };
+  const lq = run.tasks && run.tasks.lowQuality;
+  const rt = run.tasks && run.tasks.roonTagSync;
+  return {
+    startedAt: run.startedAt,
+    finishedAt: run.finishedAt,
+    lowQuality: lq && (lq.error ? { error: lq.error } : lq.skipped ? { skipped: true, reason: lq.reason } :
+      { added: lq.added, alreadyPresent: lq.alreadyPresent, ignored: lq.ignored }),
+    roonTagSync: rt && (rt.error ? { error: rt.error } : rt.skipped ? { skipped: true, reason: rt.reason } :
+      { added: rt.added, updated: rt.updated, unchanged: rt.unchanged, removed: rt.removed, ownedCheck: summarizeOwnedCheck(rt.ownedCheck) }),
+  };
+}
+
 function renderNightlyStatus() {
   const lines = [mysettings.nightly_enabled ? "Enabled" : "Disabled"];
   if (mysettings.nightly_enabled) {
@@ -197,7 +242,7 @@ function make_layout(settings) {
   // by its string `value`, so both directions (loading from disk vs. echoing a
   // live edit back from Roon) need to land on the same "true"/"false" string.
   const values = Object.assign(
-    { nightly_time: "03:00" },
+    { nightly_time: "03:00", log_level: log.getLevel(), log_max_size_mb: String(loggerModule.DEFAULT_MAX_SIZE_MB) },
     settings,
     { nightly_enabled: settings.nightly_enabled === true || settings.nightly_enabled === "true" ? "true" : "false" },
   );
@@ -303,6 +348,40 @@ function make_layout(settings) {
     ],
   });
 
+  // --- Logging (issue #8) ---
+  l.layout.push({
+    type: "group",
+    title: "Logging",
+    items: [
+      {
+        type: "label",
+        title:
+          `Current level: ${(mysettings.log_level || log.getLevel())}. ` +
+          "Controls how much detail is written to the process log (stdout/stderr / systemd journal). " +
+          "\"error\" is quietest, \"debug\" is most verbose.",
+      },
+      {
+        type: "dropdown",
+        title: "Log level",
+        subtitle: "Takes effect immediately on Save, no restart needed.",
+        values: LOG_LEVEL_OPTIONS.map((lvl) => ({ title: lvl, value: lvl })),
+        setting: "log_level",
+      },
+      {
+        type: "label",
+        title:
+          `Log file: ${logFileSink.getFilePath()}. Max size: ${mysettings.log_max_size_mb} MB. ` +
+          "Once the file passes this size, the oldest entries are trimmed away automatically.",
+      },
+      {
+        type: "string",
+        title: "Log file max size (MB)",
+        subtitle: "Whole or decimal number of megabytes. Default 100. Takes effect on Save.",
+        setting: "log_max_size_mb",
+      },
+    ],
+  });
+
   return l;
 }
 
@@ -340,6 +419,10 @@ const svc_settings = new RoonApiSettings(roonApp, {
       const title = (settings.values.title || "").trim();
       if (!artist || !title) l.has_error = true;
     }
+    if (!isdryrun && settings.values.log_max_size_mb !== undefined &&
+        !loggerModule.normalizeMaxSizeMb(settings.values.log_max_size_mb)) {
+      l.has_error = true;
+    }
 
     req.send_complete(l.has_error ? "NotValid" : "Success", { settings: l });
 
@@ -359,8 +442,14 @@ const svc_settings = new RoonApiSettings(roonApp, {
         nightly_time: isValidNightlyTime(settings.values.nightly_time)
           ? settings.values.nightly_time
           : mysettings.nightly_time,
+        log_level: log.levels.includes(settings.values.log_level)
+          ? settings.values.log_level
+          : mysettings.log_level,
+        log_max_size_mb: loggerModule.normalizeMaxSizeMb(settings.values.log_max_size_mb) || mysettings.log_max_size_mb,
       });
       roonApp.save_config("settings", mysettings);
+      log.setLevel(mysettings.log_level);
+      logFileSink.setMaxSizeMb(mysettings.log_max_size_mb);
 
       // Re-read settings and reschedule so an enable/disable or time change here takes
       // effect immediately, without restarting the extension (issue #2).
@@ -482,6 +571,27 @@ function getBrowseService() {
   return pairedCore && pairedCore.services ? pairedCore.services.RoonApiBrowse : null;
 }
 
+// Reduces a reconciliation/ownership-check result to counts only, for logging. The
+// full result (kept in `lastReconciliation`/`lastNightlyRun` for the UI) can include a
+// per-album array — that belongs in `/status`, not in every log line.
+function summarizeReconciliation(result) {
+  if (!result || typeof result !== "object") return result;
+  const ownedCheck = result.ownedCheck || {};
+  return {
+    status: result.status,
+    tagFound: result.tagFound,
+    totalRoonTagged: result.totalRoonTagged,
+    added: result.newlyAdded ?? result.reconciled,
+    removed: result.removed,
+    ownedCheck: {
+      checked: ownedCheck.checked,
+      owned: Array.isArray(ownedCheck.owned) ? ownedCheck.owned.length : ownedCheck.owned,
+      cleared: Array.isArray(ownedCheck.cleared) ? ownedCheck.cleared.length : ownedCheck.cleared,
+      errors: ownedCheck.errors,
+    },
+  };
+}
+
 async function triggerReconciliation() {
   if (reconciliationInProgress) {
     return { status: "already_running" };
@@ -503,7 +613,11 @@ async function triggerReconciliation() {
       timestamp: new Date().toISOString(),
       result: { ...result, ownedCheck },
     };
-    console.log("Reconciliation completed:", lastReconciliation.result);
+    // Log a compact summary, not the full result: `result`/`ownedCheck` can carry a
+    // per-album array (buy links, formats, track counts) for the whole tagged
+    // wishlist, which would otherwise flood the bounded log file with the same
+    // near-unchanged dump on every reconciliation run.
+    log.info("Reconciliation completed:", summarizeReconciliation(lastReconciliation.result));
     return lastReconciliation.result;
   } finally {
     reconciliationInProgress = false;
@@ -797,7 +911,7 @@ async function runNightlyTagSync() {
  */
 async function runNightlyAutomation() {
   const startedAt = new Date().toISOString();
-  console.log("Nightly automation starting…");
+  log.info("Nightly automation starting…");
   svc_status.set_status("Nightly automation starting…", false);
 
   const tasks = {};
@@ -813,7 +927,10 @@ async function runNightlyAutomation() {
   }
 
   lastNightlyRun = { startedAt, finishedAt: new Date().toISOString(), tasks };
-  console.log("Nightly automation finished:", lastNightlyRun);
+  // Summary only — `tasks.lowQuality`/`tasks.roonTagSync` can each carry per-album
+  // arrays (removedAlbums, ownedCheck.owned/cleared), same reason as reconciliation
+  // above. The full detail is still available via /status and the settings screen.
+  log.info("Nightly automation finished:", summarizeNightlyRun(lastNightlyRun));
   svc_status.set_status("Nightly automation finished", false);
   try { svc_settings.update_settings(make_layout(mysettings)); } catch {}
   return lastNightlyRun;
@@ -1118,6 +1235,12 @@ const server = http.createServer(async (req, res) => {
         ? nightlyScheduler.getNextRunAt().toISOString()
         : null,
       lastNightlyRun,
+      logLevel: mysettings.log_level || log.getLevel(),
+      logLevelOptions: LOG_LEVEL_OPTIONS,
+      logMaxSizeMb: mysettings.log_max_size_mb,
+      logFilePath: logFileSink.getFilePath(),
+      httpPort: HTTP_PORT,
+      httpHost: HTTP_HOST,
     }));
     return;
   }
@@ -1259,6 +1382,10 @@ const server = http.createServer(async (req, res) => {
       nightly_enabled: !!mysettings.nightly_enabled,
       nightly_time: mysettings.nightly_time,
       nightly_time_options: NIGHTLY_TIME_OPTIONS,
+      log_level: mysettings.log_level || log.getLevel(),
+      log_level_options: LOG_LEVEL_OPTIONS,
+      log_max_size_mb: mysettings.log_max_size_mb,
+      log_file_path: logFileSink.getFilePath(),
     }));
     return;
   }
@@ -1283,9 +1410,24 @@ const server = http.createServer(async (req, res) => {
           }
           update.nightly_time = data.nightly_time;
         }
+        if (data.log_level !== undefined) {
+          if (!log.levels.includes(data.log_level)) {
+            throw makeHttpError(400, `log_level must be one of: ${log.levels.join(", ")}`);
+          }
+          update.log_level = data.log_level;
+        }
+        if (data.log_max_size_mb !== undefined) {
+          const normalized = loggerModule.normalizeMaxSizeMb(data.log_max_size_mb);
+          if (!normalized) {
+            throw makeHttpError(400, "log_max_size_mb must be a positive number");
+          }
+          update.log_max_size_mb = normalized;
+        }
 
         mysettings = Object.assign({}, mysettings, update);
         roonApp.save_config("settings", mysettings);
+        if (update.log_level) log.setLevel(update.log_level);
+        if (update.log_max_size_mb) logFileSink.setMaxSizeMb(update.log_max_size_mb);
         resolveActiveScanLocations({ refresh: false }).catch(() => {});
         if (nightlyScheduler) nightlyScheduler.reschedule();
         const cleared = Object.assign({}, mysettings, { action: "none", artist: "", title: "" });
@@ -1294,6 +1436,8 @@ const server = http.createServer(async (req, res) => {
           music_library_path: mysettings.music_library_path,
           nightly_enabled: !!mysettings.nightly_enabled,
           nightly_time: mysettings.nightly_time,
+          log_level: mysettings.log_level,
+          log_max_size_mb: mysettings.log_max_size_mb,
         }));
       } catch (e) {
         res.statusCode = e.statusCode || 500;
@@ -1309,11 +1453,20 @@ const server = http.createServer(async (req, res) => {
 
 // HTTP bind is configurable for running on a server. Defaults to localhost-only for
 // safety; set ROON_WISHLIST_HTTP_HOST=0.0.0.0 to expose it on the LAN (see README).
-const HTTP_PORT = parseInt(process.env.ROON_WISHLIST_HTTP_PORT || "3141", 10);
+const DEFAULT_HTTP_PORT = 3141;
+const parsedHttpPort = parseInt(process.env.ROON_WISHLIST_HTTP_PORT || String(DEFAULT_HTTP_PORT), 10);
+if (process.env.ROON_WISHLIST_HTTP_PORT && (!Number.isInteger(parsedHttpPort) || parsedHttpPort < 1 || parsedHttpPort > 65535)) {
+  log.warn(
+    `Invalid ROON_WISHLIST_HTTP_PORT "${process.env.ROON_WISHLIST_HTTP_PORT}" — falling back to ${DEFAULT_HTTP_PORT}.`
+  );
+}
+const HTTP_PORT = Number.isInteger(parsedHttpPort) && parsedHttpPort >= 1 && parsedHttpPort <= 65535
+  ? parsedHttpPort
+  : DEFAULT_HTTP_PORT;
 const HTTP_HOST = process.env.ROON_WISHLIST_HTTP_HOST || "127.0.0.1";
 
 server.listen(HTTP_PORT, HTTP_HOST, () => {
-  console.log(`Wishlist web UI + API listening on http://${HTTP_HOST}:${HTTP_PORT}`);
+  log.info(`Wishlist web UI + API listening on http://${HTTP_HOST}:${HTTP_PORT}`);
   svc_status.set_status(`Running — web UI on http://${HTTP_HOST}:${HTTP_PORT}`, false);
   // Seed the location view from saved settings so the settings screen is populated
   // before Roon pairs. Refreshing from Roon happens on pairing.

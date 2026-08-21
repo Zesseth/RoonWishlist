@@ -34,6 +34,9 @@ npm run test:watch
 | `test/scan_locations.test.js` | path parsing, manual paths, exclusions, location validation |
 | `test/roon_storage.test.js` | parsing Roon's storage probe, and telling its failure modes apart |
 | `test/search.test.js` | Bandcamp and Qobuz search |
+| `test/nightly_scheduler.test.js` | nightly automation scheduling: date math, enable/disable, reschedule on settings change |
+| `test/logger.test.js` | leveled logger: level filtering, invalid-level fallback, runtime `setLevel`, timestamp formatting |
+| `test/log_file_sink.test.js` | bounded log file: appends, size-based trimming (keeps newest, never cuts a line in half), `setMaxSizeMb`, integration with the logger |
 
 > `test/search.test.js` calls the **real** Bandcamp and Qobuz APIs. It can fail from
 > rate limiting or a provider outage rather than from your change. Retry before
@@ -96,12 +99,20 @@ ROON_WISHLIST_QOBUZ_APP_ID="your_app_id"
 # two processes sharing one extension id fight over the Roon pairing.
 ROON_WISHLIST_EXTENSION_ID="com.zesseth.roon-wishlist"
 ROON_WISHLIST_DISPLAY_NAME="Wishlist"
+
+# Startup log level: error, warn, info (default), or debug. Can also be changed at
+# runtime from Settings, which persists it and takes effect without a restart.
+ROON_WISHLIST_LOG_LEVEL="info"
+
+# Logs are also written to <ROON_WISHLIST_DATA_DIR>/roon-wishlist.log, capped at the
+# "Log file max size (MB)" Settings value (default 100 MB), which trims the oldest
+# entries once exceeded. There is no separate env var for this -- it is a Settings-only
+# value (persisted in config.json), same as the music library path.
 ```
 
-That is the complete list. There is deliberately **no** log-level or music-path
-environment variable — configurable logging is tracked in
-[issue #8](https://github.com/Zesseth/RoonWishlist/issues/8), and the music library
-path comes from Roon or from Settings, not from the environment.
+That is the complete list. The music library path comes from Roon or from Settings,
+not from the environment — see [`ROON_API_LIMITATIONS.md`](./ROON_API_LIMITATIONS.md)
+for why Roon needs to be told this at all.
 
 ---
 
