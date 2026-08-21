@@ -346,6 +346,14 @@
           <button type="submit" class="secondary small">Save</button>
         </form>
         <div class="sync-note" id="log-level-note"></div>
+        <form id="log-max-size-form" class="row" autocomplete="off" style="align-items:center;margin-top:8px;">
+          <label style="display:flex;align-items:center;gap:6px;">
+            Log file max size (MB)
+            <input id="log-max-size" type="number" min="0.1" step="1" style="width:80px;" />
+          </label>
+          <button type="submit" class="secondary small">Save</button>
+        </form>
+        <div class="sync-note" id="log-max-size-note"></div>
       </div>
       <div class="danger-zone">
         <h3>Danger Zone</h3>
@@ -661,6 +669,9 @@
         }
         if (document.activeElement !== $("log-level")) {
           $("log-level").value = s.log_level || "info";
+        }
+        if (document.activeElement !== $("log-max-size")) {
+          $("log-max-size").value = s.log_max_size_mb || 100;
         }
       } catch { /* ignore */ }
     }
@@ -1110,6 +1121,24 @@
       } catch (e) {
         $("log-level-note").textContent = "Save failed: " + e.message;
         $("log-level-note").className = "sync-note err";
+        toast("Save failed: " + e.message, "err");
+      }
+    });
+
+    $("log-max-size-form").addEventListener("submit", async (ev) => {
+      ev.preventDefault();
+      try {
+        const r = await api("/settings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ log_max_size_mb: Number($("log-max-size").value) }),
+        });
+        $("log-max-size-note").textContent = "Log file max size set to " + r.log_max_size_mb + " MB.";
+        $("log-max-size-note").className = "sync-note ok";
+        toast("Log file max size saved.", "ok");
+      } catch (e) {
+        $("log-max-size-note").textContent = "Save failed: " + e.message;
+        $("log-max-size-note").className = "sync-note err";
         toast("Save failed: " + e.message, "err");
       }
     });

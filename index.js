@@ -19,7 +19,8 @@ const { reconcileOnStartup, trackSyncHealth } = require("./src/roon_reconciliati
 const { getStorageLocationsDetailed } = require("./src/roon_storage");
 const scanLocations = require("./src/scan_locations");
 const { createScheduler, isValidTime: isValidNightlyTime } = require("./src/nightly_scheduler");
-const log = require("./src/logger").defaultLogger;
+const loggerModule = require("./src/logger");
+const log = loggerModule.defaultLogger;
 
 let roon, mysettings, svc_status;
 let pairedCore = null;
@@ -109,6 +110,16 @@ if (!log.levels.includes(mysettings.log_level)) {
 } else {
   log.setLevel(mysettings.log_level);
 }
+
+// Log file max size (issue #8 follow-up): a bounded log file on disk, trimmed once it
+// exceeds this many MB, so a long-running install never grows an unbounded log file.
+// Roon's settings API has no numeric widget, so this is validated as a numeric string,
+// same as `music_library_path`.
+if (!(loggerModule.normalizeMaxSizeMb(mysettings.log_max_size_mb) > 0)) {
+  mysettings.log_max_size_mb = loggerModule.DEFAULT_MAX_SIZE_MB;
+}
+const logFileSink = loggerModule.createFileSink({ maxSizeMb: mysettings.log_max_size_mb });
+log.attachFileSink(logFileSink);
 
 // Hourly granularity for the run-time picker — precise enough for a background
 // scan/sync, and small enough to render as a plain dropdown in both Roon's settings
@@ -208,7 +219,7 @@ function make_layout(settings) {
   // by its string `value`, so both directions (loading from disk vs. echoing a
   // live edit back from Roon) need to land on the same "true"/"false" string.
   const values = Object.assign(
-    { nightly_time: "03:00", log_level: log.getLevel() },
+    { nightly_time: "03:00", log_level: log.getLevel(), log_max_size_mb: String(loggerModule.DEFAULT_MAX_SIZE_MB) },
     settings,
     { nightly_enabled: settings.nightly_enabled === true || settings.nightly_enabled === "true" ? "true" : "false" },
   );
@@ -333,6 +344,18 @@ function make_layout(settings) {
         values: LOG_LEVEL_OPTIONS.map((lvl) => ({ title: lvl, value: lvl })),
         setting: "log_level",
       },
+      {
+        type: "label",
+        title:
+          `Log file: ${logFileSink.getFilePath()}. Max size: ${mysettings.log_max_size_mb} MB. ` +
+          "Once the file passes this size, the oldest entries are trimmed away automatically.",
+      },
+      {
+        type: "string",
+        title: "Log file max size (MB)",
+        subtitle: "Whole or decimal number of megabytes. Default 100. Takes effect on Save.",
+        setting: "log_max_size_mb",
+      },
     ],
   });
 
@@ -373,6 +396,10 @@ const svc_settings = new RoonApiSettings(roonApp, {
       const title = (settings.values.title || "").trim();
       if (!artist || !title) l.has_error = true;
     }
+    if (!isdryrun && settings.values.log_max_size_mb !== undefined &&
+        !loggerModule.normalizeMaxSizeMb(settings.values.log_max_size_mb)) {
+      l.has_error = true;
+    }
 
     req.send_complete(l.has_error ? "NotValid" : "Success", { settings: l });
 
@@ -395,9 +422,11 @@ const svc_settings = new RoonApiSettings(roonApp, {
         log_level: log.levels.includes(settings.values.log_level)
           ? settings.values.log_level
           : mysettings.log_level,
+        log_max_size_mb: loggerModule.normalizeMaxSizeMb(settings.values.log_max_size_mb) || mysettings.log_max_size_mb,
       });
       roonApp.save_config("settings", mysettings);
       log.setLevel(mysettings.log_level);
+      logFileSink.setMaxSizeMb(mysettings.log_max_size_mb);
 
       // Re-read settings and reschedule so an enable/disable or time change here takes
       // effect immediately, without restarting the extension (issue #2).
@@ -1157,6 +1186,8 @@ const server = http.createServer(async (req, res) => {
       lastNightlyRun,
       logLevel: mysettings.log_level || log.getLevel(),
       logLevelOptions: LOG_LEVEL_OPTIONS,
+      logMaxSizeMb: mysettings.log_max_size_mb,
+      logFilePath: logFileSink.getFilePath(),
       httpPort: HTTP_PORT,
       httpHost: HTTP_HOST,
     }));
@@ -1302,6 +1333,8 @@ const server = http.createServer(async (req, res) => {
       nightly_time_options: NIGHTLY_TIME_OPTIONS,
       log_level: mysettings.log_level || log.getLevel(),
       log_level_options: LOG_LEVEL_OPTIONS,
+      log_max_size_mb: mysettings.log_max_size_mb,
+      log_file_path: logFileSink.getFilePath(),
     }));
     return;
   }
@@ -1332,10 +1365,18 @@ const server = http.createServer(async (req, res) => {
           }
           update.log_level = data.log_level;
         }
+        if (data.log_max_size_mb !== undefined) {
+          const normalized = loggerModule.normalizeMaxSizeMb(data.log_max_size_mb);
+          if (!normalized) {
+            throw makeHttpError(400, "log_max_size_mb must be a positive number");
+          }
+          update.log_max_size_mb = normalized;
+        }
 
         mysettings = Object.assign({}, mysettings, update);
         roonApp.save_config("settings", mysettings);
         if (update.log_level) log.setLevel(update.log_level);
+        if (update.log_max_size_mb) logFileSink.setMaxSizeMb(update.log_max_size_mb);
         resolveActiveScanLocations({ refresh: false }).catch(() => {});
         if (nightlyScheduler) nightlyScheduler.reschedule();
         const cleared = Object.assign({}, mysettings, { action: "none", artist: "", title: "" });
@@ -1345,6 +1386,7 @@ const server = http.createServer(async (req, res) => {
           nightly_enabled: !!mysettings.nightly_enabled,
           nightly_time: mysettings.nightly_time,
           log_level: mysettings.log_level,
+          log_max_size_mb: mysettings.log_max_size_mb,
         }));
       } catch (e) {
         res.statusCode = e.statusCode || 500;

@@ -322,6 +322,13 @@ Leave this window open — the extension runs as long as this command runs. Pres
 | `ROON_WISHLIST_DISPLAY_NAME` | `Wishlist` | Name shown in Roon's extension list and in the web UI header. |
 | `ROON_WISHLIST_LOG_LEVEL` | `info` | Startup log level: `error`, `warn`, `info`, or `debug`. Falls back to `info` with a warning if set to anything else. Can also be changed at runtime from Settings (Roon-native settings screen or the web UI), which persists it and takes effect immediately without a restart. |
 
+> Logs are also written to a bounded file at `<ROON_WISHLIST_DATA_DIR>/roon-wishlist.log`
+> (mirroring exactly what goes to stdout/stderr/journal), in addition to the console
+> output described above. Its maximum size is configurable from Settings ("Log file
+> max size (MB)", default **100 MB**); once the file exceeds that size, the oldest
+> entries are trimmed automatically so it never grows unbounded.
+
+
 > Note: the Roon pairing token is stored in `config.json` in the service's working
 > directory, so the service user must own the install directory (the script handles
 > this).
