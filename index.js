@@ -260,7 +260,10 @@ function make_layout(settings) {
   l.layout.push({
     type: "group",
     title: "Current wishlist",
-    items: [{ type: "label", title: renderWishlist(wishlist.getAll()) }],
+    items: [
+      { type: "label", title: `Wishlist v${APP_VERSION}` },
+      { type: "label", title: renderWishlist(wishlist.getAll()) },
+    ],
   });
 
   const actionItems = [
