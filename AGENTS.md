@@ -115,9 +115,12 @@ a music server — be a quiet neighbour):**
 
 The only permitted in-repo documentation is: `README.md`, `AGENTS.md`,
 `docs/DEVELOPMENT.md` (how to run and test the software), `docs/ROON_API_LIMITATIONS.md`
-(a permanent technical constraint), plus the licence files. Everything committed as
-documentation must describe the software **as it is**, permanently — never the state of
-one branch.
+(a permanent technical constraint), `docs/RELEASING.md` (the versioning/release
+process — permanent process description, not a branch's status), `CHANGELOG.md`
+(an append-only historical record, not a plan — each entry describes a release that
+already happened), plus the licence files. Everything committed as documentation must
+describe the software **as it is** (or, for the changelog, as it **was** at a tagged
+point), permanently — never the state of one branch.
 
 ## Manual test checklists belong on the issue, not in the repo
 

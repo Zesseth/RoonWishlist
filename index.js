@@ -53,11 +53,14 @@ let resolvedScanLocations = { locations: [], active: [], excluded: [], manualOnl
 // Both default to the production values, so a normal install is unaffected.
 const EXTENSION_ID = process.env.ROON_WISHLIST_EXTENSION_ID || "com.zesseth.roon-wishlist";
 const DISPLAY_NAME = process.env.ROON_WISHLIST_DISPLAY_NAME || "Wishlist";
+// Single source of truth for the version string, so a release only ever needs to bump
+// package.json (see docs/RELEASING.md) instead of hunting for hardcoded copies.
+const APP_VERSION = require("./package.json").version;
 
 const roonApp = new RoonApi({
   extension_id: EXTENSION_ID,
   display_name: DISPLAY_NAME,
-  display_version: "0.1.0",
+  display_version: APP_VERSION,
   publisher: "Zesseth",
   email: "",
   website: "https://github.com/Zesseth/RoonWishlist",
@@ -257,7 +260,10 @@ function make_layout(settings) {
   l.layout.push({
     type: "group",
     title: "Current wishlist",
-    items: [{ type: "label", title: renderWishlist(wishlist.getAll()) }],
+    items: [
+      { type: "label", title: `Wishlist v${APP_VERSION}` },
+      { type: "label", title: renderWishlist(wishlist.getAll()) },
+    ],
   });
 
   const actionItems = [
@@ -1226,7 +1232,7 @@ const server = http.createServer(async (req, res) => {
       activeScanLocations: resolvedScanLocations.active,
       excludedScanLocations: resolvedScanLocations.excluded,
       count: wishlist.getAll().length,
-      version: "0.1.0",
+      version: APP_VERSION,
       extensionId: EXTENSION_ID,
       displayName: DISPLAY_NAME,
       nightlyEnabled: !!mysettings.nightly_enabled,
