@@ -336,6 +336,18 @@
         <div class="sync-note" id="nightly-note"></div>
       </div>
       <div style="margin-top:20px;">
+        <h3 style="margin:0 0 8px;font-size:14px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;">Store search</h3>
+        <p class="hint">Qobuz country controls catalog availability and the region used in Qobuz links. It is detected from the server locale on first start.</p>
+        <form id="qobuz-form" class="row" autocomplete="off" style="align-items:center;">
+          <label style="display:flex;align-items:center;gap:6px;">
+            Qobuz country
+            <input id="qobuz-country" type="text" maxlength="2" pattern="[A-Za-z]{2}" placeholder="FI" style="width:52px;text-transform:uppercase;" />
+          </label>
+          <button type="submit" class="secondary small">Save</button>
+        </form>
+        <div class="sync-note" id="qobuz-note"></div>
+      </div>
+      <div style="margin-top:20px;">
         <h3 style="margin:0 0 8px;font-size:14px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;">Logging</h3>
         <p class="hint">Controls how much detail is written to the process log (stdout/stderr, or the systemd journal on a server install). "error" is quietest, "debug" is most verbose. Takes effect immediately, no restart needed.</p>
         <form id="log-level-form" class="row" autocomplete="off" style="align-items:center;">
@@ -675,6 +687,9 @@
         }
         if (document.activeElement !== $("log-max-size")) {
           $("log-max-size").value = s.log_max_size_mb || 100;
+        }
+        if (document.activeElement !== $("qobuz-country")) {
+          $("qobuz-country").value = s.qobuz_country || "FR";
         }
       } catch { /* ignore */ }
     }
@@ -1117,6 +1132,31 @@
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ log_level: $("log-level").value }),
+        });
+
+        $("qobuz-form").addEventListener("submit", async (ev) => {
+          ev.preventDefault();
+          const country = $("qobuz-country").value.trim().toUpperCase();
+          if (!/^[A-Z]{2}$/.test(country)) {
+            $("qobuz-note").textContent = "Enter a two-letter ISO country code, for example FI.";
+            $("qobuz-note").className = "sync-note err";
+            return;
+          }
+          try {
+            const r = await api("/settings", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ qobuz_country: country }),
+            });
+            $("qobuz-country").value = r.qobuz_country;
+            $("qobuz-note").textContent = "Qobuz country set to " + r.qobuz_country + ".";
+            $("qobuz-note").className = "sync-note ok";
+            toast("Qobuz country saved.", "ok");
+          } catch (e) {
+            $("qobuz-note").textContent = "Save failed: " + e.message;
+            $("qobuz-note").className = "sync-note err";
+            toast("Save failed: " + e.message, "err");
+          }
         });
         $("log-level-note").textContent = "Log level set to \"" + r.log_level + "\".";
         $("log-level-note").className = "sync-note ok";

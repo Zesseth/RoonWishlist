@@ -95,6 +95,9 @@ ROON_WISHLIST_HTTP_PORT=3141
 # Qobuz app ID for search (optional; built-in fallbacks are used if unset)
 ROON_WISHLIST_QOBUZ_APP_ID="your_app_id"
 
+# Qobuz country (optional; detected from the host locale during installation)
+ROON_WISHLIST_QOBUZ_COUNTRY="FI"
+
 # Roon extension identity. Change these ONLY to run a second, parallel instance --
 # two processes sharing one extension id fight over the Roon pairing.
 ROON_WISHLIST_EXTENSION_ID="com.zesseth.roon-wishlist"

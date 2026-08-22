@@ -20,6 +20,7 @@ const { getStorageLocationsDetailed } = require("./src/roon_storage");
 const scanLocations = require("./src/scan_locations");
 const { createScheduler, isValidTime: isValidNightlyTime } = require("./src/nightly_scheduler");
 const loggerModule = require("./src/logger");
+const qobuzLocation = require("./src/qobuz_location");
 const log = loggerModule.defaultLogger;
 
 let roon, mysettings, svc_status;
@@ -93,6 +94,9 @@ mysettings = roonApp.load_config("settings") || {
   music_library_path: "",
   excluded_storage_locations: [],
 };
+if (!qobuzLocation.normalizeCountry(mysettings.qobuz_country)) {
+  mysettings.qobuz_country = qobuzLocation.detectCountry();
+}
 if (!Array.isArray(mysettings.excluded_storage_locations)) {
   mysettings.excluded_storage_locations = [];
 }
@@ -129,6 +133,9 @@ log.attachFileSink(logFileSink);
 // UI (which has no native time widget) and the web UI.
 const NIGHTLY_TIME_OPTIONS = Array.from({ length: 24 }, (_, hour) => `${String(hour).padStart(2, "0")}:00`);
 const LOG_LEVEL_OPTIONS = log.levels;
+function searchStores(artist, title) {
+  return searchAll(artist, title, mysettings.qobuz_country);
+}
 
 function renderWishlist(items) {
   if (!items.length) return "Wishlist is empty.";
@@ -285,6 +292,20 @@ function make_layout(settings) {
     actionItems.push({ type: "string", title: "Album title", setting: "title" });
   }
   l.layout.push({ type: "group", title: "Actions", items: actionItems });
+
+  l.layout.push({
+    type: "group",
+    title: "Store search",
+    items: [
+      {
+        type: "dropdown",
+        title: "Qobuz country",
+        subtitle: "Country used for Qobuz catalog availability and links. Detected automatically on first start.",
+        values: qobuzLocation.COUNTRY_OPTIONS.map(([value, title]) => ({ value, title })),
+        setting: "qobuz_country",
+      },
+    ],
+  });
 
   // --- Storage locations (issue #15) ---
   const includedLocations = resolvedScanLocations.locations.filter((entry) => !entry.excluded);
@@ -452,6 +473,7 @@ const svc_settings = new RoonApiSettings(roonApp, {
           ? settings.values.log_level
           : mysettings.log_level,
         log_max_size_mb: loggerModule.normalizeMaxSizeMb(settings.values.log_max_size_mb) || mysettings.log_max_size_mb,
+        qobuz_country: qobuzLocation.normalizeCountry(settings.values.qobuz_country) || mysettings.qobuz_country,
       });
       roonApp.save_config("settings", mysettings);
       log.setLevel(mysettings.log_level);
@@ -609,7 +631,7 @@ async function triggerReconciliation() {
     const result = await reconcileOnStartup({
       browseService,
       wishlist,
-      searchAll,
+      searchAll: searchStores,
       tagName: ROON_WISHLIST_TAG,
     });
     // A reconciliation can pull in albums the user already owns in lossless, so flag
@@ -895,7 +917,7 @@ async function runNightlyTagSync() {
     const result = await syncTaggedAlbums({
       browseService,
       wishlist,
-      searchAll,
+      searchAll: searchStores,
       tagName: ROON_WISHLIST_TAG,
       onProgress() {},
       shouldFindLinks: wantsBuyLinks(),
@@ -1027,7 +1049,7 @@ const server = http.createServer(async (req, res) => {
       res.end(JSON.stringify({ error: "artist and/or title required" }));
       return;
     }
-    const results = await searchAll(artist, title);
+    const results = await searchStores(artist, title);
     res.end(JSON.stringify(results, null, 2));
     return;
   }
@@ -1175,7 +1197,7 @@ const server = http.createServer(async (req, res) => {
         const result = await syncTaggedAlbums({
           browseService,
           wishlist,
-          searchAll,
+          searchAll: searchStores,
           tagName: ROON_WISHLIST_TAG,
           onProgress,
           shouldFindLinks: wantsBuyLinks(),
@@ -1201,7 +1223,7 @@ const server = http.createServer(async (req, res) => {
         const result = await rebuildTaggedAlbums({
           browseService,
           wishlist,
-          searchAll,
+          searchAll: searchStores,
           tagName: ROON_WISHLIST_TAG,
           onProgress,
           shouldFindLinks: wantsBuyLinks(),
@@ -1391,6 +1413,7 @@ const server = http.createServer(async (req, res) => {
       log_level: mysettings.log_level || log.getLevel(),
       log_level_options: LOG_LEVEL_OPTIONS,
       log_max_size_mb: mysettings.log_max_size_mb,
+      qobuz_country: mysettings.qobuz_country,
       log_file_path: logFileSink.getFilePath(),
     }));
     return;
@@ -1415,6 +1438,11 @@ const server = http.createServer(async (req, res) => {
             throw makeHttpError(400, "nightly_time must be 24-hour HH:MM");
           }
           update.nightly_time = data.nightly_time;
+        }
+        if (data.qobuz_country !== undefined) {
+          const country = qobuzLocation.normalizeCountry(data.qobuz_country);
+          if (!country) throw makeHttpError(400, "qobuz_country must be a two-letter ISO country code");
+          update.qobuz_country = country;
         }
         if (data.log_level !== undefined) {
           if (!log.levels.includes(data.log_level)) {
@@ -1444,6 +1472,7 @@ const server = http.createServer(async (req, res) => {
           nightly_time: mysettings.nightly_time,
           log_level: mysettings.log_level,
           log_max_size_mb: mysettings.log_max_size_mb,
+          qobuz_country: mysettings.qobuz_country,
         }));
       } catch (e) {
         res.statusCode = e.statusCode || 500;

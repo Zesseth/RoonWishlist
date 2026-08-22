@@ -129,6 +129,14 @@ fi
 HTTP_PORT="${HTTP_PORT_SET:-$DEFAULT_PORT}"
 HTTP_HOST="${HTTP_HOST_SET:-127.0.0.1}"
 [ "$WEB" = "yes" ] && HTTP_HOST="0.0.0.0"
+# Pass the installer host's locale through so the first start can choose a useful
+# Qobuz country instead of always falling back to France. Users can change it later.
+QOBUZ_COUNTRY="${ROON_WISHLIST_QOBUZ_COUNTRY:-}"
+if [ -z "$QOBUZ_COUNTRY" ]; then
+  LOCALE_VALUE="${LC_ALL:-${LC_ADDRESS:-${LC_MESSAGES:-${LANG:-}}}}"
+  QOBUZ_COUNTRY="$(printf '%s' "$LOCALE_VALUE" | sed -n 's/.*[_-]\([A-Za-z][A-Za-z]\).*/\1/p' | tr '[:lower:]' '[:upper:]')"
+fi
+QOBUZ_COUNTRY="${QOBUZ_COUNTRY:-FR}"
 
 [ "$(id -u)" -eq 0 ] || err "Please run as root (e.g. 'sudo ./install.sh')."
 
@@ -309,6 +317,7 @@ Environment=ROON_WISHLIST_HTTP_HOST=${HTTP_HOST}
 Environment=ROON_WISHLIST_HTTP_PORT=${HTTP_PORT}
 Environment=ROON_WISHLIST_EXTENSION_ID=${EXTENSION_ID}
 Environment=ROON_WISHLIST_DISPLAY_NAME=${DISPLAY_NAME}
+Environment=ROON_WISHLIST_QOBUZ_COUNTRY=${QOBUZ_COUNTRY}
 # Be a quiet neighbour to Roon Server on the same box: lower CPU/IO priority and cap
 # the V8 heap. Soft/relative limits so the extension yields under contention without
 # being OOM-killed mid-scan.
