@@ -520,6 +520,7 @@
         "added " + summary.added,
         "already on wishlist " + summary.alreadyPresent,
         "ignored " + summary.ignored,
+        "now lossless, removed " + (summary.upgraded || 0),
         "already lossless, skipped " + (summary.skippedLossless !== undefined ? summary.skippedLossless : summary.skippedAllFlac),
       ];
       if (Array.isArray(summary.locations) && summary.locations.length > 1) {
@@ -725,7 +726,7 @@
       if (task.error) return name + " failed: " + task.error;
       if (task.skipped) return name + " skipped: " + task.reason;
       if (name === "Low-quality scan") {
-        return name + ": added " + task.added + ", already on wishlist " + task.alreadyPresent + ", ignored " + task.ignored;
+        return name + ": added " + task.added + ", already on wishlist " + task.alreadyPresent + ", ignored " + task.ignored + ", now lossless " + (task.upgraded || 0);
       }
       return name + ": added " + task.added + ", updated " + task.updated;
     }
@@ -1345,11 +1346,13 @@
           "added " + r.added,
           "already on wishlist " + r.alreadyPresent,
           "ignored " + r.ignored,
+          "now lossless, removed " + (r.upgraded || 0),
           "all-FLAC skipped " + r.skippedAllFlac,
         ];
         if (r.errors) parts.push("errors " + r.errors);
         toast("Low-quality scan done - " + parts.join(" - "), "ok");
         await loadWishlist();
+        await loadLowQualityWishlist();
         await loadStatus();
       } catch (e) {
         toast("Low-quality scan failed: " + e.message, "err");
