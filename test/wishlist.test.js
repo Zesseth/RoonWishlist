@@ -222,6 +222,28 @@ describe("wishlist module", () => {
       assert.strictEqual(items[0].addedAt, originalAddedAt);
       assert.strictEqual(items[0].buyLinks[0].store, "NewStore");
     });
+
+    it("should not let a routine update relabel where an entry came from", () => {
+      wishlist.add({ artist: "Test Artist", title: "Test Album", source: "manual" });
+      wishlist.upsert({ artist: "Test Artist", title: "Test Album", source: "low-quality" });
+      assert.strictEqual(wishlist.getAll()[0].source, "manual");
+    });
+
+    it("should promote a scanned entry to roon-tag once the user tags it in Roon", () => {
+      // Roon is the master for tagged albums. Leaving it labelled "low-quality" hides
+      // the tag from every roon-tag code path and makes the clean step delete an entry
+      // the next sync adds straight back.
+      wishlist.add({ artist: "Test Artist", title: "Test Album", source: "low-quality" });
+      wishlist.upsert({ artist: "Test Artist", title: "Test Album", source: "roon-tag" });
+      assert.strictEqual(wishlist.getAll()[0].source, "roon-tag");
+    });
+
+    it("should keep a hand-added entry manual even when it is tagged in Roon", () => {
+      // Otherwise untagging in Roon would delete something the user typed in himself.
+      wishlist.add({ artist: "Test Artist", title: "Test Album", source: "manual" });
+      wishlist.upsert({ artist: "Test Artist", title: "Test Album", source: "roon-tag" });
+      assert.strictEqual(wishlist.getAll()[0].source, "manual");
+    });
   });
 
   describe("replaceAll()", () => {

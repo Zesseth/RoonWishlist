@@ -11,8 +11,8 @@ RoonWishlist uses [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.PATCH
 applied pragmatically for a single-maintainer personal extension rather than a
 published library with a stable API contract:
 
-- **MAJOR** — reserved for a `1.0.0` once the [v1.0 milestone](https://github.com/Zesseth/RoonWishlist/milestone/1)
-  is fully closed (see below), and afterwards for any change that breaks an existing
+- **MAJOR** — `1.0.0` was cut when the [v1.0 milestone](https://github.com/Zesseth/RoonWishlist/milestone/1)
+  closed (see below). Afterwards it is reserved for any change that breaks an existing
   install in a way the user must act on (e.g. a renamed/removed environment variable
   or HTTP API endpoint with no fallback, a required manual migration step).
 - **MINOR** — a new user-facing feature or acceptance-criteria set from a closed
@@ -26,13 +26,16 @@ The single version number lives in **`package.json`** (`"version"`) and nowhere 
 `display_version` and the `/status` HTTP response, so there is exactly one place to
 change per release.
 
-### Why not 1.0 yet
+### What 1.0 meant
 
-The [v1.0 milestone](https://github.com/Zesseth/RoonWishlist/milestone/1) is the
-project's own definition of "feature-complete for a first real release" — see the
-epic issue [#10](https://github.com/Zesseth/RoonWishlist/issues/10). Until every issue
-in that milestone is closed, releases are tagged as `0.x.y` (pre-1.0 — SemVer treats
-this range as "anything may still change").
+The [v1.0 milestone](https://github.com/Zesseth/RoonWishlist/milestone/1) was the
+project's own definition of "feature-complete for a first real release" — see the epic
+issue [#10](https://github.com/Zesseth/RoonWishlist/issues/10). It closed on
+2026-08-21 and `v1.0.0` was tagged at that point; releases before it were `0.x.y`,
+which SemVer treats as "anything may still change". Later work is planned under the
+[v2.0 milestone](https://github.com/Zesseth/RoonWishlist/milestone/2), but a milestone
+name is not a version promise: each release still takes the MAJOR/MINOR/PATCH it earns
+under the scheme above.
 
 ## Release process
 

@@ -71,6 +71,12 @@ before(() => {
   // Location B — holds a lossless copy of an album that is lossy in location A.
   makeAlbum("libB", "Portishead", "Dummy", ["01.flac", "02.flac"]);
   makeAlbum("libB", "Autechre", "Tri Repetae", ["01.mp3"]);
+
+  // Location C — the remaster case from issue #45: the lossless purchase lands in a
+  // folder whose name carries an edition suffix, next to the old lossy rip.
+  makeAlbum("libC", "Metallica", "Metallica", ["01.mp3", "02.mp3"]);
+  makeAlbum("libC", "Metallica", "Metallica (Remastered 2021)", ["01.flac", "02.flac"]);
+  makeAlbum("libC", "Meshuggah", "Obzen (15th Anniversary Remastered 2023 Edition)", ["01.flac"]);
 });
 
 after(() => {
@@ -367,5 +373,168 @@ describe("scanLowQualityAlbums()", () => {
     assert.strictEqual(tool.qualityStatus, "owned-mixed");
     assert.strictEqual(tool.qualityTotalTracks, 2);
     assert.strictEqual(tool.qualityLosslessTracks, 1);
+  });
+
+  // Issue #45: buying an album in lossless has to take it off the low-quality list.
+  // Before this, the scan only ever added — a now-lossless album was skipped, which
+  // left the stale entry from the earlier scan sitting there permanently.
+  describe("an album that has since been bought in lossless", () => {
+    it("removes the entry the scan itself added", async () => {
+      const stub = makeWishlistStub([
+        {
+          artist: "Opeth",
+          title: "Blackwater Park",
+          source: "low-quality",
+          qualityStatus: "owned-lossy",
+          qualityTotalTracks: 2,
+          qualityLosslessTracks: 0,
+          qualityFlacTracks: 0,
+        },
+      ]);
+      const result = await lossless.scanLowQualityAlbums(locationPath("libA"), stub, null);
+
+      assert.strictEqual(result.upgraded, 1);
+      assert.strictEqual(result.upgradedAlbums[0].action, "removed");
+      assert.ok(!stub._state.some((item) => item.artist === "Opeth"));
+    });
+
+    it("keeps a Roon-tagged entry but flags it as owned and drops the quality fields", async () => {
+      // Roon is the master for tagged entries: deleting one here would only have the
+      // next sync add it straight back. Same contract as markOwnedTaggedAlbums.
+      const stub = makeWishlistStub([
+        {
+          artist: "Opeth",
+          title: "Blackwater Park",
+          source: "roon-tag",
+          qualityStatus: "owned-lossy",
+          qualityTotalTracks: 2,
+          qualityFlacTracks: 0,
+        },
+      ]);
+      const result = await lossless.scanLowQualityAlbums(locationPath("libA"), stub, null);
+      const entry = stub._state.find((item) => item.artist === "Opeth");
+
+      assert.strictEqual(result.upgradedAlbums[0].action, "flagged-owned");
+      assert.ok(entry, "the tagged entry must stay on the wishlist");
+      assert.strictEqual(entry.ownedLossless, true);
+      assert.strictEqual(entry.qualityStatus, undefined);
+      assert.strictEqual(entry.qualityFlacTracks, undefined);
+    });
+
+    it("only clears the metadata on a legacy entry with no source", async () => {
+      // No `source` means it cannot be proven to have come from the scan, so deleting
+      // it could throw away something the user added by hand.
+      const stub = makeWishlistStub([
+        {
+          artist: "Opeth",
+          title: "Blackwater Park",
+          qualityStatus: "owned-lossy",
+          qualityTotalTracks: 2,
+          qualityFlacTracks: 0,
+        },
+      ]);
+      const result = await lossless.scanLowQualityAlbums(locationPath("libA"), stub, null);
+      const entry = stub._state.find((item) => item.artist === "Opeth");
+
+      assert.strictEqual(result.upgradedAlbums[0].action, "cleared-metadata");
+      assert.ok(entry, "a hand-added entry must not be deleted");
+      assert.strictEqual(entry.qualityStatus, undefined);
+      assert.strictEqual(entry.qualityTotalTracks, undefined);
+    });
+
+    it("leaves a manual wishlist entry alone", async () => {
+      // Wanting an album you already own is the user's decision to make, not ours.
+      const stub = makeWishlistStub([
+        { artist: "Opeth", title: "Blackwater Park", source: "manual" },
+      ]);
+      const result = await lossless.scanLowQualityAlbums(locationPath("libA"), stub, null);
+
+      assert.strictEqual(result.upgraded, 0);
+      assert.ok(stub._state.some((item) => item.artist === "Opeth"));
+    });
+
+    it("counts it as lossless whichever location the lossless copy is in", async () => {
+      // Portishead is lossy in libA and lossless in libB.
+      const stub = makeWishlistStub([
+        {
+          artist: "Portishead",
+          title: "Dummy",
+          source: "low-quality",
+          qualityStatus: "owned-lossy",
+          qualityTotalTracks: 2,
+          qualityFlacTracks: 0,
+        },
+      ]);
+      const result = await lossless.scanLowQualityAlbums(
+        [locationPath("libA"), locationPath("libB")],
+        stub,
+        null,
+      );
+
+      assert.strictEqual(result.upgraded, 1);
+      assert.ok(!stub._state.some((item) => item.artist === "Portishead"));
+    });
+
+    it("does not report an upgrade when nothing was stale", async () => {
+      const stub = makeWishlistStub([]);
+      const result = await lossless.scanLowQualityAlbums(locationPath("libA"), stub, null);
+
+      assert.strictEqual(result.upgraded, 0);
+      assert.deepStrictEqual(result.upgradedAlbums, []);
+    });
+
+    // The remaster case that made this surface in real use: the FLAC purchase lands in
+    // "Metallica (Remastered 2021)", not "Metallica". `checkAndClean` has always matched
+    // tolerantly; the scan compared raw strings, so the original entry was stranded.
+    it("matches a lossless folder that carries an edition suffix", async () => {
+      const stub = makeWishlistStub([
+        {
+          artist: "Meshuggah",
+          title: "ObZen",
+          source: "low-quality",
+          qualityStatus: "owned-lossy",
+          qualityTotalTracks: 9,
+          qualityFlacTracks: 0,
+        },
+      ]);
+      const result = await lossless.scanLowQualityAlbums(locationPath("libC"), stub, null);
+
+      assert.strictEqual(result.upgraded, 1);
+      assert.ok(!stub._state.some((item) => item.artist === "Meshuggah"));
+    });
+
+    it("clears the entry even when the old lossy rip is still on disk", async () => {
+      // "Metallica" (mp3) and "Metallica (Remastered 2021)" (flac) sit side by side.
+      // Without this the two folders fight: one clears the entry, the other re-adds it.
+      const stub = makeWishlistStub([
+        {
+          artist: "Metallica",
+          title: "Metallica",
+          source: "low-quality",
+          qualityStatus: "owned-lossy",
+          qualityTotalTracks: 12,
+          qualityFlacTracks: 0,
+        },
+      ]);
+      const result = await lossless.scanLowQualityAlbums(locationPath("libC"), stub, null);
+
+      assert.strictEqual(result.upgraded, 1);
+      assert.ok(!stub._state.some((item) => item.title === "Metallica"));
+      assert.ok(
+        !result.addedAlbums.some((album) => album.artist === "Metallica"),
+        "the leftover lossy folder must not be added back",
+      );
+    });
+
+    it("is stable when the same scan runs twice", async () => {
+      const stub = makeWishlistStub([]);
+      await lossless.scanLowQualityAlbums(locationPath("libC"), stub, null);
+      const first = stub._state.map((item) => item.title).sort();
+      await lossless.scanLowQualityAlbums(locationPath("libC"), stub, null);
+      const second = stub._state.map((item) => item.title).sort();
+
+      assert.deepStrictEqual(second, first, "a second run must not flap the wishlist");
+      assert.deepStrictEqual(second, [], "nothing here is owned in less than lossless");
+    });
   });
 });

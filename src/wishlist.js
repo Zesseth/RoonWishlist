@@ -122,15 +122,27 @@ function normalizeAlbum(album, existing) {
   else if (existing && Array.isArray(existing.buyLinks)) next.buyLinks = normalizeBuyLinks(existing.buyLinks);
   if (existing && existing.addedAt) next.addedAt = existing.addedAt;
   else next.addedAt = album && album.addedAt ? album.addedAt : new Date().toISOString();
-  // Preserve source if existing, otherwise default to "manual" for backward compatibility
+  // The stored source normally wins, so a routine upsert (a status flag, a link
+  // refresh) can never quietly re-label where an entry came from. The one exception is
+  // an album the low-quality scan found that the user has since tagged in Roon: Roon is
+  // the master for tagged albums, and leaving it labelled "low-quality" makes the tag
+  // invisible to every roon-tag code path (ownership flagging, untag removal) while the
+  // clean step keeps deleting an entry the next sync adds straight back.
   if (existing && existing.source) {
-    next.source = existing.source;
+    next.source = promoteSource(existing.source, album && album.source);
   } else if (album && album.source) {
     next.source = album.source;
   } else if (!next.source) {
     next.source = "manual";
   }
   return next;
+}
+
+function promoteSource(existingSource, incomingSource) {
+  // Deliberately only this one promotion. A hand-added entry stays "manual" even when
+  // tagged, so untagging in Roon still cannot delete something the user typed in.
+  if (existingSource === "low-quality" && incomingSource === "roon-tag") return "roon-tag";
+  return existingSource;
 }
 
 function normalizeBuyLinks(links) {
