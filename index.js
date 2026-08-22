@@ -192,7 +192,7 @@ function summarizeNightlyTask(name, task) {
   if (task.error) return `${name} failed: ${task.error}`;
   if (task.skipped) return `${name} skipped: ${task.reason}`;
   if (name === "Low-quality scan") {
-    return `${name}: added ${task.added}, already on wishlist ${task.alreadyPresent}, ignored ${task.ignored}`;
+    return `${name}: added ${task.added}, already on wishlist ${task.alreadyPresent}, ignored ${task.ignored}, now lossless ${task.upgraded || 0}`;
   }
   return `${name}: added ${task.added}, updated ${task.updated}`;
 }
@@ -214,7 +214,7 @@ function summarizeNightlyRun(run) {
     startedAt: run.startedAt,
     finishedAt: run.finishedAt,
     lowQuality: lq && (lq.error ? { error: lq.error } : lq.skipped ? { skipped: true, reason: lq.reason } :
-      { added: lq.added, alreadyPresent: lq.alreadyPresent, ignored: lq.ignored }),
+      { added: lq.added, alreadyPresent: lq.alreadyPresent, ignored: lq.ignored, upgraded: lq.upgraded }),
     roonTagSync: rt && (rt.error ? { error: rt.error } : rt.skipped ? { skipped: true, reason: rt.reason } :
       { added: rt.added, updated: rt.updated, unchanged: rt.unchanged, removed: rt.removed, ownedCheck: summarizeOwnedCheck(rt.ownedCheck) }),
   };
@@ -406,7 +406,7 @@ async function performAction(values) {
   }
   if (action === "low_quality") {
     const result = await runLowQualityScan();
-    return `Low-quality scan done: added ${result.added}, already on wishlist ${result.alreadyPresent}, ignored ${result.ignored}`;
+    return `Low-quality scan done: added ${result.added}, already on wishlist ${result.alreadyPresent}, ignored ${result.ignored}, now lossless ${result.upgraded || 0}`;
   }
   return "Settings saved";
 }
@@ -810,7 +810,7 @@ async function runLowQualityScan() {
   const result = await runLibraryScanAction("low-quality", {
     startStatus: "Scanning library for low-quality albums...",
     successStatus(summary) {
-      return `Low-quality scan done: added ${summary.added}, already on wishlist ${summary.alreadyPresent}, ignored ${summary.ignored}`;
+      return `Low-quality scan done: added ${summary.added}, already on wishlist ${summary.alreadyPresent}, ignored ${summary.ignored}, now lossless ${summary.upgraded || 0}`;
     },
     action(roots) {
       return lossless.scanLowQualityAlbums(roots, wishlist, lowQualityIgnore);

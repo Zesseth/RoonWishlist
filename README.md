@@ -9,7 +9,8 @@ A Roon Extension — a wishlist for albums you don't yet own in lossless quality
 - **Roon tag sync**: Import albums tagged `Wishlist` from Roon into the app wishlist
 - **Search**: Looks up the album on Bandcamp and Qobuz
 - **Low-quality scan**: Finds local albums that are not fully lossless and adds them
-  to the wishlist
+  to the wishlist. It also takes an album back off that list once you have bought it
+  in lossless.
 - **Auto-clean**: When you own a **complete lossless copy** of a wishlist album, it is
   automatically removed from the wishlist. An album that is only partly lossless is
   kept, and the result says why.

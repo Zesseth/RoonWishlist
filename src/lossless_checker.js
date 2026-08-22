@@ -446,15 +446,87 @@ function sameLastCheck(a, b) {
   );
 }
 
+// Setting these to undefined drops them from the persisted JSON, so the entry stops
+// matching the "low-quality album" filter used by the API and the web UI.
+const CLEARED_QUALITY_FIELDS = {
+  qualityStatus: undefined,
+  qualityLosslessTracks: undefined,
+  qualityTotalTracks: undefined,
+  qualityFormats: undefined,
+  qualityLocation: undefined,
+  qualityFlacTracks: undefined,
+  qualityUpdatedAt: undefined,
+  detectedBy: undefined,
+};
+
+/**
+ * Drops the low-quality bookkeeping from a wishlist entry whose album is now held in
+ * full lossless.
+ *
+ * Only entries the low-quality scan itself is responsible for are touched: a manual
+ * wishlist entry is the user's own decision, and a Roon-tagged one is mastered by Roon,
+ * so neither may be deleted here. A tagged entry keeps its place and is flagged
+ * `ownedLossless` instead — same contract as `markOwnedTaggedAlbums` (issue #32).
+ *
+ * @returns {Object|null} A description of what changed, or null if nothing was stale.
+ */
+function clearLowQualityEntry(wishlistModule, item, local) {
+  if (!item) return null;
+  const isLowQualityEntry =
+    item.source === "low-quality" ||
+    item.qualityStatus !== undefined ||
+    (item.qualityFlacTracks !== undefined && item.qualityTotalTracks !== undefined);
+  if (!isLowQualityEntry) return null;
+
+  const details = {
+    artist: item.artist,
+    title: item.title,
+    foundAt: local.fullPath,
+    location: local.location,
+    status: local.status,
+    losslessTracks: local.losslessFiles,
+    totalTracks: local.totalAudioFiles,
+    formats: local.formats,
+    flacTracks: local.losslessFiles,
+  };
+
+  try {
+    if (item.source === "roon-tag") {
+      wishlistModule.upsert({
+        artist: item.artist,
+        title: item.title,
+        ownedLossless: true,
+        buyLinks: [],
+        ...CLEARED_QUALITY_FIELDS,
+      });
+      return { ...details, action: "flagged-owned" };
+    }
+    if (item.source === "low-quality") {
+      if (!wishlistModule.remove({ artist: item.artist, title: item.title })) return null;
+      return { ...details, action: "removed" };
+    }
+    // Legacy entry: it carries quality metadata but predates the `source` field, so it
+    // cannot be proven to have come from the scan. Clear the stale metadata instead of
+    // deleting something the user may have added by hand.
+    wishlistModule.upsert({ artist: item.artist, title: item.title, ...CLEARED_QUALITY_FIELDS });
+    return { ...details, action: "cleared-metadata" };
+  } catch (err) {
+    log.warn(`Could not clear low-quality status for ${item.artist} — ${item.title}: ${err.message}`);
+    return null;
+  }
+}
+
 async function scanLowQualityAlbums(locations, wishlistModule, ignoreModule) {  const roots = normalizeLocations(locations);
   const { albums, errors, perLocation } = await scanLibraries(roots);
   const localAlbums = mergeAlbumsAcrossLocations(albums);
-  const existingKeys = new Set(
-    wishlistModule.getAll().map((item) => albumKey(item.artist, item.title)),
+  const existingByKey = new Map(
+    wishlistModule.getAll().map((item) => [albumKey(item.artist, item.title), item]),
   );
+  const existingKeys = new Set(existingByKey.keys());
   const addedAlbums = [];
   const alreadyPresentAlbums = [];
   const ignoredAlbums = [];
+  const upgradedAlbums = [];
   let skippedLossless = 0;
   let skippedNoAudio = 0;
 
@@ -463,6 +535,20 @@ async function scanLowQualityAlbums(locations, wishlistModule, ignoreModule) {  
     // lossy duplicate exists in another storage location.
     if (local.status === "owned-lossless") {
       skippedLossless += 1;
+      // The album may still be listed as low quality from an earlier scan — that is
+      // exactly the case where the user has just bought it in lossless. Adding it is
+      // not enough; the stale entry has to go, or the album stays on the low-quality
+      // list forever (issue #45).
+      const upgraded = clearLowQualityEntry(
+        wishlistModule,
+        existingByKey.get(albumKey(local.artist, local.album)),
+        local,
+      );
+      if (upgraded) {
+        existingKeys.delete(albumKey(local.artist, local.album));
+        existingByKey.delete(albumKey(local.artist, local.album));
+        upgradedAlbums.push(upgraded);
+      }
       continue;
     }
     if (local.status !== "owned-lossy" && local.status !== "owned-mixed") {
@@ -520,6 +606,7 @@ async function scanLowQualityAlbums(locations, wishlistModule, ignoreModule) {  
     added: addedAlbums.length,
     alreadyPresent: alreadyPresentAlbums.length,
     ignored: ignoredAlbums.length,
+    upgraded: upgradedAlbums.length,
     skippedLossless,
     // Legacy alias; older callers and docs used the FLAC-only wording.
     skippedAllFlac: skippedLossless,
@@ -530,6 +617,7 @@ async function scanLowQualityAlbums(locations, wishlistModule, ignoreModule) {  
     addedAlbums,
     alreadyPresentAlbums,
     ignoredAlbums,
+    upgradedAlbums,
   };
 }
 

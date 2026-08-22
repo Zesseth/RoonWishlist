@@ -7,6 +7,16 @@ for what that means for a pre-1.0 Roon extension).
 
 ## [Unreleased]
 
+### Fixed
+
+- Low-quality scan now clears albums you have since bought in lossless. It previously
+  only ever added, so an album upgraded to lossless was skipped and its stale entry
+  stayed on the low-quality list forever (issue #45).
+- An album the low-quality scan found and the user later tagged `Wishlist` in Roon is
+  now recognised as tag-sourced. Its stored source used to stay `low-quality`, which
+  hid the tag from every roon-tag code path: the ownership check skipped it, and the
+  clean step deleted an entry the next tag sync added straight back (issue #45).
+
 ## [1.0.0] - 2026-08-21
 
 First tagged release. Prior to this, the project had no version tags or releases —
