@@ -436,8 +436,7 @@ Releases are tagged on GitHub (`vX.Y.Z`) — see [Releases](https://github.com/Z
 for the current version and [`CHANGELOG.md`](./CHANGELOG.md) for what changed. The
 install/update instructions above always track the `main` branch, which is the latest
 release plus anything merged since. See [`docs/RELEASING.md`](./docs/RELEASING.md) for
-how a release is cut, and why this project uses `0.x` versions until the
-[v1.0 milestone](https://github.com/Zesseth/RoonWishlist/milestone/1) is complete.
+how a release is cut and how version numbers are chosen.
 
 ### Planning, issue tracking and manual testing
 

@@ -3,9 +3,11 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/); versioning follows
 [Semantic Versioning](https://semver.org/) (see [`docs/RELEASING.md`](./docs/RELEASING.md)
-for what that means for a pre-1.0 Roon extension).
+for what that means for this Roon extension).
 
 ## [Unreleased]
+
+## [1.0.1] - 2026-08-22
 
 ### Fixed
 
@@ -51,5 +53,6 @@ originally planned issues were closed, including distribution/documentation poli
 - Distribution & documentation: install/versioning/release process, changelog,
   single source of truth for the version number (issue #9).
 
-[Unreleased]: https://github.com/Zesseth/RoonWishlist/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/Zesseth/RoonWishlist/compare/v1.0.1...HEAD
+[1.0.1]: https://github.com/Zesseth/RoonWishlist/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/Zesseth/RoonWishlist/releases/tag/v1.0.0
