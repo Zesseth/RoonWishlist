@@ -16,6 +16,10 @@ for what that means for a pre-1.0 Roon extension).
   now recognised as tag-sourced. Its stored source used to stay `low-quality`, which
   hid the tag from every roon-tag code path: the ownership check skipped it, and the
   clean step deleted an entry the next tag sync added straight back (issue #45).
+- The low-quality scan now matches album names as tolerantly as the clean step always
+  has, so a lossless purchase that lands in a folder carrying an edition suffix (e.g.
+  `Metallica (Remastered 2021)`) is recognised as the album already on the list, and an
+  older lossy rip left beside it is no longer added back (issue #45).
 
 ## [1.0.0] - 2026-08-21
 

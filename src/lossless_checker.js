@@ -516,13 +516,45 @@ function clearLowQualityEntry(wishlistModule, item, local) {
   }
 }
 
+/**
+ * Key for comparing an album to a wishlist entry tolerantly: case, punctuation and any
+ * bracketed suffix are ignored, so the folder `Metallica (Remastered 2021)` still
+ * matches the wishlist entry `Metallica`. `checkAndClean` has always matched this way;
+ * the low-quality scan used to compare raw strings instead, which is why buying a
+ * remastered edition left the original entry stranded on the list (issue #45).
+ */
+function albumMatchKey(artist, title) {
+  return `${normalizeForMatch(artist)}||${normalizeForMatch(title)}`;
+}
+
 async function scanLowQualityAlbums(locations, wishlistModule, ignoreModule) {  const roots = normalizeLocations(locations);
   const { albums, errors, perLocation } = await scanLibraries(roots);
   const localAlbums = mergeAlbumsAcrossLocations(albums);
+  const existingItems = wishlistModule.getAll();
   const existingByKey = new Map(
-    wishlistModule.getAll().map((item) => [albumKey(item.artist, item.title), item]),
+    existingItems.map((item) => [albumKey(item.artist, item.title), item]),
   );
   const existingKeys = new Set(existingByKey.keys());
+
+  // Entries grouped by the tolerant key, so a lossless folder can find the entry it
+  // belongs to even when the two names are not spelled identically.
+  const existingByMatch = new Map();
+  for (const item of existingItems) {
+    const key = albumMatchKey(item.artist, item.title);
+    if (!existingByMatch.has(key)) existingByMatch.set(key, []);
+    existingByMatch.get(key).push(item);
+  }
+
+  // Best quality held under each tolerant key. An album owned as a lossless remaster
+  // must not be re-added just because an older lossy rip of the same record is still
+  // sitting in another folder.
+  const bestByMatch = new Map();
+  for (const local of localAlbums) {
+    const key = albumMatchKey(local.artist, local.album);
+    const current = bestByMatch.get(key);
+    bestByMatch.set(key, current ? betterStatus(current, local.status) : local.status);
+  }
+
   const addedAlbums = [];
   const alreadyPresentAlbums = [];
   const ignoredAlbums = [];
@@ -530,25 +562,34 @@ async function scanLowQualityAlbums(locations, wishlistModule, ignoreModule) {  
   let skippedLossless = 0;
   let skippedNoAudio = 0;
 
+  const clearStaleEntries = (local) => {
+    const matchKey = albumMatchKey(local.artist, local.album);
+    const candidates = new Set(existingByMatch.get(matchKey) || []);
+    const exact = existingByKey.get(albumKey(local.artist, local.album));
+    if (exact) candidates.add(exact);
+
+    for (const item of candidates) {
+      const upgraded = clearLowQualityEntry(wishlistModule, item, local);
+      if (!upgraded) continue;
+      const key = albumKey(item.artist, item.title);
+      existingKeys.delete(key);
+      existingByKey.delete(key);
+      upgradedAlbums.push(upgraded);
+    }
+    existingByMatch.delete(matchKey);
+  };
+
   for (const local of localAlbums) {
     // A lossless copy anywhere means the album is already owned properly, even if a
-    // lossy duplicate exists in another storage location.
-    if (local.status === "owned-lossless") {
+    // lossy duplicate exists in another storage location or under another edition's
+    // folder name.
+    if (bestByMatch.get(albumMatchKey(local.artist, local.album)) === "owned-lossless") {
       skippedLossless += 1;
       // The album may still be listed as low quality from an earlier scan — that is
       // exactly the case where the user has just bought it in lossless. Adding it is
       // not enough; the stale entry has to go, or the album stays on the low-quality
       // list forever (issue #45).
-      const upgraded = clearLowQualityEntry(
-        wishlistModule,
-        existingByKey.get(albumKey(local.artist, local.album)),
-        local,
-      );
-      if (upgraded) {
-        existingKeys.delete(albumKey(local.artist, local.album));
-        existingByKey.delete(albumKey(local.artist, local.album));
-        upgradedAlbums.push(upgraded);
-      }
+      clearStaleEntries(local);
       continue;
     }
     if (local.status !== "owned-lossy" && local.status !== "owned-mixed") {
