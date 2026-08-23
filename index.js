@@ -137,6 +137,19 @@ function searchStores(artist, title) {
   return searchAll(artist, title, mysettings.qobuz_country);
 }
 
+function updateQobuzCountry(country) {
+  const nextCountry = qobuzLocation.normalizeCountry(country);
+  if (!nextCountry) throw new Error("qobuz_country must be a two-letter ISO country code");
+  const changed = mysettings.qobuz_country !== nextCountry;
+  mysettings.qobuz_country = nextCountry;
+  if (changed) {
+    for (const item of wishlist.getAll()) {
+      wishlist.upsert({ artist: item.artist, title: item.title, buyLinks: [] });
+    }
+  }
+  return changed;
+}
+
 function renderWishlist(items) {
   if (!items.length) return "Wishlist is empty.";
   return items.map((a, i) => `${i + 1}. ${a.artist} — ${a.title}${renderCheckStatus(a.lastCheck)}`).join("\n");
@@ -473,8 +486,8 @@ const svc_settings = new RoonApiSettings(roonApp, {
           ? settings.values.log_level
           : mysettings.log_level,
         log_max_size_mb: loggerModule.normalizeMaxSizeMb(settings.values.log_max_size_mb) || mysettings.log_max_size_mb,
-        qobuz_country: qobuzLocation.normalizeCountry(settings.values.qobuz_country) || mysettings.qobuz_country,
       });
+      updateQobuzCountry(settings.values.qobuz_country);
       roonApp.save_config("settings", mysettings);
       log.setLevel(mysettings.log_level);
       logFileSink.setMaxSizeMb(mysettings.log_max_size_mb);
@@ -1041,6 +1054,19 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (req.method === "POST" && url.pathname === "/wishlist/links") {
+    readJsonBody(req, res, (album) => {
+      if (!album || !album.artist || !album.title || !Array.isArray(album.buyLinks)) {
+        res.statusCode = 400;
+        res.end(JSON.stringify({ error: "artist, title, and buyLinks are required" }));
+        return;
+      }
+      wishlist.upsert({ artist: album.artist, title: album.title, buyLinks: album.buyLinks });
+      res.end(JSON.stringify({ saved: true }));
+    });
+    return;
+  }
+
   if (req.method === "GET" && url.pathname === "/search") {
     const artist = url.searchParams.get("artist") || "";
     const title = url.searchParams.get("title") || "";
@@ -1459,7 +1485,14 @@ const server = http.createServer(async (req, res) => {
           update.log_max_size_mb = normalized;
         }
 
+        const qobuzCountryChanged = update.qobuz_country !== undefined &&
+          update.qobuz_country !== mysettings.qobuz_country;
         mysettings = Object.assign({}, mysettings, update);
+        if (qobuzCountryChanged) {
+          for (const item of wishlist.getAll()) {
+            wishlist.upsert({ artist: item.artist, title: item.title, buyLinks: [] });
+          }
+        }
         roonApp.save_config("settings", mysettings);
         if (update.log_level) log.setLevel(update.log_level);
         if (update.log_max_size_mb) logFileSink.setMaxSizeMb(update.log_max_size_mb);

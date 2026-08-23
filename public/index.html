@@ -1093,9 +1093,19 @@
         const params = new URLSearchParams({ artist: artist || "", title: title || "" });
         const results = await api("/search?" + params.toString());
         if (!results || !results.length) {
+          await api("/wishlist/links", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ artist, title, buyLinks: [] }),
+          });
           box.innerHTML = '<div class="album-meta">No store results found.</div>';
         } else {
           renderStoreResults(box, results, artist, title);
+          await api("/wishlist/links", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ artist, title, buyLinks: results }),
+          });
         }
       } catch (e) {
         box.innerHTML = '<div class="album-meta" style="color:var(--danger)">Search failed: ' + esc(e.message) + '</div>';
