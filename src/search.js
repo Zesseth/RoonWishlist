@@ -1,6 +1,7 @@
 "use strict";
 
 const log = require("./logger").defaultLogger;
+const { DEFAULT_COUNTRY, localeForCountry, normalizeCountry } = require("./qobuz_location");
 
 const HTTP_HEADERS = {
   "User-Agent":
@@ -271,7 +272,7 @@ async function searchBandcamp(artist, title) {
   );
 }
 
-async function searchQobuz(artist, title) {
+async function searchQobuz(artist, title, country = DEFAULT_COUNTRY) {
   const query = buildQuery(artist, title);
   if (!query) return [];
 
@@ -284,6 +285,7 @@ async function searchQobuz(artist, title) {
         limit: 25,
         offset: 0,
         app_id: appId,
+        country: normalizeCountry(country) || DEFAULT_COUNTRY,
       },
     });
 
@@ -314,7 +316,10 @@ async function searchQobuz(artist, title) {
           store: "Qobuz",
           title: String(item.title).trim(),
           artist: String(item.artist.name).trim(),
-          url: /^https?:\/\//.test(item.url) ? item.url : `https://www.qobuz.com${item.url}`,
+          url: localizeQobuzUrl(
+            /^https?:\/\//.test(item.url) ? item.url : `https://www.qobuz.com${item.url}`,
+            country,
+          ),
         })),
       artist,
       title,
@@ -328,9 +333,17 @@ async function searchQobuz(artist, title) {
   return [];
 }
 
-async function searchAll(artist, title) {
-  const [bandcamp, qobuz] = await Promise.all([searchBandcamp(artist, title), searchQobuz(artist, title)]);
+async function searchAll(artist, title, country = DEFAULT_COUNTRY) {
+  const [bandcamp, qobuz] = await Promise.all([
+    searchBandcamp(artist, title),
+    searchQobuz(artist, title, country),
+  ]);
   return [...bandcamp, ...qobuz];
 }
 
-module.exports = { searchAll, searchBandcamp, searchQobuz };
+function localizeQobuzUrl(url, country) {
+  const locale = localeForCountry(country);
+  return String(url).replace(/(https?:\/\/www\.qobuz\.com\/)[a-z]{2}-[a-z]{2}(?=\/)/i, `$1${locale}`);
+}
+
+module.exports = { searchAll, searchBandcamp, searchQobuz, localizeQobuzUrl };

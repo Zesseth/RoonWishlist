@@ -336,6 +336,18 @@
         <div class="sync-note" id="nightly-note"></div>
       </div>
       <div style="margin-top:20px;">
+        <h3 style="margin:0 0 8px;font-size:14px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;">Store search</h3>
+        <p class="hint">Qobuz country controls catalog availability and the region used in Qobuz links. It is detected from the server locale on first start.</p>
+        <form id="qobuz-form" class="row" autocomplete="off" style="align-items:center;">
+          <label style="display:flex;align-items:center;gap:6px;">
+            Qobuz country
+            <select id="qobuz-country"></select>
+          </label>
+          <button type="submit" class="secondary small">Save</button>
+        </form>
+        <div class="sync-note" id="qobuz-note"></div>
+      </div>
+      <div style="margin-top:20px;">
         <h3 style="margin:0 0 8px;font-size:14px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;">Logging</h3>
         <p class="hint">Controls how much detail is written to the process log (stdout/stderr, or the systemd journal on a server install). "error" is quietest, "debug" is most verbose. Takes effect immediately, no restart needed.</p>
         <form id="log-level-form" class="row" autocomplete="off" style="align-items:center;">
@@ -677,6 +689,12 @@
         if (document.activeElement !== $("log-max-size")) {
           $("log-max-size").value = s.log_max_size_mb || 100;
         }
+        if (Array.isArray(s.qobuz_country_options)) {
+          populateQobuzCountryOptions(s.qobuz_country_options);
+        }
+        if (document.activeElement !== $("qobuz-country")) {
+          $("qobuz-country").value = s.qobuz_country || "FR";
+        }
       } catch { /* ignore */ }
     }
 
@@ -692,6 +710,17 @@
         select.appendChild(opt);
       }
     })();
+
+    function populateQobuzCountryOptions(options) {
+      const select = $("qobuz-country");
+      if (!select || select.options.length) return;
+      for (const option of options) {
+        const element = document.createElement("option");
+        element.value = option.value;
+        element.textContent = option.title + " (" + option.value + ")";
+        select.appendChild(element);
+      }
+    }
 
     // Populated from GET /settings (log_level_options) rather than hardcoded here, so
     // it always matches the levels the logger in src/logger.js actually supports.
@@ -1064,9 +1093,19 @@
         const params = new URLSearchParams({ artist: artist || "", title: title || "" });
         const results = await api("/search?" + params.toString());
         if (!results || !results.length) {
+          await api("/wishlist/links", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ artist, title, buyLinks: [] }),
+          });
           box.innerHTML = '<div class="album-meta">No store results found.</div>';
         } else {
           renderStoreResults(box, results, artist, title);
+          await api("/wishlist/links", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ artist, title, buyLinks: results }),
+          });
         }
       } catch (e) {
         box.innerHTML = '<div class="album-meta" style="color:var(--danger)">Search failed: ' + esc(e.message) + '</div>';
@@ -1119,12 +1158,33 @@
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ log_level: $("log-level").value }),
         });
+
         $("log-level-note").textContent = "Log level set to \"" + r.log_level + "\".";
         $("log-level-note").className = "sync-note ok";
         toast("Log level saved.", "ok");
       } catch (e) {
         $("log-level-note").textContent = "Save failed: " + e.message;
         $("log-level-note").className = "sync-note err";
+        toast("Save failed: " + e.message, "err");
+      }
+    });
+
+    $("qobuz-form").addEventListener("submit", async (ev) => {
+      ev.preventDefault();
+      const country = $("qobuz-country").value;
+      try {
+        const r = await api("/settings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ qobuz_country: country }),
+        });
+        $("qobuz-country").value = r.qobuz_country;
+        $("qobuz-note").textContent = "Qobuz country set to " + r.qobuz_country + ".";
+        $("qobuz-note").className = "sync-note ok";
+        toast("Qobuz country saved.", "ok");
+      } catch (e) {
+        $("qobuz-note").textContent = "Save failed: " + e.message;
+        $("qobuz-note").className = "sync-note err";
         toast("Save failed: " + e.message, "err");
       }
     });
