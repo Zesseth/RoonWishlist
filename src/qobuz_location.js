@@ -1,6 +1,6 @@
 "use strict";
 
-const DEFAULT_COUNTRY = "FR";
+const DEFAULT_COUNTRY = "FI";
 
 function detectCountry(env = process.env) {
   const locale = env.ROON_WISHLIST_QOBUZ_COUNTRY ||

@@ -136,7 +136,7 @@ if [ -z "$QOBUZ_COUNTRY" ]; then
   LOCALE_VALUE="${LC_ALL:-${LC_ADDRESS:-${LC_MESSAGES:-${LANG:-}}}}"
   QOBUZ_COUNTRY="$(printf '%s' "$LOCALE_VALUE" | sed -n 's/.*[_-]\([A-Za-z][A-Za-z]\).*/\1/p' | tr '[:lower:]' '[:upper:]')"
 fi
-QOBUZ_COUNTRY="${QOBUZ_COUNTRY:-FR}"
+QOBUZ_COUNTRY="${QOBUZ_COUNTRY:-FI}"
 
 [ "$(id -u)" -eq 0 ] || err "Please run as root (e.g. 'sudo ./install.sh')."
 

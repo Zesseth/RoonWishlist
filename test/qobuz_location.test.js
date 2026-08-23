@@ -22,8 +22,8 @@ describe("Qobuz location", () => {
     );
   });
 
-  it("falls back to France when no country can be detected", () => {
-    assert.strictEqual(detectCountry({}), "FR");
+  it("falls back to Finland when no country can be detected", () => {
+    assert.strictEqual(detectCountry({}), "FI");
     assert.strictEqual(normalizeCountry(" fi "), "FI");
     assert.strictEqual(normalizeCountry("FIN"), "");
   });
@@ -32,7 +32,7 @@ describe("Qobuz location", () => {
     assert.strictEqual(localeForCountry("FI"), "fi-en");
     assert.strictEqual(localeForCountry("US"), "us-en");
     assert.strictEqual(localeForCountry("DE"), "de-de");
-    assert.strictEqual(localeForCountry("XX"), "fr-fr");
+    assert.strictEqual(localeForCountry("XX"), "fi-en");
   });
 
   it("localizes an existing Qobuz URL without changing its album path", () => {
