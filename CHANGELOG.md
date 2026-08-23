@@ -7,6 +7,18 @@ for what that means for this Roon extension).
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-08-23
+
+### Fixed
+
+- The last-scan summary on the Low-quality albums page no longer looks like part of the
+  actionable wishlist. It is now a clearly separated, visually distinct `Last scan` panel
+  with its own heading and an explanation that its rows are informational only, so the
+  report-only entries are no longer mistaken for wishlist rows whose buttons went missing
+  (issue #37).
+- The scan statistics are shown as a bullet list instead of one dash-separated line, and
+  each figure states what it means rather than relying on a label-value pair.
+
 ## [1.1.0] - 2026-08-23
 
 ### Added
@@ -16,7 +28,8 @@ for what that means for this Roon extension).
 - Supported-country dropdown and country-specific Qobuz catalog links.
 - Store-link refresh when the Qobuz country changes.
 
-[Unreleased]: https://github.com/Zesseth/RoonWishlist/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/Zesseth/RoonWishlist/compare/v1.1.1...HEAD
+[1.1.1]: https://github.com/Zesseth/RoonWishlist/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/Zesseth/RoonWishlist/compare/v1.0.1...v1.1.0
 
 ## [1.0.1] - 2026-08-22
