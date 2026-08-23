@@ -204,6 +204,32 @@
     .results a:hover { text-decoration: underline; }
     .results li { padding: 8px 4px; border-bottom: 1px solid var(--border); }
     .results li:last-child { border-bottom: none; }
+    .low-quality-summary {
+      margin-top: 18px;
+      padding: 14px 16px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: var(--panel-2);
+    }
+    .low-quality-summary h3 {
+      margin: 0 0 6px;
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text);
+    }
+    .low-quality-summary .summary-intro {
+      margin-bottom: 10px;
+    }
+    .scan-summary-list {
+      margin-top: 10px !important;
+      padding: 8px 10px !important;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--panel);
+    }
+    .scan-summary-item {
+      color: var(--muted);
+    }
     .toolbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
     .count { font-size: 13px; color: var(--muted); }
     .sync-note { margin-top: 6px; font-size: 13px; color: var(--muted); }
@@ -308,7 +334,7 @@
         <button class="secondary small" id="scan-low-quality-btn" title="Scan your library and add albums that are not fully lossless to the wishlist">Scan low-quality albums now</button>
       </div>
       <ul class="list" id="low-quality-list"></ul>
-      <div class="results" id="low-quality-results"></div>
+      <div class="results low-quality-summary" id="low-quality-results"></div>
     </section>
 
     <section class="card page" data-page="settings">
@@ -528,14 +554,16 @@
       }
       if (summary.errors) meta.push("errors " + summary.errors);
       let html =
-        '<div class="album-meta">Last run ' + esc(new Date(summary.finishedAt || summary.startedAt || Date.now()).toLocaleString()) + '</div>' +
+        '<h3>Last scan</h3>' +
+        '<div class="album-meta summary-intro">Informational summary of the most recent low-quality scan. These albums are listed above with their available actions.</div>' +
+        '<div class="album-meta">Run at ' + esc(new Date(summary.finishedAt || summary.startedAt || Date.now()).toLocaleString()) + '</div>' +
         '<div class="album-meta">' + esc(meta.join(" - ")) + '</div>';
 
       if (Array.isArray(summary.addedAlbums) && summary.addedAlbums.length) {
-        html += '<ul class="list">';
+        html += '<ul class="list scan-summary-list">';
         for (const album of summary.addedAlbums) {
           html +=
-            '<li><div class="album-main">' +
+            '<li class="scan-summary-item"><div>' +
               '<div><span class="album-artist">' + esc(album.artist) + '</span> ' +
               '<span class="album-title">&mdash; ' + esc(album.title) + '</span></div>' +
               '<div class="album-meta">' + esc(formatLosslessRatio(album.losslessTracks !== undefined ? album.losslessTracks : album.flacTracks, album.totalTracks)) + '</div>' +
