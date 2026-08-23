@@ -7,6 +7,18 @@ for what that means for this Roon extension).
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-08-23
+
+### Added
+
+- Configurable Qobuz country selection in Roon Settings and the Web UI.
+- Automatic initial country detection from the install host locale, defaulting to Finland.
+- Supported-country dropdown and country-specific Qobuz catalog links.
+- Store-link refresh when the Qobuz country changes.
+
+[Unreleased]: https://github.com/Zesseth/RoonWishlist/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/Zesseth/RoonWishlist/compare/v1.0.1...v1.1.0
+
 ## [1.0.1] - 2026-08-22
 
 ### Fixed
@@ -53,6 +65,5 @@ originally planned issues were closed, including distribution/documentation poli
 - Distribution & documentation: install/versioning/release process, changelog,
   single source of truth for the version number (issue #9).
 
-[Unreleased]: https://github.com/Zesseth/RoonWishlist/compare/v1.0.1...HEAD
 [1.0.1]: https://github.com/Zesseth/RoonWishlist/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/Zesseth/RoonWishlist/releases/tag/v1.0.0
