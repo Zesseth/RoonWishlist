@@ -1414,6 +1414,7 @@ const server = http.createServer(async (req, res) => {
       log_level_options: LOG_LEVEL_OPTIONS,
       log_max_size_mb: mysettings.log_max_size_mb,
       qobuz_country: mysettings.qobuz_country,
+      qobuz_country_options: qobuzLocation.COUNTRY_OPTIONS.map(([value, title]) => ({ value, title })),
       log_file_path: logFileSink.getFilePath(),
     }));
     return;

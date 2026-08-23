@@ -31,9 +31,11 @@ function localeForCountry(country) {
 
 const COUNTRY_OPTIONS = [
   ["FI", "Finland"], ["SE", "Sweden"], ["NO", "Norway"], ["DK", "Denmark"],
-  ["DE", "Germany"], ["FR", "France"], ["GB", "United Kingdom"],
-  ["NL", "Netherlands"], ["ES", "Spain"], ["IT", "Italy"], ["US", "United States"],
-  ["CA", "Canada"], ["AU", "Australia"],
+  ["DE", "Germany"], ["AT", "Austria"], ["CH", "Switzerland"], ["FR", "France"],
+  ["BE", "Belgium"], ["GB", "United Kingdom"], ["IE", "Ireland"],
+  ["NL", "Netherlands"], ["ES", "Spain"], ["IT", "Italy"], ["PT", "Portugal"],
+  ["PL", "Poland"], ["CZ", "Czechia"], ["US", "United States"], ["CA", "Canada"],
+  ["AU", "Australia"],
 ];
 
 module.exports = {
