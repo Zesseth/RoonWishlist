@@ -20,13 +20,14 @@ function normalizeCountry(value) {
 
 function localeForCountry(country) {
   const normalized = normalizeCountry(country) || DEFAULT_COUNTRY;
-  const languages = {
-    FI: "fi", SE: "sv", NO: "no", DK: "da", NL: "nl", DE: "de",
-    AT: "de", CH: "de", FR: "fr", BE: "fr", ES: "es", IT: "it",
-    PT: "pt", PL: "pl", CZ: "cs", GB: "en", IE: "en", US: "en",
-    CA: "en", AU: "en",
+  const locales = {
+    FI: "fi-en", SE: "se-en", NO: "no-en", DK: "dk-en",
+    DE: "de-de", AT: "at-de", CH: "ch-de", FR: "fr-fr",
+    BE: "be-fr", GB: "gb-en", IE: "ie-en", NL: "nl-nl",
+    ES: "es-es", IT: "it-it", PT: "pt-pt", US: "us-en",
+    CA: "ca-en", AU: "au-en",
   };
-  return `${languages[normalized] || "en"}-${normalized.toLowerCase()}`;
+  return locales[normalized] || locales[DEFAULT_COUNTRY];
 }
 
 const COUNTRY_OPTIONS = [
@@ -34,8 +35,7 @@ const COUNTRY_OPTIONS = [
   ["DE", "Germany"], ["AT", "Austria"], ["CH", "Switzerland"], ["FR", "France"],
   ["BE", "Belgium"], ["GB", "United Kingdom"], ["IE", "Ireland"],
   ["NL", "Netherlands"], ["ES", "Spain"], ["IT", "Italy"], ["PT", "Portugal"],
-  ["PL", "Poland"], ["CZ", "Czechia"], ["US", "United States"], ["CA", "Canada"],
-  ["AU", "Australia"],
+  ["US", "United States"], ["CA", "Canada"], ["AU", "Australia"],
 ];
 
 module.exports = {

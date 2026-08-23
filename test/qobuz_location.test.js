@@ -29,15 +29,16 @@ describe("Qobuz location", () => {
   });
 
   it("maps countries to Qobuz URL locales", () => {
-    assert.strictEqual(localeForCountry("FI"), "fi-fi");
-    assert.strictEqual(localeForCountry("US"), "en-us");
-    assert.strictEqual(localeForCountry("XX"), "en-xx");
+    assert.strictEqual(localeForCountry("FI"), "fi-en");
+    assert.strictEqual(localeForCountry("US"), "us-en");
+    assert.strictEqual(localeForCountry("DE"), "de-de");
+    assert.strictEqual(localeForCountry("XX"), "fr-fr");
   });
 
   it("localizes an existing Qobuz URL without changing its album path", () => {
     assert.strictEqual(
       localizeQobuzUrl("https://www.qobuz.com/fr-fr/album/ride-the-lightning/abc", "FI"),
-      "https://www.qobuz.com/fi-fi/album/ride-the-lightning/abc",
+      "https://www.qobuz.com/fi-en/album/ride-the-lightning/abc",
     );
   });
 });
