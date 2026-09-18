@@ -7,6 +7,28 @@ for what that means for this Roon extension).
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-09-18
+
+### Changed
+
+- Low-quality album list: the permanent `Ignore` action now uses the `danger` style
+  with an explicit "never re-add" label, while the reversible `Remove` action uses the
+  `secondary` style, so button severity matches actual consequence. The two are also
+  reordered (Find in stores → Remove → Ignore) so the most consequential action isn't
+  the easiest one to reach (#36).
+- The Reload button now disables and shows "Reloading…" while in flight, confirms
+  completion with a toast including the album count (or explicitly "no changes" when
+  the list is identical), shows an error toast on failure, and can no longer be
+  double-clicked into overlapping loads (#35).
+- The Wishlist page toolbar is now limited to the title, description and album count;
+  "Sync Roon tag", "Reload wishlist now" and the low-quality "Scan low-quality albums
+  now" button moved to Settings. The Wishlist and Low-quality albums tabs now
+  auto-refresh every 30 seconds, so a manual reload is rarely needed.
+- Settings is now grouped into three clearly-labelled sections (Global, Wishlist tab,
+  Low-quality albums tab) so it is obvious what each control affects.
+- The Low-quality albums tab toolbar now shows an album count, matching the Wishlist
+  tab.
+
 ## [1.1.1] - 2026-08-23
 
 ### Fixed
@@ -28,7 +50,8 @@ for what that means for this Roon extension).
 - Supported-country dropdown and country-specific Qobuz catalog links.
 - Store-link refresh when the Qobuz country changes.
 
-[Unreleased]: https://github.com/Zesseth/RoonWishlist/compare/v1.1.1...HEAD
+[Unreleased]: https://github.com/Zesseth/RoonWishlist/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/Zesseth/RoonWishlist/compare/v1.1.1...v1.2.0
 [1.1.1]: https://github.com/Zesseth/RoonWishlist/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/Zesseth/RoonWishlist/compare/v1.0.1...v1.1.0
 
