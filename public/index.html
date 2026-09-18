@@ -970,16 +970,22 @@
       }
     }
 
+    // Tracks the total album count from the most recent successful load, so the
+    // Reload button (below) can tell "reloaded, nothing changed" apart from
+    // "reloaded, the list is different now" instead of reporting the same count
+    // every time regardless of whether anything actually changed.
+    let lastWishlistTotal = null;
+
     async function loadWishlist() {
       const [roonTag, lowQuality, owned] = await Promise.all([
         loadRoonTagWishlist(),
         loadLowQualityWishlist(),
         loadOwnedLossless(),
       ]);
-      return {
-        failed: roonTag === null || lowQuality === null || owned === null,
-        total: (roonTag || 0) + (lowQuality || 0) + (owned || 0),
-      };
+      const failed = roonTag === null || lowQuality === null || owned === null;
+      const total = (roonTag || 0) + (lowQuality || 0) + (owned || 0);
+      if (!failed) lastWishlistTotal = total;
+      return { failed, total };
     }
 
     // Albums tagged in Roon that turned out to be owned in full lossless. They stay
@@ -1275,15 +1281,19 @@
       const btn = $("refresh-btn");
       if (btn.disabled) return;
       const original = btn.textContent;
+      const previousTotal = lastWishlistTotal;
       btn.disabled = true;
       btn.textContent = "Reloading…";
       try {
         const result = await loadWishlist();
         await loadStatus();
+        const albumWord = result.total === 1 ? "album" : "albums";
         if (result.failed) {
           toast("Reload finished with errors — see above for details.", "err");
+        } else if (previousTotal !== null && previousTotal === result.total) {
+          toast("Reloaded — no changes (" + result.total + " " + albumWord + ")", "ok");
         } else {
-          toast("Reloaded — " + result.total + " album" + (result.total === 1 ? "" : "s"), "ok");
+          toast("Reloaded — " + result.total + " " + albumWord, "ok");
         }
       } catch (e) {
         toast("Reload failed: " + e.message, "err");
