@@ -712,7 +712,7 @@
         }
         if (cleanBtn) {
           const cleanRunning = s.scanInProgress && s.scanActivity === "clean";
-          cleanBtn.textContent = cleanRunning ? "Scanning..." : "Scan & clean now";
+          cleanBtn.textContent = cleanRunning ? "Scanning..." : "Clear & rebuild low-quality albums";
           cleanBtn.disabled = !hasScanLocation() || !!s.scanInProgress;
         }
         renderLowQualitySection();
