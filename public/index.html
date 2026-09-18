@@ -261,6 +261,17 @@
       letter-spacing: 0.5px;
     }
     .danger-zone p { margin: 0 0 12px; font-size: 13px; color: var(--text); }
+    .settings-group { margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--border); }
+    .settings-group:first-of-type { margin-top: 0; padding-top: 0; border-top: none; }
+    .settings-group-title {
+      margin: 0 0 4px;
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--accent);
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+    }
+    .settings-group-scope { margin: 0 0 14px; font-size: 12px; color: var(--muted); }
     .page { display: none; }
     .page.active { display: block; }
     /* An optional section on an active page still has to be able to hide itself. */
@@ -312,13 +323,9 @@
       <div class="toolbar">
         <div>
           <h2 style="margin:0;">Wishlist</h2>
-          <div class="sync-note" id="sync-note">Albums tagged Wishlist in Roon. To take one off the list, remove the Wishlist tag in Roon and sync.</div>
+          <p class="hint" style="margin:2px 0 0;">Import albums tagged "Wishlist" from Roon and fetch store links.</p>
         </div>
-        <div class="row" style="gap:8px;">
-          <button class="secondary small" id="sync-roon-btn">Sync Roon tag</button>
-          <span class="count" id="count"></span>
-          <button class="secondary small" id="refresh-btn">Reload</button>
-        </div>
+        <span class="count" id="count"></span>
       </div>
       <ul class="list" id="wishlist"></ul>
     </section>
@@ -341,75 +348,100 @@
           <h2 style="margin:0;">Low-quality albums</h2>
           <div class="sync-note" id="low-quality-note">Albums in your library that are not fully FLAC.</div>
         </div>
-        <button class="secondary small" id="scan-low-quality-btn" title="Scan your library and add albums that are not fully lossless to the wishlist">Scan low-quality albums now</button>
+        <span class="count" id="low-quality-count"></span>
       </div>
       <ul class="list" id="low-quality-list"></ul>
       <div class="results low-quality-summary" id="low-quality-results"></div>
     </section>
 
     <section class="card page" data-page="settings">
-      <h2>Music folders</h2>
-      <p class="hint">Folders on this machine that are scanned for albums you already own. Separate several folders with a semicolon.</p>
-      <form id="lib-form" class="row" autocomplete="off">
-        <input type="text" id="lib-path" placeholder="/music; /mnt/music2" />
-        <button type="submit">Save folders</button>
-      </form>
-      <p class="hint" id="roon-storage-note">Roon does not give extensions the storage folders configured in its own settings, so these have to be set here. <a href="https://github.com/Zesseth/RoonWishlist/issues/15" target="_blank" rel="noopener">Why</a></p>
-      <div id="storage-locations" style="margin-top: 12px;">
-        <div class="empty">Loading music folders…</div>
-      </div>
-      <div style="margin-top:20px;">
-        <h3 style="margin:0 0 8px;font-size:14px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;">Nightly automation</h3>
-        <p class="hint">Runs a low-quality album scan, then a Roon tag sync (which also refreshes store links), once per day at the time below. A change here takes effect without restarting the extension.</p>
-        <form id="nightly-form" class="row" autocomplete="off" style="align-items:center;">
-          <label style="display:flex;align-items:center;gap:6px;">
-            <input type="checkbox" id="nightly-enabled" />
-            Enable nightly automation
-          </label>
-          <select id="nightly-time"></select>
-          <button type="submit" class="secondary small">Save</button>
+      <h2>Settings</h2>
+
+      <div class="settings-group">
+        <p class="settings-group-title">Global</p>
+        <p class="settings-group-scope">Applies to the whole extension &mdash; affects every tab.</p>
+        <h3 style="margin:0 0 8px;font-size:14px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;">Music folders</h3>
+        <p class="hint">Folders on this machine that are scanned for albums you already own. Separate several folders with a semicolon.</p>
+        <form id="lib-form" class="row" autocomplete="off">
+          <input type="text" id="lib-path" placeholder="/music; /mnt/music2" />
+          <button type="submit">Save folders</button>
         </form>
-        <div class="sync-note" id="nightly-note"></div>
+        <p class="hint" id="roon-storage-note">Roon does not give extensions the storage folders configured in its own settings, so these have to be set here. <a href="https://github.com/Zesseth/RoonWishlist/issues/15" target="_blank" rel="noopener">Why</a></p>
+        <div id="storage-locations" style="margin-top: 12px;">
+          <div class="empty">Loading music folders…</div>
+        </div>
+        <div style="margin-top:20px;">
+          <h3 style="margin:0 0 8px;font-size:14px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;">Nightly automation</h3>
+          <p class="hint">Runs a low-quality album scan, then a Roon tag sync (which also refreshes store links), once per day at the time below. A change here takes effect without restarting the extension.</p>
+          <form id="nightly-form" class="row" autocomplete="off" style="align-items:center;">
+            <label style="display:flex;align-items:center;gap:6px;">
+              <input type="checkbox" id="nightly-enabled" />
+              Enable nightly automation
+            </label>
+            <select id="nightly-time"></select>
+            <button type="submit" class="secondary small">Save</button>
+          </form>
+          <div class="sync-note" id="nightly-note"></div>
+        </div>
+        <div style="margin-top:20px;">
+          <h3 style="margin:0 0 8px;font-size:14px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;">Store search</h3>
+          <p class="hint">Qobuz country controls catalog availability and the region used in Qobuz links. It is detected from the server locale on first start.</p>
+          <form id="qobuz-form" class="row" autocomplete="off" style="align-items:center;">
+            <label style="display:flex;align-items:center;gap:6px;">
+              Qobuz country
+              <select id="qobuz-country"></select>
+            </label>
+            <button type="submit" class="secondary small">Save</button>
+          </form>
+          <div class="sync-note" id="qobuz-note"></div>
+        </div>
+        <div style="margin-top:20px;">
+          <h3 style="margin:0 0 8px;font-size:14px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;">Logging</h3>
+          <p class="hint">Controls how much detail is written to the process log (stdout/stderr, or the systemd journal on a server install). "error" is quietest, "debug" is most verbose. Takes effect immediately, no restart needed.</p>
+          <form id="log-level-form" class="row" autocomplete="off" style="align-items:center;">
+            <label style="display:flex;align-items:center;gap:6px;">
+              Log level
+              <select id="log-level"></select>
+            </label>
+            <button type="submit" class="secondary small">Save</button>
+          </form>
+          <div class="sync-note" id="log-level-note"></div>
+          <form id="log-max-size-form" class="row" autocomplete="off" style="align-items:center;margin-top:8px;">
+            <label style="display:flex;align-items:center;gap:6px;">
+              Log file max size (MB)
+              <input id="log-max-size" type="number" min="0.1" step="any" style="width:80px;" />
+            </label>
+            <button type="submit" class="secondary small">Save</button>
+          </form>
+          <div class="sync-note" id="log-max-size-note"></div>
+        </div>
       </div>
-      <div style="margin-top:20px;">
-        <h3 style="margin:0 0 8px;font-size:14px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;">Store search</h3>
-        <p class="hint">Qobuz country controls catalog availability and the region used in Qobuz links. It is detected from the server locale on first start.</p>
-        <form id="qobuz-form" class="row" autocomplete="off" style="align-items:center;">
-          <label style="display:flex;align-items:center;gap:6px;">
-            Qobuz country
-            <select id="qobuz-country"></select>
-          </label>
-          <button type="submit" class="secondary small">Save</button>
-        </form>
-        <div class="sync-note" id="qobuz-note"></div>
+
+      <div class="settings-group">
+        <p class="settings-group-title">Wishlist tab</p>
+        <p class="settings-group-scope">Only affects the Wishlist tab (tagged-in-Roon albums and already-owned albums).</p>
+        <div class="sync-note" id="sync-note">Albums tagged Wishlist in Roon. To take one off the list, remove the Wishlist tag in Roon and sync.</div>
+        <div class="row" style="gap:8px;margin-top:8px;">
+          <button class="secondary small" id="sync-roon-btn">Sync Roon tag</button>
+          <button type="button" class="secondary small" id="refresh-btn">Reload wishlist now</button>
+        </div>
+        <p class="hint" style="margin-top:8px;">The Wishlist page refreshes on its own every 30 seconds; "Reload wishlist now" is only needed if you don't want to wait for that.</p>
+        <div class="danger-zone">
+          <h3>Danger Zone</h3>
+          <p><strong>Clear &amp; rebuild from Roon tag:</strong> Empty the entire wishlist and rebuild <strong>only</strong> from albums tagged "Wishlist" in Roon. Non-tagged albums will be removed.</p>
+          <button type="button" class="danger" id="rebuild-roon-btn">Clear &amp; rebuild from Roon tag</button>
+        </div>
       </div>
-      <div style="margin-top:20px;">
-        <h3 style="margin:0 0 8px;font-size:14px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;">Logging</h3>
-        <p class="hint">Controls how much detail is written to the process log (stdout/stderr, or the systemd journal on a server install). "error" is quietest, "debug" is most verbose. Takes effect immediately, no restart needed.</p>
-        <form id="log-level-form" class="row" autocomplete="off" style="align-items:center;">
-          <label style="display:flex;align-items:center;gap:6px;">
-            Log level
-            <select id="log-level"></select>
-          </label>
-          <button type="submit" class="secondary small">Save</button>
-        </form>
-        <div class="sync-note" id="log-level-note"></div>
-        <form id="log-max-size-form" class="row" autocomplete="off" style="align-items:center;margin-top:8px;">
-          <label style="display:flex;align-items:center;gap:6px;">
-            Log file max size (MB)
-            <input id="log-max-size" type="number" min="0.1" step="any" style="width:80px;" />
-          </label>
-          <button type="submit" class="secondary small">Save</button>
-        </form>
-        <div class="sync-note" id="log-max-size-note"></div>
-      </div>
-      <div class="danger-zone">
-        <h3>Danger Zone</h3>
-        <p>These actions <strong>empty and rebuild</strong> their respective sections from scratch.</p>
-        <p style="margin-top: 12px;"><strong>Clear &amp; rebuild from Roon tag:</strong> Empty the entire wishlist and rebuild <strong>only</strong> from albums tagged "Wishlist" in Roon. Non-tagged albums will be removed.</p>
-        <button type="button" class="danger" id="rebuild-roon-btn" style="margin-bottom: 16px;">Clear &amp; rebuild from Roon tag</button>
-        <p><strong>Clear &amp; rebuild low-quality albums:</strong> Empty low-quality albums, remove any albums you already own as a complete lossless copy, then scan the library and add the ones that are not fully lossless.</p>
-        <button type="button" class="danger" id="clean-btn" title="Empty low-quality albums, remove albums owned in full lossless quality, then rescan for albums that are not fully lossless">Clear &amp; rebuild low-quality albums</button>
+
+      <div class="settings-group">
+        <p class="settings-group-title">Low-quality albums tab</p>
+        <p class="settings-group-scope">Only affects the Low-quality albums tab.</p>
+        <button class="secondary small" id="scan-low-quality-btn" title="Scan your library and add albums that are not fully lossless to the wishlist">Scan low-quality albums now</button>
+        <div class="danger-zone">
+          <h3>Danger Zone</h3>
+          <p><strong>Clear &amp; rebuild low-quality albums:</strong> Empty low-quality albums, remove any albums you already own as a complete lossless copy, then scan the library and add the ones that are not fully lossless.</p>
+          <button type="button" class="danger" id="clean-btn" title="Empty low-quality albums, remove albums owned in full lossless quality, then rescan for albums that are not fully lossless">Clear &amp; rebuild low-quality albums</button>
+        </div>
       </div>
     </section>
   </main>
@@ -934,12 +966,17 @@
       }
     }
 
+    // Each loader returns the album count on success, or null on failure (after
+    // showing its own error toast), so loadWishlist() can report a combined
+    // outcome to whatever triggered it (see the Reload button below).
     async function loadRoonTagWishlist() {
       try {
         const items = await api("/wishlist/roon-tag");
         renderRoonTagWishlist(items || []);
+        return (items || []).length;
       } catch (e) {
         toast("Failed to load Roon tag wishlist: " + e.message, "err");
+        return null;
       }
     }
 
@@ -947,21 +984,40 @@
       try {
         const items = await api("/wishlist/low-quality");
         renderLowQualityWishlist(items || []);
+        return (items || []).length;
       } catch (e) {
         toast("Failed to load low-quality wishlist: " + e.message, "err");
+        return null;
       }
     }
 
     async function loadOwnedLossless() {
       try {
-        renderOwnedLossless(await api("/wishlist/owned-lossless") || []);
+        const items = await api("/wishlist/owned-lossless");
+        renderOwnedLossless(items || []);
+        return (items || []).length;
       } catch (e) {
         toast("Failed to load already-owned albums: " + e.message, "err");
+        return null;
       }
     }
 
+    // Tracks the total album count from the most recent successful load, so the
+    // Reload button (below) can tell "reloaded, nothing changed" apart from
+    // "reloaded, the list is different now" instead of reporting the same count
+    // every time regardless of whether anything actually changed.
+    let lastWishlistTotal = null;
+
     async function loadWishlist() {
-      await Promise.all([loadRoonTagWishlist(), loadLowQualityWishlist(), loadOwnedLossless()]);
+      const [roonTag, lowQuality, owned] = await Promise.all([
+        loadRoonTagWishlist(),
+        loadLowQualityWishlist(),
+        loadOwnedLossless(),
+      ]);
+      const failed = roonTag === null || lowQuality === null || owned === null;
+      const total = (roonTag || 0) + (lowQuality || 0) + (owned || 0);
+      if (!failed) lastWishlistTotal = total;
+      return { failed, total };
     }
 
     // Albums tagged in Roon that turned out to be owned in full lossless. They stay
@@ -1012,9 +1068,11 @@
     function renderLowQualityWishlist(items) {
       const ul = $("low-quality-list");
       if (!ul) return;
+      const countEl = $("low-quality-count");
+      if (countEl) countEl.textContent = items.length + (items.length === 1 ? " album" : " albums");
       ul.innerHTML = "";
       if (!items.length) {
-        ul.innerHTML = '<li class="empty">No low-quality albums on wishlist. Use Settings → Library → "Scan low-quality albums now" to add albums here.</li>';
+        ul.innerHTML = '<li class="empty">No low-quality albums on wishlist. Use Settings → Low-quality albums tab → "Scan low-quality albums now" to add albums here.</li>';
         return;
       }
       renderWishlistItems(ul, items, true, true);
@@ -1028,13 +1086,17 @@
         const li = document.createElement("li");
         const added = a.addedAt ? new Date(a.addedAt).toLocaleDateString() : "";
         const qualityMeta = qualityMetaFor(a);
+        // Ignore permanently blacklists the album from future low-quality scans
+        // (see lowQualityIgnore in src/lossless_checker.js) - the most consequential
+        // action here, so it gets the strongest visual weight.
         const ignoreButton = showIgnore && hasTrackCounts(a)
-          ? '<button class="secondary small" data-ignore>Ignore</button>'
+          ? '<button class="danger small" data-ignore title="Removes from wishlist and never re-adds it, even if it stays low-quality">Ignore &mdash; never re-add</button>'
           : '';
-        // Removing a Roon-tagged album here is pointless: the next sync brings it
-        // straight back, because Roon is the master. The tag is the way to remove it.
+        // Removing a low-quality album here is a simple, reversible list removal:
+        // the next low-quality scan will just re-add it if it is still low-quality.
+        // It should not look more severe than the permanent Ignore action above.
         const removeButton = allowRemove
-          ? '<button class="danger" data-remove>Remove</button>'
+          ? '<button class="secondary small" data-remove title="A future low-quality scan will re-add this if it is still low-quality">Remove</button>'
           : '';
         li.innerHTML =
           '<div class="album-main">' +
@@ -1046,8 +1108,8 @@
           '</div>' +
           '<div class="album-actions">' +
             (showStores ? '<button class="secondary small" data-search>Find in stores</button>' : '') +
-            ignoreButton +
             removeButton +
+            ignoreButton +
           '</div>';
         if (showStores && Array.isArray(a.buyLinks) && a.buyLinks.length) {
           renderStoreResults(li.querySelector("[data-results]"), a.buyLinks, false);
@@ -1249,7 +1311,31 @@
       }
     });
 
-    $("refresh-btn").addEventListener("click", () => { loadWishlist(); loadStatus(); });
+    $("refresh-btn").addEventListener("click", async () => {
+      const btn = $("refresh-btn");
+      if (btn.disabled) return;
+      const original = btn.textContent;
+      const previousTotal = lastWishlistTotal;
+      btn.disabled = true;
+      btn.textContent = "Reloading…";
+      try {
+        const result = await loadWishlist();
+        await loadStatus();
+        const albumWord = result.total === 1 ? "album" : "albums";
+        if (result.failed) {
+          toast("Reload finished with errors — see above for details.", "err");
+        } else if (previousTotal !== null && previousTotal === result.total) {
+          toast("Reloaded — no changes (" + result.total + " " + albumWord + ")", "ok");
+        } else {
+          toast("Reloaded — " + result.total + " " + albumWord, "ok");
+        }
+      } catch (e) {
+        toast("Reload failed: " + e.message, "err");
+      } finally {
+        btn.disabled = false;
+        btn.textContent = original;
+      }
+    });
 
     $("sync-roon-btn").addEventListener("click", async () => {
       const btn = $("sync-roon-btn");
@@ -1455,13 +1541,16 @@
       closeMenu();
     });
 
-    // Initial load + light polling so the status chip stays current.
+    // Initial load + light polling: status/settings-affecting bits refresh often since
+    // they're cheap, the wishlist itself refreshes more slowly since a manual "Reload
+    // wishlist now" (Settings) is available for anyone who doesn't want to wait.
     setPage(normalizePage(window.location.hash.replace(/^#/, "")), false);
     loadStatus();
     loadSettings();
     loadStorageLocations();
     loadWishlist();
     setInterval(loadStatus, 10000);
+    setInterval(loadWishlist, 30000);
   </script>
 </body>
 </html>
