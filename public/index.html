@@ -1074,8 +1074,8 @@
           '</div>' +
           '<div class="album-actions">' +
             (showStores ? '<button class="secondary small" data-search>Find in stores</button>' : '') +
-            ignoreButton +
             removeButton +
+            ignoreButton +
           '</div>';
         if (showStores && Array.isArray(a.buyLinks) && a.buyLinks.length) {
           renderStoreResults(li.querySelector("[data-results]"), a.buyLinks, false);
