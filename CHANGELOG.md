@@ -7,6 +7,8 @@ for what that means for this Roon extension).
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-09-18
+
 ### Changed
 
 - The remove-only "Scan & clean" action is gone. Both the web UI and the Roon settings
@@ -16,6 +18,9 @@ for what that means for this Roon extension).
   can no longer be run out of order or mistaken for each other (#28).
 - Fixed a web UI bug where the "Clear & rebuild low-quality albums" button reverted to
   the old "Scan & clean now" label after every status refresh (#28).
+- The "Last scan" summary's newly-added-albums list is now collapsed by default behind
+  a disclosure toggle; the header (intro text, run-at timestamp, stats) still shows
+  without any interaction (#53).
 
 ## [1.2.0] - 2026-09-18
 
@@ -60,7 +65,8 @@ for what that means for this Roon extension).
 - Supported-country dropdown and country-specific Qobuz catalog links.
 - Store-link refresh when the Qobuz country changes.
 
-[Unreleased]: https://github.com/Zesseth/RoonWishlist/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/Zesseth/RoonWishlist/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/Zesseth/RoonWishlist/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/Zesseth/RoonWishlist/compare/v1.1.1...v1.2.0
 [1.1.1]: https://github.com/Zesseth/RoonWishlist/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/Zesseth/RoonWishlist/compare/v1.0.1...v1.1.0
