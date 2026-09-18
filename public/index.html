@@ -348,7 +348,7 @@
           <h2 style="margin:0;">Low-quality albums</h2>
           <div class="sync-note" id="low-quality-note">Albums in your library that are not fully FLAC.</div>
         </div>
-        <button class="secondary small" id="scan-low-quality-btn" title="Scan your library and add albums that are not fully lossless to the wishlist">Scan low-quality albums now</button>
+        <span class="count" id="low-quality-count"></span>
       </div>
       <ul class="list" id="low-quality-list"></ul>
       <div class="results low-quality-summary" id="low-quality-results"></div>
@@ -436,6 +436,7 @@
       <div class="settings-group">
         <p class="settings-group-title">Low-quality albums tab</p>
         <p class="settings-group-scope">Only affects the Low-quality albums tab.</p>
+        <button class="secondary small" id="scan-low-quality-btn" title="Scan your library and add albums that are not fully lossless to the wishlist">Scan low-quality albums now</button>
         <div class="danger-zone">
           <h3>Danger Zone</h3>
           <p><strong>Clear &amp; rebuild low-quality albums:</strong> Empty low-quality albums, remove any albums you already own as a complete lossless copy, then scan the library and add the ones that are not fully lossless.</p>
@@ -1067,9 +1068,11 @@
     function renderLowQualityWishlist(items) {
       const ul = $("low-quality-list");
       if (!ul) return;
+      const countEl = $("low-quality-count");
+      if (countEl) countEl.textContent = items.length + (items.length === 1 ? " album" : " albums");
       ul.innerHTML = "";
       if (!items.length) {
-        ul.innerHTML = '<li class="empty">No low-quality albums on wishlist. Use Settings → Library → "Scan low-quality albums now" to add albums here.</li>';
+        ul.innerHTML = '<li class="empty">No low-quality albums on wishlist. Use Settings → Low-quality albums tab → "Scan low-quality albums now" to add albums here.</li>';
         return;
       }
       renderWishlistItems(ul, items, true, true);
