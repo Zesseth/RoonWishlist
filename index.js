@@ -294,8 +294,8 @@ function make_layout(settings) {
       values: [
         { title: "— none —", value: "none" },
         { title: "Remove album from wishlist", value: "remove" },
-        { title: "Refresh & clean (scan library)", value: "clean" },
-        { title: "Scan low-quality albums into wishlist", value: "low_quality" },
+        { title: "Clear & rebuild low-quality albums", value: "clean" },
+        { title: "Scan low-quality albums into wishlist (add only)", value: "low_quality" },
       ],
       setting: "action",
     },
@@ -436,7 +436,7 @@ async function performAction(values) {
       : "Album not found on wishlist";
   }
   if (action === "clean") {
-    return summarizeCleanResult(await runLosslessClean());
+    return summarizeClearAndRebuildResult(await runClearAndRebuildLowQuality());
   }
   if (action === "low_quality") {
     const result = await runLowQualityScan();
@@ -503,7 +503,7 @@ const svc_settings = new RoonApiSettings(roonApp, {
       // A library scan can take a while; show immediate feedback and run it without
       // blocking this callback. Errors are reported via status, not send_complete
       // (which has already been called above).
-      if (action === "clean") svc_status.set_status("Scanning library for fully lossless albums...", false);
+      if (action === "clean") svc_status.set_status("Clearing and rebuilding low-quality albums...", false);
       if (action === "low_quality") svc_status.set_status("Scanning library for low-quality albums...", false);
 
       Promise.resolve()
@@ -803,6 +803,59 @@ async function runLosslessClean() {
 }
 
 /**
+ * "Clear & rebuild low-quality albums" (issue #28): the single combined action behind
+ * both the web UI's Danger Zone button and the equivalent Roon settings action. It
+ * clears existing low-quality entries, removes anything now held as a complete
+ * lossless copy, then rescans for albums that are still not fully lossless — so a run
+ * always leaves the low-quality section reflecting the current state of the library,
+ * rather than requiring "Scan & clean" (remove-only) and "Scan low-quality" (add-only)
+ * to be run separately and in the right order.
+ */
+async function runClearAndRebuildLowQuality() {
+  // First: clear existing low-quality albums
+  const allItems = wishlist.getAll();
+  const lowQualityItems = allItems.filter((a) => a.source === "low-quality");
+  const clearedLowQuality = [];
+  for (const item of lowQualityItems) {
+    if (wishlist.remove(item)) {
+      clearedLowQuality.push(item);
+    }
+  }
+
+  // Second: remove albums that exist as a complete lossless copy
+  const cleanResult = await runLosslessClean();
+
+  // Third: scan for new low-quality albums. The clean step already proved at least
+  // one storage location is readable, so this no longer depends on a typed path.
+  let lowQualityResult = null;
+  try {
+    lowQualityResult = await runLowQualityScan();
+  } catch (e) {
+    if (e.statusCode !== 400) throw e;
+  }
+
+  return {
+    clearedLowQuality,
+    removedFromWishlist: cleanResult.removed,
+    keptOnWishlist: cleanResult.kept,
+    scanLocations: cleanResult.locations,
+    lowQualityScan: lowQualityResult,
+  };
+}
+
+/** Turns a combined clear & rebuild result into a one-line summary for Roon status. */
+function summarizeClearAndRebuildResult(result) {
+  const parts = [`cleared ${result.clearedLowQuality.length} existing low-quality album(s)`];
+  parts.push(`removed ${result.removedFromWishlist.length} now-lossless album(s)`);
+  if (result.lowQualityScan) {
+    parts.push(`added ${result.lowQualityScan.added} low-quality album(s)`);
+  } else {
+    parts.push("low-quality scan skipped (no readable storage location)");
+  }
+  return `Clear & rebuild done: ${parts.join(", ")}`;
+}
+
+/**
  * Builds the "is this album worth a store lookup?" test used during a sync.
  *
  * An album already held in full lossless needs no buy links — the user is not going to
@@ -1083,35 +1136,8 @@ const server = http.createServer(async (req, res) => {
   // Clear & rebuild: remove low-quality albums, clean FLAC matches, then rescan for low-quality
   if (req.method === "POST" && url.pathname === "/check-lossless") {
     try {
-      // First: clear existing low-quality albums
-      const allItems = wishlist.getAll();
-      const lowQualityItems = allItems.filter(a => a.source === "low-quality");
-      const clearedLowQuality = [];
-      for (const item of lowQualityItems) {
-        if (wishlist.remove(item)) {
-          clearedLowQuality.push(item);
-        }
-      }
-      
-      // Second: remove albums that exist as a complete lossless copy
-      const cleanResult = await runLosslessClean();
-
-      // Third: scan for new low-quality albums. The clean step already proved at least
-      // one storage location is readable, so this no longer depends on a typed path.
-      let lowQualityResult = null;
-      try {
-        lowQualityResult = await runLowQualityScan();
-      } catch (e) {
-        if (e.statusCode !== 400) throw e;
-      }
-
-      res.end(JSON.stringify({
-        clearedLowQuality,
-        removedFromWishlist: cleanResult.removed,
-        keptOnWishlist: cleanResult.kept,
-        scanLocations: cleanResult.locations,
-        lowQualityScan: lowQualityResult
-      }));
+      const result = await runClearAndRebuildLowQuality();
+      res.end(JSON.stringify(result));
     } catch (e) {
       res.statusCode = e.statusCode || 500;
       res.end(JSON.stringify({ error: e.message }));

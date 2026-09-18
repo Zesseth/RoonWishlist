@@ -7,6 +7,16 @@ for what that means for this Roon extension).
 
 ## [Unreleased]
 
+### Changed
+
+- The remove-only "Scan & clean" action is gone. Both the web UI and the Roon settings
+  action now expose a single "Clear & rebuild low-quality albums" action that clears
+  existing low-quality entries, removes anything now held as a complete lossless copy,
+  then rescans for albums that are still not fully lossless — so the two library scans
+  can no longer be run out of order or mistaken for each other (#28).
+- Fixed a web UI bug where the "Clear & rebuild low-quality albums" button reverted to
+  the old "Scan & clean now" label after every status refresh (#28).
+
 ## [1.2.0] - 2026-09-18
 
 ### Changed

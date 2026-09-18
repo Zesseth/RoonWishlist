@@ -221,11 +221,29 @@
       margin-bottom: 10px;
     }
     .scan-summary-list {
-      margin-top: 10px !important;
+      margin-top: 0 !important;
       padding: 8px 10px !important;
+      border: 1px solid var(--border);
+      border-top: none;
+      border-radius: 0 0 8px 8px;
+      background: var(--panel);
+    }
+    .scan-summary-details {
+      margin-top: 10px;
+    }
+    .scan-summary-details summary {
+      cursor: pointer;
+      padding: 8px 10px;
       border: 1px solid var(--border);
       border-radius: 8px;
       background: var(--panel);
+      color: var(--muted);
+      font-size: 13px;
+      user-select: none;
+    }
+    .scan-summary-details[open] summary {
+      border-radius: 8px 8px 0 0;
+      border-bottom: none;
     }
     .scan-summary-item {
       color: var(--muted);
@@ -606,7 +624,9 @@
       html += '</ul>';
 
       if (Array.isArray(summary.addedAlbums) && summary.addedAlbums.length) {
-        html += '<ul class="list scan-summary-list">';
+        html += '<details class="scan-summary-details">' +
+          '<summary>' + esc(summary.addedAlbums.length) + ' newly added album(s) - click to show</summary>' +
+          '<ul class="list scan-summary-list">';
         for (const album of summary.addedAlbums) {
           html +=
             '<li class="scan-summary-item"><div>' +
@@ -615,7 +635,7 @@
               '<div class="album-meta">' + esc(formatLosslessRatio(album.losslessTracks !== undefined ? album.losslessTracks : album.flacTracks, album.totalTracks)) + '</div>' +
             '</div></li>';
         }
-        html += '</ul>';
+        html += '</ul></details>';
       } else {
         html += '<div class="empty">No new low-quality albums were added in the latest run.</div>';
       }
@@ -712,7 +732,7 @@
         }
         if (cleanBtn) {
           const cleanRunning = s.scanInProgress && s.scanActivity === "clean";
-          cleanBtn.textContent = cleanRunning ? "Scanning..." : "Scan & clean now";
+          cleanBtn.textContent = cleanRunning ? "Scanning..." : "Clear & rebuild low-quality albums";
           cleanBtn.disabled = !hasScanLocation() || !!s.scanInProgress;
         }
         renderLowQualitySection();
