@@ -934,12 +934,17 @@
       }
     }
 
+    // Each loader returns the album count on success, or null on failure (after
+    // showing its own error toast), so loadWishlist() can report a combined
+    // outcome to whatever triggered it (see the Reload button below).
     async function loadRoonTagWishlist() {
       try {
         const items = await api("/wishlist/roon-tag");
         renderRoonTagWishlist(items || []);
+        return (items || []).length;
       } catch (e) {
         toast("Failed to load Roon tag wishlist: " + e.message, "err");
+        return null;
       }
     }
 
@@ -947,21 +952,34 @@
       try {
         const items = await api("/wishlist/low-quality");
         renderLowQualityWishlist(items || []);
+        return (items || []).length;
       } catch (e) {
         toast("Failed to load low-quality wishlist: " + e.message, "err");
+        return null;
       }
     }
 
     async function loadOwnedLossless() {
       try {
-        renderOwnedLossless(await api("/wishlist/owned-lossless") || []);
+        const items = await api("/wishlist/owned-lossless");
+        renderOwnedLossless(items || []);
+        return (items || []).length;
       } catch (e) {
         toast("Failed to load already-owned albums: " + e.message, "err");
+        return null;
       }
     }
 
     async function loadWishlist() {
-      await Promise.all([loadRoonTagWishlist(), loadLowQualityWishlist(), loadOwnedLossless()]);
+      const [roonTag, lowQuality, owned] = await Promise.all([
+        loadRoonTagWishlist(),
+        loadLowQualityWishlist(),
+        loadOwnedLossless(),
+      ]);
+      return {
+        failed: roonTag === null || lowQuality === null || owned === null,
+        total: (roonTag || 0) + (lowQuality || 0) + (owned || 0),
+      };
     }
 
     // Albums tagged in Roon that turned out to be owned in full lossless. They stay
@@ -1028,13 +1046,17 @@
         const li = document.createElement("li");
         const added = a.addedAt ? new Date(a.addedAt).toLocaleDateString() : "";
         const qualityMeta = qualityMetaFor(a);
+        // Ignore permanently blacklists the album from future low-quality scans
+        // (see lowQualityIgnore in src/lossless_checker.js) - the most consequential
+        // action here, so it gets the strongest visual weight.
         const ignoreButton = showIgnore && hasTrackCounts(a)
-          ? '<button class="secondary small" data-ignore>Ignore</button>'
+          ? '<button class="danger small" data-ignore title="Removes from wishlist and never re-adds it, even if it stays low-quality">Ignore &mdash; never re-add</button>'
           : '';
-        // Removing a Roon-tagged album here is pointless: the next sync brings it
-        // straight back, because Roon is the master. The tag is the way to remove it.
+        // Removing a low-quality album here is a simple, reversible list removal:
+        // the next low-quality scan will just re-add it if it is still low-quality.
+        // It should not look more severe than the permanent Ignore action above.
         const removeButton = allowRemove
-          ? '<button class="danger" data-remove>Remove</button>'
+          ? '<button class="secondary small" data-remove title="A future low-quality scan will re-add this if it is still low-quality">Remove</button>'
           : '';
         li.innerHTML =
           '<div class="album-main">' +
@@ -1249,7 +1271,27 @@
       }
     });
 
-    $("refresh-btn").addEventListener("click", () => { loadWishlist(); loadStatus(); });
+    $("refresh-btn").addEventListener("click", async () => {
+      const btn = $("refresh-btn");
+      if (btn.disabled) return;
+      const original = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = "Reloading…";
+      try {
+        const result = await loadWishlist();
+        await loadStatus();
+        if (result.failed) {
+          toast("Reload finished with errors — see above for details.", "err");
+        } else {
+          toast("Reloaded — " + result.total + " album" + (result.total === 1 ? "" : "s"), "ok");
+        }
+      } catch (e) {
+        toast("Reload failed: " + e.message, "err");
+      } finally {
+        btn.disabled = false;
+        btn.textContent = original;
+      }
+    });
 
     $("sync-roon-btn").addEventListener("click", async () => {
       const btn = $("sync-roon-btn");
