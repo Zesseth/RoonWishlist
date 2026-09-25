@@ -132,9 +132,19 @@ for why Roon needs to be told this at all.
 
 ## Upgrading an install
 
+`install.sh` copies its files from the local clone it is run from — it does not fetch
+or pull anything itself. Pull the latest `main` into that local clone **before**
+running it, or you will silently reinstall whatever commit the clone already had
+checked out (including its old `package.json` version).
+
+```bash
+git checkout main
+git pull origin main
+sudo ./install.sh --web    # --web binds the web UI to the LAN
+```
+
 `install.sh` preserves `config.json` (the Roon pairing token) and the wishlist data.
 An upgrade therefore does not require re-enabling the extension in Roon.
 
-```bash
-sudo ./install.sh --web    # --web binds the web UI to the LAN
-```
+After upgrading, confirm the new version actually took by checking `GET /status` or
+the web UI's footer version string.
