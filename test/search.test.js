@@ -2,7 +2,40 @@
 
 const assert = require("node:assert");
 const { describe, it } = require("node:test");
-const { searchBandcamp, searchQobuz, searchAll } = require("../src/search");
+const {
+  searchBandcamp,
+  searchQobuz,
+  searchAll,
+  buildQuery,
+} = require("../src/search");
+
+describe("buildQuery", () => {
+  it("should keep plain titles unchanged", () => {
+    assert.strictEqual(buildQuery("Metallica", "Ride The Lightning"), "Metallica Ride The Lightning");
+  });
+
+  it("should strip parenthetical edition markers from the query", () => {
+    assert.strictEqual(
+      buildQuery("Metallica", "Ride The Lightning (Remastered)"),
+      "Metallica Ride The Lightning",
+    );
+  });
+
+  it("should strip bracketed edition markers and standalone marker words", () => {
+    assert.strictEqual(
+      buildQuery("Pink Floyd", "The Wall [Deluxe Edition]"),
+      "Pink Floyd The Wall",
+    );
+  });
+
+  it("should fall back to the raw title when stripping removes everything", () => {
+    assert.strictEqual(buildQuery("Artist", "(Remastered)"), "Artist (Remastered)");
+  });
+
+  it("should return only the artist when the title is empty", () => {
+    assert.strictEqual(buildQuery("Adele", ""), "Adele");
+  });
+});
 
 describe("search module", () => {
   describe("searchBandcamp", () => {

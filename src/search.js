@@ -213,9 +213,18 @@ function rankResults(results, artist, title) {
     .map(({ _titleScore, _artistScore, _score, ...result }) => result);
 }
 
+function stripEditionMarkers(value) {
+  return String(value || "")
+    .replace(/\[[^\]]*\]|\([^\)]*\)/g, " ")
+    .replace(EDITION_MARKERS, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function buildQuery(artist, title) {
-  return [artist, title]
-    .map((value) => String(value || "").trim())
+  const simplifiedTitle = stripEditionMarkers(title);
+  const effectiveTitle = simplifiedTitle || String(title || "").trim();
+  return [String(artist || "").trim(), effectiveTitle]
     .filter(Boolean)
     .join(" ");
 }
@@ -346,4 +355,4 @@ function localizeQobuzUrl(url, country) {
   return String(url).replace(/(https?:\/\/www\.qobuz\.com\/)[a-z]{2}-[a-z]{2}(?=\/)/i, `$1${locale}`);
 }
 
-module.exports = { searchAll, searchBandcamp, searchQobuz, localizeQobuzUrl };
+module.exports = { searchAll, searchBandcamp, searchQobuz, localizeQobuzUrl, buildQuery };
