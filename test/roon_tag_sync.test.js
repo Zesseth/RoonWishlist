@@ -164,6 +164,81 @@ describe("listTaggedAlbumsDetailed()", () => {
   });
 });
 
+describe("listTaggedAlbumsDetailed() - tagged tracks are not albums", () => {
+  it("skips a track listed among the tag's albums", async () => {
+    // Roon shows a tagged track with a "Track by <artists>" subtitle in the tag's
+    // album list. It must not become a wishlist album with the subtitle as artist.
+    const browse = fakeBrowse({
+      root: [{ item_key: "lib", title: "Library" }],
+      lib: [{ item_key: "tags", title: "Tags" }],
+      tags: [{ item_key: "tag", title: "Wishlist" }],
+      tag: [{ item_key: "albums", title: "Albums" }],
+      albums: [
+        {
+          item_key: "a0",
+          title: "Shaman",
+          subtitle: "Track by Amorphis, Pekka Kainulainen, Esa Holopainen",
+          hint: "list",
+        },
+        { item_key: "a1", title: "Silent Waters", subtitle: "Amorphis", hint: "list" },
+      ],
+    });
+
+    const { albums, tagFound } = await tagSync.listTaggedAlbumsDetailed(browse, "Wishlist");
+
+    assert.strictEqual(tagFound, true);
+    assert.deepStrictEqual(albums, [{ artist: "Amorphis", title: "Silent Waters" }]);
+  });
+
+  it("reads a tag holding only tracks as empty rather than importing them", async () => {
+    const browse = fakeBrowse({
+      root: [{ item_key: "lib", title: "Library" }],
+      lib: [{ item_key: "tags", title: "Tags" }],
+      tags: [{ item_key: "tag", title: "Wishlist" }],
+      tag: [{ item_key: "albums", title: "Albums" }],
+      albums: [
+        {
+          item_key: "a0",
+          title: "Shaman",
+          subtitle: "Track by Amorphis, Pekka Kainulainen, Esa Holopainen",
+          hint: "list",
+        },
+      ],
+    });
+
+    const { albums, tagFound } = await tagSync.listTaggedAlbumsDetailed(browse, "Wishlist");
+
+    assert.strictEqual(tagFound, true);
+    assert.deepStrictEqual(albums, []);
+  });
+
+  it("removes an already-imported track entry on the next sync", async () => {
+    // A track imported by the old code keeps source "roon-tag"; once tracks are
+    // skipped it is no longer in the tag's album list, so the reconciliation
+    // "Roon is the master" cleanup must drop it.
+    const wishlist = makeWishlist([
+      { artist: "Track by Amorphis, Pekka Kainulainen, Esa Holopainen", title: "Shaman", source: "roon-tag" },
+    ]);
+    const browse = browseWithTag([{ artist: "Amorphis", title: "Silent Waters" }]);
+
+    const result = await reconciliation.reconcileOnStartup({
+      browseService: browse,
+      wishlist,
+      searchAll: noLinks,
+      tagName: "Wishlist",
+    });
+
+    assert.strictEqual(result.status, "completed");
+    assert.deepStrictEqual(result.removedAlbums, [
+      { artist: "Track by Amorphis, Pekka Kainulainen, Esa Holopainen", title: "Shaman" },
+    ]);
+    assert.deepStrictEqual(
+      wishlist.getAll().map((a) => a.title),
+      ["Silent Waters"],
+    );
+  });
+});
+
 describe("syncTaggedAlbums() - Roon is the master", () => {
   it("adds albums that are tagged in Roon", async () => {
     const wishlist = makeWishlist([]);
