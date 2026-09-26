@@ -127,6 +127,13 @@ function simplifyTitle(value) {
   );
 }
 
+// Strip only standalone edition marker words, keeping parenthetical/bracketed
+// segments intact — unlike simplifyTitle, which removes those segments entirely.
+// EDITION_MARKERS is case-sensitive, so lowercase first.
+function stripEditionWords(value) {
+  return String(value || "").toLowerCase().replace(EDITION_MARKERS, " ");
+}
+
 function getTokens(value) {
   return new Set(
     String(value || "")
@@ -163,9 +170,28 @@ function scoreField(actual, expected) {
   return Math.round(tokenOverlap(actualSimple || actualExact, expectedSimple || expectedExact) * 50);
 }
 
+// Artist matching is deliberately stricter than title matching. Store results may
+// name a different act that merely references the wishlist artist, e.g. Bandcamp
+// cover/tribute/stem bands whose band name embeds the original artist
+// ("Metallica (First to Eleven Stems)", "Metallica Tribute"). Arbitrary
+// parenthetical segments and substring containment must not earn credit, or those
+// results pass the credibility threshold as false positives.
+function scoreArtistField(actual, expected) {
+  const actualExact = normalizeText(actual);
+  const expectedExact = normalizeText(expected);
+  if (!actualExact || !expectedExact) return 0;
+  if (actualExact === expectedExact) return 100;
+
+  const actualSimple = normalizeText(stripEditionWords(actual));
+  const expectedSimple = normalizeText(stripEditionWords(expected));
+  if (actualSimple && actualSimple === expectedSimple) return 85;
+
+  return Math.round(tokenOverlap(actualSimple || actualExact, expectedSimple || expectedExact) * 50);
+}
+
 function scoreResult(result, artist, title) {
   const titleScore = scoreField(result.title, title);
-  const artistScore = scoreField(result.artist, artist);
+  const artistScore = scoreArtistField(result.artist, artist);
   return {
     titleScore,
     artistScore,
@@ -213,9 +239,18 @@ function rankResults(results, artist, title) {
     .map(({ _titleScore, _artistScore, _score, ...result }) => result);
 }
 
+function stripEditionMarkers(value) {
+  return String(value || "")
+    .replace(/\[[^\]]*\]|\([^\)]*\)/g, " ")
+    .replace(EDITION_MARKERS, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function buildQuery(artist, title) {
-  return [artist, title]
-    .map((value) => String(value || "").trim())
+  const simplifiedTitle = stripEditionMarkers(title);
+  const effectiveTitle = simplifiedTitle || String(title || "").trim();
+  return [String(artist || "").trim(), effectiveTitle]
     .filter(Boolean)
     .join(" ");
 }
@@ -346,4 +381,4 @@ function localizeQobuzUrl(url, country) {
   return String(url).replace(/(https?:\/\/www\.qobuz\.com\/)[a-z]{2}-[a-z]{2}(?=\/)/i, `$1${locale}`);
 }
 
-module.exports = { searchAll, searchBandcamp, searchQobuz, localizeQobuzUrl };
+module.exports = { searchAll, searchBandcamp, searchQobuz, localizeQobuzUrl, buildQuery, rankResults };

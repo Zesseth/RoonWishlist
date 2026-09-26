@@ -35,6 +35,11 @@ const NON_ALBUM_ACTION_TITLES = new Set([
   "play",
 ]);
 
+// Roon labels a tagged track "Track by <artists>" in the same list as a tag's
+// albums. A track is not an album: importing it would store the whole subtitle
+// ("Track by Amorphis, Pekka Kainulainen, Esa Holopainen") as the album artist.
+const TRACK_SUBTITLE_PATTERN = /^(?:track|song)\s+by\s+/i;
+
 function findByAliases(items, aliases) {
   return (items || []).find((item) => titleInSet(item.title, aliases));
 }
@@ -239,12 +244,14 @@ function isLikelyAlbumItem(item) {
   const title = String(item.title || "").trim();
   const subtitle = String(item.subtitle || "").trim();
   if (!title || !subtitle) return false;
+  if (TRACK_SUBTITLE_PATTERN.test(subtitle)) return false;
   return !NON_ALBUM_ACTION_TITLES.has(normalizeTitle(title));
 }
 
 function normalizeAlbumArtist(subtitle) {
   const text = String(subtitle || "").trim();
   if (!text) return "";
+  if (TRACK_SUBTITLE_PATTERN.test(text)) return "";
   const match = text.match(/^(?:album|ep|single|compilation|live album|soundtrack)\s+by\s+(.+)$/i);
   return match ? String(match[1] || "").trim() : text;
 }
