@@ -897,22 +897,15 @@
       const unreadableSet = {};
       for (const entry of unreadable) unreadableSet[entry.path] = entry.reason;
 
-      let html = '<ul class="list">';
-      for (const loc of locations) {
+      // A path that came from Roon is managed in Roon: deleting it here would only
+      // bring it back on the next refresh. It can still be excluded from scanning.
+      // A path set here is ours to delete.
+      const locationRow = (loc, meta) => {
         const fromRoon = loc.sources.indexOf("roon") !== -1;
         const fromManual = loc.sources.indexOf("manual") !== -1;
-        const origin = fromRoon
-          ? (fromManual ? "from Roon + set here" : "from Roon")
-          : "set here";
-        const problem = unreadableSet[loc.path];
-        let state;
-        if (loc.excluded) state = "excluded";
-        else if (problem) state = "unreadable: " + problem;
-        else state = "scanned";
+        const origin = fromRoon ? (fromManual ? "from Roon + set here" : "from Roon") : "";
+        const lines = [meta, origin, fromRoon && !fromManual ? "remove it in Roon" : ""].filter(Boolean);
 
-        // A path that came from Roon is managed in Roon: deleting it here would only
-        // bring it back on the next refresh. It can still be excluded from scanning.
-        // A path set here is ours to delete.
         let actions = "";
         if (fromRoon) {
           actions =
@@ -926,19 +919,37 @@
             '<button class="secondary small" data-remove-location="' + esc(loc.path) + '">Remove</button>';
         }
 
-        html +=
+        return (
           '<li><div class="album-main">' +
-            '<div><span class="album-title">' + esc(loc.path) + '</span></div>' +
-            '<div class="album-meta">' + esc(state + " - " + origin) +
-              (fromRoon && !fromManual ? " - remove it in Roon" : "") + '</div>' +
-          '</div>' +
-          '<div class="album-actions">' + actions + '</div></li>';
-      }
-      html += '</ul>';
+            '<div><span class="album-title">' + esc(loc.path) + '</span>' +
+            (lines.length ? '<div class="album-meta">' + esc(lines.join(" - ")) + '</div>' : "") +
+          '</div></div>' +
+          '<div class="album-actions">' + actions + '</div></li>'
+        );
+      };
 
-      const active = (data && data.active) || [];
-      html += '<div class="album-meta" style="margin-top:8px;">' +
-        esc(active.length + " of " + locations.length + " location(s) will be scanned.") + '</div>';
+      const listHeading = (text) =>
+        '<h3 style="margin:12px 0 8px;font-size:14px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;">' + text + '</h3>';
+
+      const scanned = [];
+      const notScanned = [];
+      for (const loc of locations) {
+        const problem = unreadableSet[loc.path];
+        if (loc.excluded) notScanned.push(locationRow(loc, "excluded"));
+        else if (problem) notScanned.push(locationRow(loc, "unreadable: " + problem));
+        else scanned.push(locationRow(loc, ""));
+      }
+
+      let html =
+        listHeading("Scanned folders") +
+        (scanned.length
+          ? '<ul class="list">' + scanned.join("") + '</ul>'
+          : '<div class="empty">None.</div>');
+      if (notScanned.length) {
+        html +=
+          listHeading("Not scanned") +
+          '<ul class="list">' + notScanned.join("") + '</ul>';
+      }
 
       box.innerHTML = html;
 
