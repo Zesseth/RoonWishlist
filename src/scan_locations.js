@@ -217,7 +217,35 @@ function removeManualPath(manualPath, target) {
   return remaining.join("; ");
 }
 
+/**
+ * Add one or more paths to the manually configured library path without replacing
+ * the entries that are already there (issue #39) — adding works one item at a time,
+ * like the per-entry Remove next to the list.
+ *
+ * Splitting follows the same rule as `splitManualPaths`: newline or semicolon,
+ * never comma. A path that is already configured (by canonical form) is skipped
+ * rather than duplicated, so adding an existing folder again is a no-op.
+ *
+ * Returns the new settings string and how many paths were actually added.
+ */
+function addManualPaths(existing, addition) {
+  const entries = splitManualPaths(existing);
+  const seen = new Set(entries.map(canonicalize).filter(Boolean));
+
+  let addedCount = 0;
+  for (const raw of splitManualPaths(addition)) {
+    const key = canonicalize(raw);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    entries.push(raw);
+    addedCount += 1;
+  }
+
+  return { path: entries.join("; "), addedCount };
+}
+
 module.exports = {
+  addManualPaths,
   canonicalize,
   extractRoonPaths,
   isExcluded,
