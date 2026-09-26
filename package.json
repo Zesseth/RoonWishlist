@@ -1,6 +1,6 @@
 {
   "name": "roon-wishlist",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "description": "Roon extension: wishlist for albums to buy, with Bandcamp/Qobuz search and lossless auto-clean",
   "main": "index.js",
   "scripts": {

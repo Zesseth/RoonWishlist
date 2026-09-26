@@ -7,6 +7,27 @@ for what that means for this Roon extension).
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-09-26
+
+### Changed
+
+- Adding a music folder is now an **additive "Add folder" action** instead of a
+  replace-all "Save folders" (#39): a new `POST /storage-locations/add` appends to
+  the configured folders without replacing them, the input field stays empty and is
+  never repopulated with the whole list, and pasting a semicolon-separated list adds
+  several folders at once. Folders already configured are skipped rather than
+  duplicated. `POST /settings` still replaces the whole value, so the native Roon
+  settings field and existing automation keep working.
+- The folder list in Settings renders under a "Local music folders" heading, with
+  Scanned / Not scanned sub-lists (#39).
+
+### Added
+
+- Automated coverage for the storage-location HTTP endpoints (`test/http_api.test.js`):
+  the real server is started in an isolated temporary directory and exercised over
+  HTTP — add (single, bulk paste, comma-in-name), duplicate no-op, empty-path 400,
+  per-entry remove, and `/settings` replace-all — with no Roon core required (#39).
+
 ## [1.4.0] - 2026-09-26
 
 ### Changed
@@ -99,7 +120,8 @@ for what that means for this Roon extension).
 - Supported-country dropdown and country-specific Qobuz catalog links.
 - Store-link refresh when the Qobuz country changes.
 
-[Unreleased]: https://github.com/Zesseth/RoonWishlist/compare/v1.4.0...HEAD
+[Unreleased]: https://github.com/Zesseth/RoonWishlist/compare/v1.5.0...HEAD
+[1.5.0]: https://github.com/Zesseth/RoonWishlist/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/Zesseth/RoonWishlist/compare/v1.3.1...v1.4.0
 [1.3.1]: https://github.com/Zesseth/RoonWishlist/compare/v1.3.0...v1.3.1
 [1.3.0]: https://github.com/Zesseth/RoonWishlist/compare/v1.2.0...v1.3.0
