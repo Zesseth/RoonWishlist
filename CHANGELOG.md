@@ -7,6 +7,23 @@ for what that means for this Roon extension).
 
 ## [Unreleased]
 
+## [1.3.1] - 2026-09-26
+
+### Fixed
+
+- "Find in stores" (and `/search`) now returns results for wishlist titles with a
+  parenthetical or bracketed edition marker (e.g. "Ride The Lightning
+  (Remastered)") instead of none: the outgoing store query is built from the
+  title with edition markers stripped, while scoring still uses the raw title
+  (#56).
+- Store search no longer returns false-positive buy links from cover/tribute/stem
+  bands (e.g. a Bandcamp result credited "Metallica (First to Eleven Stems)"):
+  artist matching no longer gives credit for parenthetical name segments or
+  substring containment (#58).
+- Roon tag sync no longer imports a tagged **track** as a wishlist album, which
+  previously stored the whole "Track by …" credit line as the artist. Rows already
+  imported that way are removed on the first reconciliation after the upgrade (#59).
+
 ## [1.3.0] - 2026-09-18
 
 ### Changed
@@ -65,7 +82,8 @@ for what that means for this Roon extension).
 - Supported-country dropdown and country-specific Qobuz catalog links.
 - Store-link refresh when the Qobuz country changes.
 
-[Unreleased]: https://github.com/Zesseth/RoonWishlist/compare/v1.3.0...HEAD
+[Unreleased]: https://github.com/Zesseth/RoonWishlist/compare/v1.3.1...HEAD
+[1.3.1]: https://github.com/Zesseth/RoonWishlist/compare/v1.3.0...v1.3.1
 [1.3.0]: https://github.com/Zesseth/RoonWishlist/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/Zesseth/RoonWishlist/compare/v1.1.1...v1.2.0
 [1.1.1]: https://github.com/Zesseth/RoonWishlist/compare/v1.1.0...v1.1.1
