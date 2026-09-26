@@ -85,6 +85,32 @@ a music server — be a quiet neighbour):**
   *soft/relative* — avoid hard `MemoryMax` or aggressive sandboxing that could OOM-kill
   a scan or block the configured music-library path.
 
+## AI memory (personal `ai-memory` repo) — maintain automatically
+
+> Work in this repo is backed by the owner's personal `ai-memory` repository,
+> which always sits **in the same repos folder as the project being worked on,
+> as a sibling** (here: `/repos/RoonWishlist` → `/repos/ai-memory`; on Windows:
+> `C:\Repos\Omat\RoonWishlist` → `C:\Repos\Omat\ai-memory`). Maintaining it is
+> part of normal work here — **it is not something the user should ever have to
+> ask for.**
+>
+> - Record durable learnings **during** the session, not only at the end:
+>   the owner's preferences and working habits, machine-specific quirks,
+>   technical decisions and gotchas, and accepted processes (e.g. the release
+>   flow). Prefer updating an existing note over creating overlapping ones.
+> - Notes live under `projects/RoonWishlist/YYYY-MM-DD-<topic>.md` in the
+>   `ai-memory` repo. The memory repo is personal: write notes in Finnish
+>   (this public repo stays English everywhere).
+> - Recording and publishing memory notes is **pre-authorized**. On machines
+>   with the Vibe `post_agent` hook configured (`~/.vibe/hooks.toml` →
+>   `~/.vibe/scripts/ai-memory-publish.sh`), committing and pushing happens
+>   automatically after every turn; on other machines commit and push the
+>   notes yourself as part of finishing the task.
+> - Never record secrets (API keys, tokens, passwords).
+> - `.vibe/pre-start.sh` / `.vibe/post-start.sh` in this repo are **not**
+>   executed by Vibe (see `.vibe/hooks.md`); they are legacy. The live
+>   automation lives in the user-level Vibe config.
+
 ## Issue tracking — GitHub is the single source of truth
 
 > **All planning, status and priorities live in GitHub Issues
