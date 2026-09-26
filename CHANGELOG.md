@@ -7,6 +7,23 @@ for what that means for this Roon extension).
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-09-26
+
+### Changed
+
+- The Settings → Music folders section now explains the Roon storage-settings
+  limitation in **one** place: a single collapsed "Why must music folders be set
+  here?" toggle under the Save folders form ("Roon does not let extensions read its
+  storage settings, so the folders have to be set here", with a background link).
+  The duplicate "Why not from Roon?" block below the folder list and the
+  "Checked at pairing" line in the empty state are gone, and the lookup diagnostic
+  appears inside the toggle only when it adds information the explanation does not
+  already carry (read error, empty storage list, missing browse access) (#38).
+- The folder list is restructured into **Scanned folders** (plain paths; the
+  meaningless "scanned - typed here" label is gone, and per-folder detail such as
+  "from Roon" only appears when informative) and a separate **Not scanned** list for
+  excluded or unreadable folders with their reason and Include action (#38).
+
 ## [1.3.1] - 2026-09-26
 
 ### Fixed
@@ -82,7 +99,8 @@ for what that means for this Roon extension).
 - Supported-country dropdown and country-specific Qobuz catalog links.
 - Store-link refresh when the Qobuz country changes.
 
-[Unreleased]: https://github.com/Zesseth/RoonWishlist/compare/v1.3.1...HEAD
+[Unreleased]: https://github.com/Zesseth/RoonWishlist/compare/v1.4.0...HEAD
+[1.4.0]: https://github.com/Zesseth/RoonWishlist/compare/v1.3.1...v1.4.0
 [1.3.1]: https://github.com/Zesseth/RoonWishlist/compare/v1.3.0...v1.3.1
 [1.3.0]: https://github.com/Zesseth/RoonWishlist/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/Zesseth/RoonWishlist/compare/v1.1.1...v1.2.0
