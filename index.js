@@ -183,22 +183,22 @@ function renderScanLocations() {
   if (!locations.length) {
     return (
       "No music folder configured yet.\n" +
-      "Roon does not give extensions its storage folders, so set the folder below.\n" +
+      "Roon does not let extensions read its storage settings, so set the folder below.\n" +
       `Checked at pairing: ${roonStorageDiagnostic.detail}`
     );
   }
 
   const lines = locations.map((entry) => {
     const origin = entry.sources.includes("roon")
-      ? (entry.sources.includes("manual") ? "from Roon + manual" : "from Roon")
-      : "manual";
+      ? (entry.sources.includes("manual") ? "from Roon + set here" : "from Roon")
+      : "set here";
     const state = entry.excluded ? "EXCLUDED" : "scanned";
     return `• ${entry.path}  [${state}, ${origin}]`;
   });
 
   lines.push("", `${active.length} of ${locations.length} location(s) will be scanned.`);
   if (!roonStorageLocations.length) {
-    lines.push("", "These are the folders you configured. Roon does not give extensions its storage folders.");
+    lines.push("", "These are the folders you configured. Roon does not let extensions read its storage settings.");
   }
   return lines.join("\n");
 }

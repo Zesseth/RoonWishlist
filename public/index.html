@@ -384,7 +384,11 @@
           <input type="text" id="lib-path" placeholder="/music; /mnt/music2" />
           <button type="submit">Save folders</button>
         </form>
-        <p class="hint" id="roon-storage-note">Roon does not give extensions the storage folders configured in its own settings, so these have to be set here. <a href="https://github.com/Zesseth/RoonWishlist/issues/15" target="_blank" rel="noopener">Why</a></p>
+        <details id="roon-storage-note" class="hint">
+          <summary class="album-meta">Why must music folders be set here?</summary>
+          <div class="album-meta" style="margin-top:4px;">Roon does not let extensions read its storage settings, so the folders have to be set here. You can read the <a href="https://github.com/Zesseth/RoonWishlist/issues/15" target="_blank" rel="noopener">background</a>.</div>
+          <div id="roon-storage-diagnostic" class="album-meta" style="display:none;margin-top:4px;"></div>
+        </details>
         <div id="storage-locations" style="margin-top: 12px;">
           <div class="empty">Loading music folders…</div>
         </div>
@@ -871,33 +875,37 @@
       const diagnostic = (data && data.diagnostic) || null;
       const roonReported = ((data && data.locations) || []).length;
 
+      // One explanation, in one collapsed place: the single "why must folders be
+      // set here" toggle above the form carries the lookup diagnostic too — but
+      // only when the diagnostic adds information the explanation does not already
+      // carry. The not-exposed outcome IS the explanation, so repeating it inside
+      // the toggle would say the same sentence twice; error/empty/no-browse say
+      // something new and get a second line.
+      const diagBox = $("roon-storage-diagnostic");
+      if (diagBox) {
+        const show = !roonReported && diagnostic && diagnostic.outcome !== "not-exposed";
+        diagBox.style.display = show ? "" : "none";
+        diagBox.textContent = show ? diagnostic.detail : "";
+      }
+
       if (!locations.length) {
         box.innerHTML =
-          '<div class="empty">No music folder configured yet — set one above.' +
-          (diagnostic ? '<br><span class="album-meta">Checked at pairing: ' + esc(diagnostic.detail) + '</span>' : '') +
-          '</div>';
+          '<div class="empty">No music folder configured yet — set one above.</div>';
         return;
       }
 
       const unreadableSet = {};
       for (const entry of unreadable) unreadableSet[entry.path] = entry.reason;
 
-      let html = '<ul class="list">';
-      for (const loc of locations) {
+      // A path that came from Roon is managed in Roon: deleting it here would only
+      // bring it back on the next refresh. It can still be excluded from scanning.
+      // A path set here is ours to delete.
+      const locationRow = (loc, meta) => {
         const fromRoon = loc.sources.indexOf("roon") !== -1;
         const fromManual = loc.sources.indexOf("manual") !== -1;
-        const origin = fromRoon
-          ? (fromManual ? "from Roon + typed here" : "from Roon")
-          : "typed here";
-        const problem = unreadableSet[loc.path];
-        let state;
-        if (loc.excluded) state = "excluded";
-        else if (problem) state = "unreadable: " + problem;
-        else state = "scanned";
+        const origin = fromRoon ? (fromManual ? "from Roon + set here" : "from Roon") : "";
+        const lines = [meta, origin, fromRoon && !fromManual ? "remove it in Roon" : ""].filter(Boolean);
 
-        // A path that came from Roon is managed in Roon: deleting it here would only
-        // bring it back on the next refresh. It can still be excluded from scanning.
-        // A path typed here is ours to delete.
         let actions = "";
         if (fromRoon) {
           actions =
@@ -911,26 +919,36 @@
             '<button class="secondary small" data-remove-location="' + esc(loc.path) + '">Remove</button>';
         }
 
-        html +=
+        return (
           '<li><div class="album-main">' +
-            '<div><span class="album-title">' + esc(loc.path) + '</span></div>' +
-            '<div class="album-meta">' + esc(state + " - " + origin) +
-              (fromRoon && !fromManual ? " - remove it in Roon" : "") + '</div>' +
-          '</div>' +
-          '<div class="album-actions">' + actions + '</div></li>';
+            '<div><span class="album-title">' + esc(loc.path) + '</span>' +
+            (lines.length ? '<div class="album-meta">' + esc(lines.join(" - ")) + '</div>' : "") +
+          '</div></div>' +
+          '<div class="album-actions">' + actions + '</div></li>'
+        );
+      };
+
+      const listHeading = (text) =>
+        '<h3 style="margin:12px 0 8px;font-size:14px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;">' + text + '</h3>';
+
+      const scanned = [];
+      const notScanned = [];
+      for (const loc of locations) {
+        const problem = unreadableSet[loc.path];
+        if (loc.excluded) notScanned.push(locationRow(loc, "excluded"));
+        else if (problem) notScanned.push(locationRow(loc, "unreadable: " + problem));
+        else scanned.push(locationRow(loc, ""));
       }
-      html += '</ul>';
 
-      const active = (data && data.active) || [];
-      html += '<div class="album-meta" style="margin-top:8px;">' +
-        esc(active.length + " of " + locations.length + " location(s) will be scanned.") + '</div>';
-
-      // Roon does not hand these over, so the folders above are the source. Keep the
-      // measurement available for the curious, but do not lead with it: a permanent
-      // "Roon reported nothing" line reads as a fault, and this is not one.
-      if (!roonReported && diagnostic) {
-        html += '<details style="margin-top:8px;"><summary class="album-meta">Why not from Roon?</summary>' +
-          '<div class="album-meta" style="margin-top:4px;">' + esc(diagnostic.detail) + '</div></details>';
+      let html =
+        listHeading("Scanned folders") +
+        (scanned.length
+          ? '<ul class="list">' + scanned.join("") + '</ul>'
+          : '<div class="empty">None.</div>');
+      if (notScanned.length) {
+        html +=
+          listHeading("Not scanned") +
+          '<ul class="list">' + notScanned.join("") + '</ul>';
       }
 
       box.innerHTML = html;

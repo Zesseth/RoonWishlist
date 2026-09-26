@@ -193,11 +193,8 @@ async function getStorageLocationsDetailed(browseService) {
         diagnostic: {
           outcome: "not-exposed",
           detail:
-            "Roon does expose your storage folders in its own app, but not to extensions: " +
-            "the Browse API's settings hierarchy has no Storage entry, at the top level or one level down. " +
-            `Roon offered ${sectionCount} settings section${sectionCount === 1 ? "" : "s"} ` +
-            `and ${nestedCount} entr${nestedCount === 1 ? "y" : "ies"} inside them, none of them storage. ` +
-            "The music folders you configure here are used instead — that is not a fault you can fix in Roon.",
+            "Roon does not expose its storage settings through the extension API, " +
+            "so they cannot be read from Roon. The folders set here are used instead.",
           settingsEntryCount: sectionCount,
           nestedEntryCount: nestedCount,
         },
