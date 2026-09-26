@@ -769,9 +769,9 @@
     async function loadSettings() {
       try {
         const s = await api("/settings");
-        if (document.activeElement !== $("lib-path")) {
-          $("lib-path").value = s.music_library_path || "";
-        }
+        // The lib-path input is deliberately never populated from the settings:
+        // it is an additive "Add folder" field (#39), not an editor for the whole
+        // list. What is configured shows in the Local music folders list below.
         if (document.activeElement !== $("nightly-enabled")) {
           $("nightly-enabled").checked = !!s.nightly_enabled;
         }
@@ -930,6 +930,8 @@
 
       const listHeading = (text) =>
         '<h3 style="margin:12px 0 8px;font-size:14px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;">' + text + '</h3>';
+      const subHeading = (text) =>
+        '<div class="album-meta" style="margin:10px 0 6px;font-weight:600;">' + text + '</div>';
 
       const scanned = [];
       const notScanned = [];
@@ -941,13 +943,14 @@
       }
 
       let html =
-        listHeading("Scanned folders") +
+        listHeading("Local music folders") +
+        subHeading("Scanned") +
         (scanned.length
           ? '<ul class="list">' + scanned.join("") + '</ul>'
           : '<div class="empty">None.</div>');
       if (notScanned.length) {
         html +=
-          listHeading("Not scanned") +
+          subHeading("Not scanned") +
           '<ul class="list">' + notScanned.join("") + '</ul>';
       }
 
@@ -1271,7 +1274,6 @@
         });
         $("lib-path").value = "";
         await loadStorageLocations();
-        await loadSettings();
         await loadStatus();
         toast(r.added ? "Added " + r.added + " folder(s)." : "No new folders — the list already has them.", r.added ? "ok" : "err");
       } catch (e) {
