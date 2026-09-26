@@ -127,6 +127,12 @@ if (!(loggerModule.normalizeMaxSizeMb(mysettings.log_max_size_mb) > 0)) {
 }
 const logFileSink = loggerModule.createFileSink({ maxSizeMb: mysettings.log_max_size_mb });
 log.attachFileSink(logFileSink);
+// Startup line (issue #62): written as soon as the file sink exists, so the log file
+// always records that this process started — even when something later in the boot
+// sequence kills it (e.g. the HTTP port is already taken by a leftover process).
+log.info(
+  `Wishlist starting — version ${APP_VERSION}, pid ${process.pid}, log file ${logFileSink.getFilePath()}`
+);
 
 // Hourly granularity for the run-time picker — precise enough for a background
 // scan/sync, and small enough to render as a plain dropdown in both Roon's settings
@@ -751,14 +757,19 @@ async function runLibraryScanAction(task, { startStatus, successStatus, action }
   scanInProgress = true;
   scanActivity = task;
   svc_status.set_status(`${startStatus} (${describeScanScope(roots, unreadable)})`, false);
+  // Scans previously reported only via Roon status, so the log file had no trace of
+  // them (issue #62) — record start and outcome here too.
+  log.info(`Library scan (${task}) starting:`, describeScanScope(roots, unreadable));
   try {
     const result = await action(roots);
     if (unreadable.length) result.unreadableLocations = unreadable;
     try { svc_settings.update_settings(make_layout(mysettings)); } catch {}
     svc_status.set_status(successStatus(result), false);
+    log.info(`Library scan (${task}) finished:`, successStatus(result));
     return result;
   } catch (e) {
     svc_status.set_status(`Library scan failed: ${e.message}`, false);
+    log.warn(`Library scan (${task}) failed:`, e.message);
     throw e;
   } finally {
     scanInProgress = false;
@@ -1596,6 +1607,16 @@ const HTTP_PORT = Number.isInteger(parsedHttpPort) && parsedHttpPort >= 1 && par
   ? parsedHttpPort
   : DEFAULT_HTTP_PORT;
 const HTTP_HOST = process.env.ROON_WISHLIST_HTTP_HOST || "127.0.0.1";
+
+// A bind failure (typically EADDRINUSE from a leftover process) is fatal for this
+// process, but it used to crash with an unhandled 'error' event whose stack only ever
+// reached journald — on installs where the file is the only readable log, the process
+// then left no trace in the file (issue #62). Log it through the file sink first, then
+// exit; systemd's Restart=always keeps the retry behaviour identical.
+server.on("error", (err) => {
+  log.error(`Could not listen on http://${HTTP_HOST}:${HTTP_PORT}:`, err.message);
+  process.exit(1);
+});
 
 server.listen(HTTP_PORT, HTTP_HOST, () => {
   log.info(`Wishlist web UI + API listening on http://${HTTP_HOST}:${HTTP_PORT}`);
