@@ -1057,6 +1057,7 @@ const server = http.createServer(async (req, res) => {
     // GET /storage-locations was previously missing here, so it fell through to the
     // static file handler and always answered 404.
     "/storage-locations",
+    "/storage-locations/add",
     "/storage-locations/exclude",
     "/storage-locations/remove",
     "/reconcile",
@@ -1393,6 +1394,42 @@ const server = http.createServer(async (req, res) => {
           try { svc_settings.update_settings(make_layout(mysettings)); } catch {}
           res.end(JSON.stringify({
             excluded: mysettings.excluded_storage_locations,
+            active: resolved.active,
+            resolved: resolved.locations,
+          }, null, 2));
+        })
+        .catch((err) => {
+          res.statusCode = 500;
+          res.end(JSON.stringify({ error: err.message }));
+        });
+    });
+    return;
+  }
+
+  // Add one or more folders to the manual library path without replacing the ones
+  // already configured (issue #39). Adding is one-item-at-a-time, like the per-entry
+  // Remove below; a semicolon-separated paste adds several at once.
+  if (req.method === "POST" && url.pathname === "/storage-locations/add") {
+    readJsonBody(req, res, (data) => {
+      const addition = typeof data.path === "string" ? data.path : "";
+      if (!addition.trim()) {
+        res.statusCode = 400;
+        res.end(JSON.stringify({ error: "A 'path' is required." }));
+        return;
+      }
+
+      const result = scanLocations.addManualPaths(mysettings.music_library_path, addition);
+      mysettings = Object.assign({}, mysettings, {
+        music_library_path: result.path,
+      });
+      roonApp.save_config("settings", mysettings);
+
+      resolveActiveScanLocations({ refresh: false })
+        .then((resolved) => {
+          try { svc_settings.update_settings(make_layout(mysettings)); } catch {}
+          res.end(JSON.stringify({
+            music_library_path: mysettings.music_library_path,
+            added: result.addedCount,
             active: resolved.active,
             resolved: resolved.locations,
           }, null, 2));

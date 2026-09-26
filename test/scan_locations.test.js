@@ -248,3 +248,49 @@ describe("removeManualPath()", () => {
     assert.strictEqual(scanLocations.removeManualPath("/music\n/archive", "/music"), "/archive");
   });
 });
+
+describe("addManualPaths()", () => {
+  it("appends one path without touching the existing ones", () => {
+    const result = scanLocations.addManualPaths("/music", "/archive");
+    assert.strictEqual(result.path, "/music; /archive");
+    assert.strictEqual(result.addedCount, 1);
+  });
+
+  it("adds a semicolon-separated paste as several paths", () => {
+    const result = scanLocations.addManualPaths("/music", "/archive; /nas");
+    assert.strictEqual(result.path, "/music; /archive; /nas");
+    assert.strictEqual(result.addedCount, 2);
+  });
+
+  it("does not duplicate a path that is already configured", () => {
+    const result = scanLocations.addManualPaths("/music; /archive", "/archive");
+    assert.strictEqual(result.path, "/music; /archive");
+    assert.strictEqual(result.addedCount, 0);
+  });
+
+  it("matches existing entries on the canonical path, not the exact spelling", () => {
+    const result = scanLocations.addManualPaths("/music/", "/music");
+    assert.strictEqual(result.path, "/music/");
+    assert.strictEqual(result.addedCount, 0);
+  });
+
+  it("does not treat a comma as a separator", () => {
+    // Comma is legal in a directory name; splitting on it would break libraries
+    // such as "/music/Crosby, Stills & Nash".
+    const result = scanLocations.addManualPaths("", "/music/Crosby, Stills & Nash");
+    assert.strictEqual(result.path, "/music/Crosby, Stills & Nash");
+    assert.strictEqual(result.addedCount, 1);
+  });
+
+  it("adds to an empty setting", () => {
+    const result = scanLocations.addManualPaths("", "/music");
+    assert.strictEqual(result.path, "/music");
+    assert.strictEqual(result.addedCount, 1);
+  });
+
+  it("skips blank segments", () => {
+    const result = scanLocations.addManualPaths("/music", "  ; ; /archive ; ");
+    assert.strictEqual(result.path, "/music; /archive");
+    assert.strictEqual(result.addedCount, 1);
+  });
+});
