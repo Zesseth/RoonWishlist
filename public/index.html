@@ -876,12 +876,14 @@
       const roonReported = ((data && data.locations) || []).length;
 
       // One explanation, in one collapsed place: the single "why must folders be
-      // set here" toggle above the form carries the lookup diagnostic too. A
-      // permanent "Roon reported nothing" line reads as a fault, and this is not
-      // one, so the detail only shows when asked for.
+      // set here" toggle above the form carries the lookup diagnostic too — but
+      // only when the diagnostic adds information the explanation does not already
+      // carry. The not-exposed outcome IS the explanation, so repeating it inside
+      // the toggle would say the same sentence twice; error/empty/no-browse say
+      // something new and get a second line.
       const diagBox = $("roon-storage-diagnostic");
       if (diagBox) {
-        const show = !roonReported && diagnostic;
+        const show = !roonReported && diagnostic && diagnostic.outcome !== "not-exposed";
         diagBox.style.display = show ? "" : "none";
         diagBox.textContent = show ? diagnostic.detail : "";
       }
