@@ -902,8 +902,8 @@
         const fromRoon = loc.sources.indexOf("roon") !== -1;
         const fromManual = loc.sources.indexOf("manual") !== -1;
         const origin = fromRoon
-          ? (fromManual ? "from Roon + typed here" : "from Roon")
-          : "typed here";
+          ? (fromManual ? "from Roon + set here" : "from Roon")
+          : "set here";
         const problem = unreadableSet[loc.path];
         let state;
         if (loc.excluded) state = "excluded";
@@ -912,7 +912,7 @@
 
         // A path that came from Roon is managed in Roon: deleting it here would only
         // bring it back on the next refresh. It can still be excluded from scanning.
-        // A path typed here is ours to delete.
+        // A path set here is ours to delete.
         let actions = "";
         if (fromRoon) {
           actions =

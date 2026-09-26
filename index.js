@@ -190,8 +190,8 @@ function renderScanLocations() {
 
   const lines = locations.map((entry) => {
     const origin = entry.sources.includes("roon")
-      ? (entry.sources.includes("manual") ? "from Roon + manual" : "from Roon")
-      : "manual";
+      ? (entry.sources.includes("manual") ? "from Roon + set here" : "from Roon")
+      : "set here";
     const state = entry.excluded ? "EXCLUDED" : "scanned";
     return `• ${entry.path}  [${state}, ${origin}]`;
   });
