@@ -7,6 +7,7 @@ const {
   searchQobuz,
   searchAll,
   buildQuery,
+  rankResults,
 } = require("../src/search");
 
 describe("buildQuery", () => {
@@ -34,6 +35,85 @@ describe("buildQuery", () => {
 
   it("should return only the artist when the title is empty", () => {
     assert.strictEqual(buildQuery("Adele", ""), "Adele");
+  });
+});
+
+describe("rankResults", () => {
+  const exactMatch = {
+    store: "Bandcamp",
+    title: "Master Of Puppets",
+    artist: "Metallica",
+    url: "https://metallica.bandcamp.com/album/master-of-puppets",
+  };
+
+  it("should reject a cover/stem band whose name embeds the wishlist artist in parentheses", () => {
+    const results = rankResults(
+      [
+        {
+          store: "Bandcamp",
+          title: "Master Of Puppets",
+          artist: "Metallica (First to Eleven Stems)",
+          url: "https://firsttoelevenstems.bandcamp.com/album/master-of-puppets",
+        },
+      ],
+      "Metallica",
+      "Master of Puppets (Remastered)",
+    );
+    assert.deepStrictEqual(results, []);
+  });
+
+  it("should reject a tribute act whose name appends the wishlist artist", () => {
+    const results = rankResults(
+      [
+        {
+          store: "Bandcamp",
+          title: "Master Of Puppets",
+          artist: "Metallica Tribute",
+          url: "https://metallicatribute.bandcamp.com/album/master-of-puppets",
+        },
+      ],
+      "Metallica",
+      "Master of Puppets (Remastered)",
+    );
+    assert.deepStrictEqual(results, []);
+  });
+
+  it("should keep an exact artist and title match", () => {
+    const results = rankResults([exactMatch], "Metallica", "Master of Puppets (Remastered)");
+    assert.strictEqual(results.length, 1);
+    assert.strictEqual(results[0].url, exactMatch.url);
+  });
+
+  it("should keep a match when only the artist name has an edition marker word", () => {
+    const results = rankResults(
+      [
+        {
+          store: "Bandcamp",
+          title: "Master Of Puppets",
+          artist: "Metallica (Deluxe)",
+          url: "https://metallica.bandcamp.com/album/master-of-puppets",
+        },
+      ],
+      "Metallica",
+      "Master of Puppets (Remastered)",
+    );
+    assert.strictEqual(results.length, 1);
+  });
+
+  it("should still allow an exact-title result with a partial but overlapping artist name", () => {
+    const results = rankResults(
+      [
+        {
+          store: "Bandcamp",
+          title: "Abbey Road",
+          artist: "The Beatles",
+          url: "https://thebeatles.bandcamp.com/album/abbey-road",
+        },
+      ],
+      "Beatles",
+      "Abbey Road",
+    );
+    assert.strictEqual(results.length, 1);
   });
 });
 
