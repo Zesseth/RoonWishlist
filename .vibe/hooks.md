@@ -1,120 +1,43 @@
-# AI Memory - Vibe Hooks (Käynnistysautomaatio)
+# AI Memory — Vibe automation status (2026-09-26)
 
-**TÄMÄ TIEDOSTO MÄÄRITTELEE VIBE-KÄYNNISTYKSEN HOOKIT AI-MEMORYN OSALTA**
+**This file documents what is actually live. Read this before touching the
+scripts below.**
 
-## 🎯 Käynnistyksen Automaattiset Toimenpiteet
+## What actually runs
 
-### 1. Pre-start Hook (Ennen käynnistystä)
+Vibe's hook mechanism is **`hooks.toml`** (`<project>/.vibe/hooks.toml` when the
+folder is trusted, plus `~/.vibe/hooks.toml` user-level), with hook types
+`post_agent`, `pre_tool` and `post_tool`. See the Vibe skill or
+https://docs.mistral.ai/vibe/code/overview for the wire protocol.
 
-**Tarkoituksena**: Varmistaa, että ai-memory repositorio on päivitetty ennen Vibe-käynnistystä.
+The AI-memory automation is configured **user-level** (so it works in every
+project, not just this one):
 
-```bash
-#!/bin/bash
-# Tarkista, onko ai-memory repositorio olemassa
-if [ -d "/c/Repos/Omat/ai-memory/.git" ]; then
-    echo "Päivitetään ai-memory repositorio..."
-    cd /c/Repos/Omat/ai-memory
-    git pull
-    echo "ai-memory päivitys valmis!"
-fi
-```
+- `~/.vibe/hooks.toml` — a `post_agent` hook that runs
+  `~/.vibe/scripts/ai-memory-publish.sh` after every agent turn.
+- The script pulls the `ai-memory` repo once per session, commits any notes the
+  agent wrote, and pushes them to origin. The `ai-memory` repo always lives in
+  the same repos folder as the project being worked on, as a sibling: the script
+  walks up from the current directory until it finds a directory named
+  `ai-memory` (with `.git` inside). `$AI_MEMORY_DIR` overrides the search.
+- `~/.vibe/AGENTS.md` instructs every session to record durable learnings into
+  `projects/<Project>/YYYY-MM-DD-<topic>.md` in the `ai-memory` repo without
+  being asked.
 
-### 2. Post-start Hook (Käynnistyksen jälkeen)
+The agent's job is only to write the note files; publishing is automatic.
 
-**Tarkoituksena**: Muistuttaa käyttäjää ai-memory repositoriosta.
+## What does NOT run
 
-```bash
-#!/bin/bash
-echo ""
-echo "🎯 MUISTUTUS: Kaikki muistiinpanot tulee tallentaa ai-memory repositorioon!"
-echo "   Sijainti: C:\Repos\Omat\ai-memory"
-echo "   Komento: cd /c/Repos/Omat/ai-memory && git pull"
-echo ""
-```
+The `pre-start.sh` and `post-start.sh` next to this file are **legacy**: Vibe
+never executes files by those names. They were written for a Windows-only path
+(`/c/Repos/Omat/ai-memory`) and describe a hook mechanism that does not exist.
+They are kept only as history and are inert.
 
----
+## On a new machine
 
-## 📋 Hookien Konfigurointi
-
-### Vibe CLI Hookit
-
-Vibe CLI tukee seuraavia hookkeja `.vibe/` kansiosta:
-- `pre-start.sh` - Suoritetaan ennen Vibe-käynnistystä
-- `post-start.sh` - Suoritetaan Vibe-käynnistyksen jälkeen
-
-### Hookien Luoominen
-
-1. **pre-start.sh**:
-```bash
-# Luo tiedosto
-cat > /c/Repos/Omat/ai-memory/.vibe/pre-start.sh << 'EOF'
-#!/bin/bash
-if [ -d "/c/Repos/Omat/ai-memory/.git" ]; then
-    echo "[AI-Memory] Päivitetään repositorio..."
-    cd /c/Repos/Omat/ai-memory
-    git pull 2>/dev/null
-    echo "[AI-Memory] Repositorio päivitetty!"
-fi
-EOF
-
-# Tee suoritettavaksi
-chmod +x /c/Repos/Omat/ai-memory/.vibe/pre-start.sh
-```
-
-2. **post-start.sh**:
-```bash
-# Luo tiedosto
-cat > /c/Repos/Omat/ai-memory/.vibe/post-start.sh << 'EOF'
-#!/bin/bash
-echo ""
-echo "🎯 [AI-Memory] Kaikki muistiinpanot tulee tallentaa: C:\Repos\Omat\ai-memory"
-echo "   Muista ajaa: git pull"
-echo ""
-EOF
-
-# Tee suoritettavaksi
-chmod +x /c/Repos/Omat/ai-memory/.vibe/post-start.sh
-```
-
----
-
-## 🔄 Manuaalinen Päivitys
-
-Jos hookit eivät toimi, aja manuaalisesti:
-
-```bash
-# Päivitä ai-memory
-cd /c/Repos/Omat/ai-memory
-git pull
-
-# Siirry takaisin työskentelykansioon
-cd /c/Repos/Omat/[projekti]
-```
-
----
-
-## 📝 Ohjeet Vibe-käyttäjälle
-
-### Jos käytät Vibe CLI:tä:
-
-1. **Aseta hookit**: Kopioi yllä olevat skriptit `.vibe/` kansioon
-2. **Tee ne suoritettaviksi**: `chmod +x .vibe/*.sh`
-3. **Testaa**: Käynnistä Vibe uudestaan
-
-### Jos hookit eivät toimi:
-- Tarkista, että `.vibe/` kansio on olemassa
-- Tarkista, että tiedostot ovat suoritettavia
-- Tarkista, että olet oikeassa kansiossa
-
----
-
-## 🎯 Tärkeät Muistutukset
-
-1. **ai-memory repositorion pitää olla kaikilla koneilla**
-2. **Päivitä aina ennen työskentelyä**: `git pull`
-3. **Tallenna muutokset säännöllisesti**: `git add . && git commit && git push`
-4. **Älä tallenna salaista dataa**
-
----
-
-**Hookit auttavat pitämään muistin ajan tasalla automaattisesti!**
+1. Clone `ai-memory` into the same repos folder as your projects (it always
+   lives next to the project being worked on), or point `AI_MEMORY_DIR` at it.
+2. Copy `scripts/ai-memory-publish.sh` from an existing machine (or recreate it)
+   to `~/.vibe/scripts/`.
+3. Add the `post_agent` hook to `~/.vibe/hooks.toml`.
+4. Copy `~/.vibe/AGENTS.md` from an existing machine.
