@@ -836,7 +836,14 @@ async function runClearAndRebuildLowQuality() {
   // Second: remove albums that exist as a complete lossless copy
   const cleanResult = await runLosslessClean();
 
-  // Third: scan for new low-quality albums. The clean step already proved at least
+  // Third: Danger Zone reset (issue #47) — this combined action is the ONLY one that
+  // reverses Ignore decisions: the persistent ignore list is cleared so the rescan
+  // below can re-add previously ignored albums. Doing it after the clean step means a
+  // failed rebuild cannot silently consume the user's Ignore decisions. Scans, Roon-tag
+  // sync, nightly automation and UI refresh never touch the ignore list.
+  const ignoredCleared = await lowQualityIgnore.clear();
+
+  // Fourth: scan for new low-quality albums. The clean step already proved at least
   // one storage location is readable, so this no longer depends on a typed path.
   let lowQualityResult = null;
   try {
@@ -846,6 +853,7 @@ async function runClearAndRebuildLowQuality() {
   }
 
   return {
+    ignoredCleared,
     clearedLowQuality,
     removedFromWishlist: cleanResult.removed,
     keptOnWishlist: cleanResult.kept,
@@ -857,6 +865,7 @@ async function runClearAndRebuildLowQuality() {
 /** Turns a combined clear & rebuild result into a one-line summary for Roon status. */
 function summarizeClearAndRebuildResult(result) {
   const parts = [`cleared ${result.clearedLowQuality.length} existing low-quality album(s)`];
+  parts.push(`reset ${result.ignoredCleared.length} ignored album(s)`);
   parts.push(`removed ${result.removedFromWishlist.length} now-lossless album(s)`);
   if (result.lowQualityScan) {
     parts.push(`added ${result.lowQualityScan.added} low-quality album(s)`);
@@ -1179,7 +1188,17 @@ const server = http.createServer(async (req, res) => {
           }
 
           const ignored = await lowQualityIgnore.add({ artist, title });
-          const removedFromWishlist = wishlist.remove({ artist, title });
+          // Roon is the master for tagged albums (issue #47): Ignore must not remove
+          // or modify a Roon Wishlist tag, so a tag-sourced entry stays on the
+          // wishlist. Only entries the low-quality view actually shows (same filter
+          // as GET /wishlist/low-quality) may be removed here.
+          const entry = wishlist
+            .getAll()
+            .find((a) => String(a.artist || "").toLowerCase().trim() === artist.toLowerCase()
+              && String(a.title || "").toLowerCase().trim() === title.toLowerCase());
+          const visibleInLowQualityView = !!entry && (entry.source === "low-quality"
+            || (entry.qualityFlacTracks !== undefined && entry.qualityTotalTracks !== undefined));
+          const removedFromWishlist = visibleInLowQualityView ? wishlist.remove({ artist, title }) : false;
           if (lastLowQualityScan) {
             const matchesAlbum = (item) => item && item.artist === artist && item.title === title;
             const removedFromAdded = Array.isArray(lastLowQualityScan.addedAlbums)
