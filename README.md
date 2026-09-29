@@ -172,12 +172,12 @@ you configure the **music folders** to scan; it accepts **several folders separa
 semicolon**, and each one can be excluded without deleting it.
 The Wishlist view shows the stored buy links for synced albums and, for low-quality
 finds, the current **x/y lossless tracks** count plus an **Ignore** action so that a special version is not re-added on the
-next scan. The **Settings** view also includes a **Danger Zone** action that clears the
+next scan — Ignored albums stay ignored until the low-quality **Danger Zone** rebuild clears the ignore list. The **Settings** view also includes a **Danger Zone** action that clears the
 whole wishlist and rebuilds it from scratch using only albums currently tagged
 `Wishlist` in Roon.
 
 > **After upgrading to a version with Roon tag sync:** if the web UI shows **Not paired**
-> or the **Sync Roon tag** button stays disabled, open **Roon → Settings → Extensions**,
+> or the **Sync and refresh** button stays disabled, open **Roon → Settings → Extensions**,
 > open **Wishlist**, and re-enable/re-open it once. The browse permission used for tag
 > import may need a fresh authorization after the upgrade.
 
