@@ -7,6 +7,17 @@ for what that means for this Roon extension).
 
 ## [Unreleased]
 
+### Fixed
+
+- The log file no longer goes silent across restarts (#62). A leftover process holding
+  the HTTP port used to crash every restart with an unhandled `EADDRINUSE` error whose
+  stack only reached journald — on installs where the file is the only readable log,
+  the process left no trace in the file, so startup/pairing/scan lines never landed
+  while the older process kept serving HTTP. The app now writes a startup line to the
+  log file as soon as the file sink is attached, records bind failures there before
+  exiting (so systemd's `Restart=always` retries visibly), and library scans log their
+  start, finish and failure lines instead of reporting only via Roon status.
+
 ## [1.5.0] - 2026-09-26
 
 ### Changed
