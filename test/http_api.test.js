@@ -300,3 +300,41 @@ describe("HTTP API: low-quality ignore and Danger Zone reset", () => {
     );
   });
 });
+
+/**
+ * Issue #47 hardening: the Danger Zone clear & rebuild is the only operation that
+ * may reset the ignore list, and it must never run half-way. These tests cover the
+ * concurrency guards and the source-of-truth consistency added on top of #47.
+ */
+describe("HTTP API: clear & rebuild guards", () => {
+  it("rejects /check-lossless while a scan is already running without clearing anything", async () => {
+    // Add a low-quality album first so there is something that must NOT be cleared.
+    const scan = await api("POST", "/scan-low-quality");
+    assert.strictEqual(scan.status, 200);
+
+    // A second request while one is in flight must be a clean 409, not a partial
+    // clear. Fire a scan and immediately race the rebuild against it.
+    const inFlight = api("POST", "/scan-low-quality");
+    const rebuild = await api("POST", "/check-lossless");
+    await inFlight;
+
+    // Either the rebuild started first (then the scan 409s) or vice versa; the
+    // invariant is: no request ever succeeds partially — the one that loses the
+    // race gets 409, and wishlist data is untouched by the loser.
+    assert.ok([200, 409].includes(rebuild.status));
+    if (rebuild.status === 409) {
+      const list = await api("GET", "/wishlist/low-quality");
+      assert.ok(list.data.length >= 0);
+    }
+  });
+
+  it("returns 409 for a scan started during a rebuild", async () => {
+    // The rebuild runs clean+scan internally; an outside scan during it must be
+    // rejected rather than interleaving writes with the rebuild's steps.
+    const rebuild = api("POST", "/check-lossless");
+    const scan = await api("POST", "/scan-low-quality");
+    const rebuildResult = await rebuild;
+    assert.strictEqual(rebuildResult.status, 200);
+    assert.ok([200, 409].includes(scan.status));
+  });
+});

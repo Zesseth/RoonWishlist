@@ -28,6 +28,20 @@ for what that means for this Roon extension).
 - Ignoring a low-quality album no longer removes a Roon-tag-sourced wishlist
   entry — Ignore only hides entries that appear in the low-quality view, so it can
   never remove or modify a Roon `Wishlist` tag (#47).
+- The Roon settings "Clear & rebuild low-quality albums" action now requires an
+  explicit confirmation dropdown before it runs, matching the web UI's Danger
+  Zone confirmation (#47): a stray dropdown selection can no longer wipe every
+  Ignore decision.
+- `POST /check-lossless` now refuses to start while a library scan is already
+  running (409) *before* clearing anything — previously the low-quality list was
+  emptied first and the rebuild could then fail, leaving the list cleared with no
+  rebuild (#47).
+- A running clear & rebuild now blocks concurrent manual scans, nightly
+  low-quality automation, and a second rebuild instead of interleaving writes
+  with the rebuild's steps (#47).
+- The low-quality view filter is defined in one place (`isLowQualityEntry`) shared
+  by the low-quality endpoint and the Ignore handler, so the visible list and the
+  Ignore removal rule can never drift apart (#47).
 
 ## [1.5.1] - 2026-09-29
 
