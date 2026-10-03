@@ -7,6 +7,8 @@ for what that means for this Roon extension).
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-10-03
+
 ### Added
 
 - The extension now has an icon (#64): an indigo **RW** lettermark (matching the
@@ -14,6 +16,13 @@ for what that means for this Roon extension).
   opaque `apple-touch-icon.png`, referenced from the web UI's `<head>`. Roon's
   extension API offers no way to register an icon for Roon's own settings list,
   so the icon shows in the browser tab and home-screen shortcuts.
+
+### Fixed
+
+- Static web UI assets (the page and the icons) are served with
+  `Cache-Control: no-cache` (#64): browsers previously fell back to heuristic
+  caching, so an upgrade install could leave the old page or favicon on screen
+  even after a hard reload.
 
 ## [1.6.0] - 2026-10-03
 
@@ -191,6 +200,7 @@ for what that means for this Roon extension).
 - Store-link refresh when the Qobuz country changes.
 
 [Unreleased]: https://github.com/Zesseth/RoonWishlist/compare/v1.5.1...HEAD
+[1.7.0]: https://github.com/Zesseth/RoonWishlist/compare/v1.6.0...v1.7.0
 [1.6.0]: https://github.com/Zesseth/RoonWishlist/compare/v1.5.1...v1.6.0
 [1.5.1]: https://github.com/Zesseth/RoonWishlist/compare/v1.5.0...v1.5.1
 [1.5.0]: https://github.com/Zesseth/RoonWishlist/compare/v1.4.0...v1.5.0
