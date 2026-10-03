@@ -83,8 +83,20 @@ async function add(entry) {
   return true;
 }
 
+/**
+ * Danger Zone reset (issue #47): empties the ignore list and returns the entries
+ * that were in it. This is the only operation that reverses Ignore decisions —
+ * scans, syncs and nightly automation must never call it.
+ */
+async function clear() {
+  const current = readIgnoreList();
+  await writeIgnoreList([]);
+  return current;
+}
+
 module.exports = {
   add,
   has,
   getAll: readIgnoreList,
+  clear,
 };

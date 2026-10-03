@@ -7,6 +7,42 @@ for what that means for this Roon extension).
 
 ## [Unreleased]
 
+### Changed
+
+- The Wishlist tab has one **"Sync and refresh"** action instead of separate
+  "Sync Roon tag" and "Reload wishlist now" buttons (#47): it reads the Roon
+  `Wishlist` tag, updates the tagged wishlist and store links, refreshes the
+  visible UI, and reports progress and errors — Roon stays the master for tagged
+  albums.
+- Low-quality albums expose only the persistent **Ignore — never re-add** action;
+  the reversible Remove button is gone because the next scan would have re-added
+  the album anyway (#47). `POST /wishlist/remove` remains available as an API
+  endpoint.
+- The low-quality **Danger Zone** "Clear & rebuild low-quality albums" is now the
+  only operation that resets Ignore decisions (#47): it asks for an explicit
+  confirmation stating that every Ignore will be cleared, and reports how many
+  ignored albums were reset.
+
+### Fixed
+
+- Ignoring a low-quality album no longer removes a Roon-tag-sourced wishlist
+  entry — Ignore only hides entries that appear in the low-quality view, so it can
+  never remove or modify a Roon `Wishlist` tag (#47).
+- The Roon settings "Clear & rebuild low-quality albums" action now requires an
+  explicit confirmation dropdown before it runs, matching the web UI's Danger
+  Zone confirmation (#47): a stray dropdown selection can no longer wipe every
+  Ignore decision.
+- `POST /check-lossless` now refuses to start while a library scan is already
+  running (409) *before* clearing anything — previously the low-quality list was
+  emptied first and the rebuild could then fail, leaving the list cleared with no
+  rebuild (#47).
+- A running clear & rebuild now blocks concurrent manual scans, nightly
+  low-quality automation, and a second rebuild instead of interleaving writes
+  with the rebuild's steps (#47).
+- The low-quality view filter is defined in one place (`isLowQualityEntry`) shared
+  by the low-quality endpoint and the Ignore handler, so the visible list and the
+  Ignore removal rule can never drift apart (#47).
+
 ## [1.5.1] - 2026-09-29
 
 ### Fixed

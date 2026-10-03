@@ -444,10 +444,9 @@
         <p class="settings-group-scope">Only affects the Wishlist tab (tagged-in-Roon albums and already-owned albums).</p>
         <div class="sync-note" id="sync-note">Albums tagged Wishlist in Roon. To take one off the list, remove the Wishlist tag in Roon and sync.</div>
         <div class="row" style="gap:8px;margin-top:8px;">
-          <button class="secondary small" id="sync-roon-btn">Sync Roon tag</button>
-          <button type="button" class="secondary small" id="refresh-btn">Reload wishlist now</button>
+          <button class="secondary small" id="sync-roon-btn">Sync and refresh</button>
         </div>
-        <p class="hint" style="margin-top:8px;">The Wishlist page refreshes on its own every 30 seconds; "Reload wishlist now" is only needed if you don't want to wait for that.</p>
+        <p class="hint" style="margin-top:8px;">One action: reads albums tagged "Wishlist" from Roon, updates the list and store links, and refreshes the view. The page also refreshes on its own every 30 seconds.</p>
         <div class="danger-zone">
           <h3>Danger Zone</h3>
           <p><strong>Clear &amp; rebuild from Roon tag:</strong> Empty the entire wishlist and rebuild <strong>only</strong> from albums tagged "Wishlist" in Roon. Non-tagged albums will be removed.</p>
@@ -461,7 +460,7 @@
         <button class="secondary small" id="scan-low-quality-btn" title="Scan your library and add albums that are not fully lossless to the wishlist">Scan low-quality albums now</button>
         <div class="danger-zone">
           <h3>Danger Zone</h3>
-          <p><strong>Clear &amp; rebuild low-quality albums:</strong> Empty low-quality albums, remove any albums you already own as a complete lossless copy, then scan the library and add the ones that are not fully lossless.</p>
+          <p><strong>Clear &amp; rebuild low-quality albums:</strong> Empty low-quality albums, remove any albums you already own as a complete lossless copy, then scan the library and add the ones that are not fully lossless. Also clears every Ignore decision — ignored albums become eligible again.</p>
           <button type="button" class="danger" id="clean-btn" title="Empty low-quality albums, remove albums owned in full lossless quality, then rescan for albums that are not fully lossless">Clear &amp; rebuild low-quality albums</button>
         </div>
       </div>
@@ -713,7 +712,7 @@
         const footerVersion = $("footer-version");
         if (footerVersion && s.version) footerVersion.textContent = " · v" + s.version;
         if (syncBtn) {
-          syncBtn.textContent = s.syncInProgress ? "Syncing…" : "Sync Roon tag";
+          syncBtn.textContent = s.syncInProgress ? "Syncing…" : "Sync and refresh";
           syncBtn.disabled = !!s.syncInProgress;
           if (!s.paired) {
             syncBtn.title = "Pair the extension with Roon first.";
@@ -1009,7 +1008,7 @@
 
     // Each loader returns the album count on success, or null on failure (after
     // showing its own error toast), so loadWishlist() can report a combined
-    // outcome to whatever triggered it (see the Reload button below).
+    // outcome to whatever triggered it (see the Sync and refresh button below).
     async function loadRoonTagWishlist() {
       try {
         const items = await api("/wishlist/roon-tag");
@@ -1043,12 +1042,6 @@
       }
     }
 
-    // Tracks the total album count from the most recent successful load, so the
-    // Reload button (below) can tell "reloaded, nothing changed" apart from
-    // "reloaded, the list is different now" instead of reporting the same count
-    // every time regardless of whether anything actually changed.
-    let lastWishlistTotal = null;
-
     async function loadWishlist() {
       const [roonTag, lowQuality, owned] = await Promise.all([
         loadRoonTagWishlist(),
@@ -1057,7 +1050,6 @@
       ]);
       const failed = roonTag === null || lowQuality === null || owned === null;
       const total = (roonTag || 0) + (lowQuality || 0) + (owned || 0);
-      if (!failed) lastWishlistTotal = total;
       return { failed, total };
     }
 
@@ -1073,7 +1065,7 @@
       $("owned-count").textContent = items.length + (items.length === 1 ? " album" : " albums");
       if (!items.length) return;
       // No store search here: you already own these, so buy links would be noise.
-      renderWishlistItems(ul, items, false, false, { showStores: false });
+      renderWishlistItems(ul, items, false, { showStores: false });
       showUntagSupport();
     }
 
@@ -1103,7 +1095,7 @@
         ul.innerHTML = '<li class="empty">Wishlist is empty. Tag albums with "Wishlist" in Roon to populate it.</li>';
         return;
       }
-      renderWishlistItems(ul, items, false, false);
+      renderWishlistItems(ul, items, false);
     }
 
     function renderLowQualityWishlist(items) {
@@ -1116,10 +1108,13 @@
         ul.innerHTML = '<li class="empty">No low-quality albums on wishlist. Use Settings → Low-quality albums tab → "Scan low-quality albums now" to add albums here.</li>';
         return;
       }
-      renderWishlistItems(ul, items, true, true);
+      // Low-quality albums are managed with Ignore only (issue #47): a plain
+      // reversible Remove would just be re-added by the next scan, which makes
+      // it a no-op that competes with the real decision (Ignore).
+      renderWishlistItems(ul, items, true);
     }
 
-    function renderWishlistItems(ul, items, showIgnore, allowRemove, options) {
+    function renderWishlistItems(ul, items, showIgnore, options) {
       const showStores = !options || options.showStores !== false;
       // Newest first.
       const sorted = items.slice().sort((a, b) => String(b.addedAt || "").localeCompare(String(a.addedAt || "")));
@@ -1133,12 +1128,6 @@
         const ignoreButton = showIgnore && hasTrackCounts(a)
           ? '<button class="danger small" data-ignore title="Removes from wishlist and never re-adds it, even if it stays low-quality">Ignore &mdash; never re-add</button>'
           : '';
-        // Removing a low-quality album here is a simple, reversible list removal:
-        // the next low-quality scan will just re-add it if it is still low-quality.
-        // It should not look more severe than the permanent Ignore action above.
-        const removeButton = allowRemove
-          ? '<button class="secondary small" data-remove title="A future low-quality scan will re-add this if it is still low-quality">Remove</button>'
-          : '';
         li.innerHTML =
           '<div class="album-main">' +
             '<div><span class="album-artist">' + esc(a.artist) + '</span> ' +
@@ -1149,15 +1138,10 @@
           '</div>' +
           '<div class="album-actions">' +
             (showStores ? '<button class="secondary small" data-search>Find in stores</button>' : '') +
-            removeButton +
             ignoreButton +
           '</div>';
         if (showStores && Array.isArray(a.buyLinks) && a.buyLinks.length) {
           renderStoreResults(li.querySelector("[data-results]"), a.buyLinks, false);
-        }
-        const removeBtn = li.querySelector("[data-remove]");
-        if (removeBtn) {
-          removeBtn.addEventListener("click", () => removeAlbum(a, li));
         }
         const searchBtn = li.querySelector("[data-search]");
         if (searchBtn) {
@@ -1187,23 +1171,6 @@
       }
       box.innerHTML = "";
       box.appendChild(list);
-    }
-
-    async function removeAlbum(a, li) {
-      const btn = li.querySelector("[data-remove]");
-      btn.disabled = true;
-      try {
-        await api("/wishlist/remove", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ artist: a.artist, title: a.title }),
-        });
-        toast("Removed: " + a.artist + " — " + a.title, "ok");
-        await loadWishlist();
-      } catch (e) {
-        btn.disabled = false;
-        toast("Remove failed: " + e.message, "err");
-      }
     }
 
     async function ignoreLowQuality(a, li) {
@@ -1356,32 +1323,6 @@
       }
     });
 
-    $("refresh-btn").addEventListener("click", async () => {
-      const btn = $("refresh-btn");
-      if (btn.disabled) return;
-      const original = btn.textContent;
-      const previousTotal = lastWishlistTotal;
-      btn.disabled = true;
-      btn.textContent = "Reloading…";
-      try {
-        const result = await loadWishlist();
-        await loadStatus();
-        const albumWord = result.total === 1 ? "album" : "albums";
-        if (result.failed) {
-          toast("Reload finished with errors — see above for details.", "err");
-        } else if (previousTotal !== null && previousTotal === result.total) {
-          toast("Reloaded — no changes (" + result.total + " " + albumWord + ")", "ok");
-        } else {
-          toast("Reloaded — " + result.total + " " + albumWord, "ok");
-        }
-      } catch (e) {
-        toast("Reload failed: " + e.message, "err");
-      } finally {
-        btn.disabled = false;
-        btn.textContent = original;
-      }
-    });
-
     $("sync-roon-btn").addEventListener("click", async () => {
       const btn = $("sync-roon-btn");
       if (!latestStatus.online) {
@@ -1481,10 +1422,18 @@
 
     $("clean-btn").addEventListener("click", async () => {
       const btn = $("clean-btn");
+      // Explicit confirmation (issue #47): this is the only operation that
+      // reverses the user's Ignore decisions, so it must never run on a stray click.
+      const confirmed = window.confirm(
+        'Danger Zone:\n\nThis will empty the low-quality albums list, remove albums you already own as a complete lossless copy, rescan the library, and CLEAR EVERY IGNORE DECISION.\n\nPreviously ignored albums will be added again if they are still low-quality.\n\nContinue?'
+      );
+      if (!confirmed) return;
+
       btn.disabled = true;
       try {
         const r = await api("/check-lossless", { method: "POST" });
         const clearedLowQuality = (r && r.clearedLowQuality) || [];
+        const ignoredCleared = (r && r.ignoredCleared) || [];
         const removed = (r && r.removedFromWishlist) || [];
         const kept = (r && r.keptOnWishlist) || [];
         const lowQualityResult = (r && r.lowQualityScan) || null;
@@ -1492,6 +1441,13 @@
         const parts = [];
         if (clearedLowQuality.length) {
           parts.push("Cleared " + clearedLowQuality.length + " existing low-quality album(s)");
+        }
+        // Report what was reset — this reverses the user's Ignore decisions, so
+        // staying quiet about it would look like the list just came back broken.
+        if (ignoredCleared.length) {
+          parts.push("Reset " + ignoredCleared.length + " ignored album(s)");
+        } else {
+          parts.push("No ignored albums to reset");
         }
         if (removed.length) {
           parts.push("Removed " + removed.length + " fully lossless album(s)");
@@ -1587,8 +1543,8 @@
     });
 
     // Initial load + light polling: status/settings-affecting bits refresh often since
-    // they're cheap, the wishlist itself refreshes more slowly since a manual "Reload
-    // wishlist now" (Settings) is available for anyone who doesn't want to wait.
+    // they're cheap; the wishlist itself refreshes more slowly, and "Sync and refresh"
+    // (Settings) refreshes it immediately for anyone who doesn't want to wait.
     setPage(normalizePage(window.location.hash.replace(/^#/, "")), false);
     loadStatus();
     loadSettings();

@@ -27,6 +27,9 @@ let roon, mysettings, svc_status;
 let pairedCore = null;
 // Guards against two library scans running at once (Roon settings action + HTTP API).
 let scanInProgress = false;
+// Guards the Danger Zone clear & rebuild (issue #47): unlike a plain scan, it
+// clears wishlist data, so it must never overlap another scan or a second rebuild.
+let clearAndRebuildInProgress = false;
 let scanActivity = null;
 let syncInProgress = false;
 let reconciliationInProgress = false;
@@ -300,7 +303,7 @@ function make_layout(settings) {
       values: [
         { title: "— none —", value: "none" },
         { title: "Remove album from wishlist", value: "remove" },
-        { title: "Clear & rebuild low-quality albums", value: "clean" },
+        { title: "Clear & rebuild low-quality albums (Danger Zone)", value: "clean" },
         { title: "Scan low-quality albums into wishlist (add only)", value: "low_quality" },
       ],
       setting: "action",
@@ -309,6 +312,18 @@ function make_layout(settings) {
   if (action === "remove") {
     actionItems.push({ type: "string", title: "Artist", setting: "artist" });
     actionItems.push({ type: "string", title: "Album title", setting: "title" });
+  }
+  if (action === "clean") {
+    actionItems.push({
+      type: "dropdown",
+      title: "This also CLEARS EVERY low-quality Ignore decision — confirm",
+      subtitle: "Ignored albums become eligible again. Pick the confirmation to run the rebuild.",
+      values: [
+        { title: "— not confirmed —", value: "no" },
+        { title: "Yes, clear Ignore decisions too", value: "yes" },
+      ],
+      setting: "clean_confirm",
+    });
   }
   l.layout.push({ type: "group", title: "Actions", items: actionItems });
 
@@ -442,6 +457,12 @@ async function performAction(values) {
       : "Album not found on wishlist";
   }
   if (action === "clean") {
+    // Danger Zone reset (issue #47): this is the only operation that reverses
+    // Ignore decisions, so it must be explicitly confirmed — a stray dropdown
+    // selection must never wipe the persistent ignore list.
+    if (values.clean_confirm !== "yes") {
+      return "Clear & rebuild NOT run: the Danger Zone confirmation was not selected.";
+    }
     return summarizeClearAndRebuildResult(await runClearAndRebuildLowQuality());
   }
   if (action === "low_quality") {
@@ -520,6 +541,7 @@ const svc_settings = new RoonApiSettings(roonApp, {
             action: "none",
             artist: "",
             title: "",
+            clean_confirm: "no",
             exclude_location: "",
             include_location: "",
           });
@@ -747,9 +769,14 @@ function makeHttpError(statusCode, message) {
   return error;
 }
 
-async function runLibraryScanAction(task, { startStatus, successStatus, action }) {
+async function runLibraryScanAction(task, { startStatus, successStatus, action, internal = false }) {
   if (scanInProgress) {
     throw makeHttpError(409, "A library scan is already running");
+  }
+  // Steps the clear & rebuild runs as part of itself pass internal=true, so the
+  // guard does not trip on the very rebuild that owns it.
+  if (!internal && clearAndRebuildInProgress) {
+    throw makeHttpError(409, "A clear & rebuild is already running");
   }
 
   const { roots, unreadable } = await getScanRoots();
@@ -784,6 +811,15 @@ function isTagSourced(album) {
   return album.source === "roon-tag" || !album.source;
 }
 
+// The one filter that decides which wishlist entries the low-quality view shows:
+// explicitly low-quality entries, plus legacy rows written before `source` existed
+// that carry low-quality track counts. Every place that hides, removes or counts
+// low-quality albums must use this so the view and the data can never drift apart.
+function isLowQualityEntry(album) {
+  return album.source === "low-quality"
+    || (album.qualityFlacTracks !== undefined && album.qualityTotalTracks !== undefined);
+}
+
 function summarizeCleanResult(result) {
   const keptByReason = new Map();
   for (const entry of result.kept) {
@@ -803,13 +839,14 @@ function summarizeCleanResult(result) {
   return `Refresh & clean done: ${parts.join(", ")}`;
 }
 
-async function runLosslessClean() {
+async function runLosslessClean({ internal = false } = {}) {
   return runLibraryScanAction("clean", {
     startStatus: "Scanning library for fully lossless albums...",
     successStatus: summarizeCleanResult,
     action(roots) {
       return lossless.checkAndClean(roots, wishlist);
     },
+    internal,
   });
 }
 
@@ -821,8 +858,27 @@ async function runLosslessClean() {
  * always leaves the low-quality section reflecting the current state of the library,
  * rather than requiring "Scan & clean" (remove-only) and "Scan low-quality" (add-only)
  * to be run separately and in the right order.
+ *
+ * The scan lock is checked before anything is cleared: emptying the wishlist first
+ * and failing on a 409 afterwards would leave the low-quality list cleared with no
+ * rebuild, which on a production box looks exactly like data loss.
  */
 async function runClearAndRebuildLowQuality() {
+  if (scanInProgress) {
+    throw makeHttpError(409, "A library scan is already running");
+  }
+  if (clearAndRebuildInProgress) {
+    throw makeHttpError(409, "A clear & rebuild is already running");
+  }
+  clearAndRebuildInProgress = true;
+  try {
+    return await runClearAndRebuildLowQualityLocked();
+  } finally {
+    clearAndRebuildInProgress = false;
+  }
+}
+
+async function runClearAndRebuildLowQualityLocked() {
   // First: clear existing low-quality albums
   const allItems = wishlist.getAll();
   const lowQualityItems = allItems.filter((a) => a.source === "low-quality");
@@ -834,18 +890,26 @@ async function runClearAndRebuildLowQuality() {
   }
 
   // Second: remove albums that exist as a complete lossless copy
-  const cleanResult = await runLosslessClean();
+  const cleanResult = await runLosslessClean({ internal: true });
 
-  // Third: scan for new low-quality albums. The clean step already proved at least
+  // Third: Danger Zone reset (issue #47) — this combined action is the ONLY one that
+  // reverses Ignore decisions: the persistent ignore list is cleared so the rescan
+  // below can re-add previously ignored albums. Doing it after the clean step means a
+  // failed rebuild cannot silently consume the user's Ignore decisions. Scans, Roon-tag
+  // sync, nightly automation and UI refresh never touch the ignore list.
+  const ignoredCleared = await lowQualityIgnore.clear();
+
+  // Fourth: scan for new low-quality albums. The clean step already proved at least
   // one storage location is readable, so this no longer depends on a typed path.
   let lowQualityResult = null;
   try {
-    lowQualityResult = await runLowQualityScan();
+    lowQualityResult = await runLowQualityScan({ internal: true });
   } catch (e) {
     if (e.statusCode !== 400) throw e;
   }
 
   return {
+    ignoredCleared,
     clearedLowQuality,
     removedFromWishlist: cleanResult.removed,
     keptOnWishlist: cleanResult.kept,
@@ -857,6 +921,7 @@ async function runClearAndRebuildLowQuality() {
 /** Turns a combined clear & rebuild result into a one-line summary for Roon status. */
 function summarizeClearAndRebuildResult(result) {
   const parts = [`cleared ${result.clearedLowQuality.length} existing low-quality album(s)`];
+  parts.push(`reset ${result.ignoredCleared.length} ignored album(s)`);
   parts.push(`removed ${result.removedFromWishlist.length} now-lossless album(s)`);
   if (result.lowQualityScan) {
     parts.push(`added ${result.lowQualityScan.added} low-quality album(s)`);
@@ -904,7 +969,7 @@ async function flagOwnedTaggedAlbums() {
   }
 }
 
-async function runLowQualityScan() {
+async function runLowQualityScan({ internal = false } = {}) {
   const startedAt = new Date().toISOString();
   const result = await runLibraryScanAction("low-quality", {
     startStatus: "Scanning library for low-quality albums...",
@@ -914,6 +979,7 @@ async function runLowQualityScan() {
     action(roots) {
       return lossless.scanLowQualityAlbums(roots, wishlist, lowQualityIgnore);
     },
+    internal,
   });
 
   lastLowQualityScan = {
@@ -970,6 +1036,9 @@ async function runRoonTagAction(res, { verb, successStatus, action }) {
 async function runNightlyLowQualityScan() {
   if (scanInProgress) {
     return { skipped: true, reason: "A library scan was already running" };
+  }
+  if (clearAndRebuildInProgress) {
+    return { skipped: true, reason: "A clear & rebuild was already running" };
   }
   return runLowQualityScan();
 }
@@ -1101,12 +1170,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (req.method === "GET" && url.pathname === "/wishlist/low-quality") {
-    const all = wishlist.getAll();
-    // Include items with source "low-quality" or legacy low-quality items with quality metadata
-    const lowQualityAlbums = all.filter((a) => 
-      a.source === "low-quality" || 
-      (a.qualityFlacTracks !== undefined && a.qualityTotalTracks !== undefined)
-    );
+    const lowQualityAlbums = wishlist.getAll().filter(isLowQualityEntry);
     res.end(JSON.stringify(lowQualityAlbums, null, 2));
     return;
   }
@@ -1179,17 +1243,26 @@ const server = http.createServer(async (req, res) => {
           }
 
           const ignored = await lowQualityIgnore.add({ artist, title });
-          const removedFromWishlist = wishlist.remove({ artist, title });
+          // Roon is the master for tagged albums (issue #47): Ignore must not remove
+          // or modify a Roon Wishlist tag, so a tag-sourced entry stays on the
+          // wishlist. Only entries the low-quality view actually shows may be
+          // removed here.
+          const matchesAlbum = (a) => String(a.artist || "").toLowerCase().trim() === artist.toLowerCase()
+            && String(a.title || "").toLowerCase().trim() === title.toLowerCase();
+          const entry = wishlist.getAll().find(matchesAlbum);
+          const removedFromWishlist = entry && isLowQualityEntry(entry)
+            ? wishlist.remove({ artist, title })
+            : false;
           if (lastLowQualityScan) {
-            const matchesAlbum = (item) => item && item.artist === artist && item.title === title;
+            const matchesScanAlbum = (item) => item && item.artist === artist && item.title === title;
             const removedFromAdded = Array.isArray(lastLowQualityScan.addedAlbums)
-              ? lastLowQualityScan.addedAlbums.filter(matchesAlbum).length
+              ? lastLowQualityScan.addedAlbums.filter(matchesScanAlbum).length
               : 0;
             const removedFromAlreadyPresent = Array.isArray(lastLowQualityScan.alreadyPresentAlbums)
-              ? lastLowQualityScan.alreadyPresentAlbums.filter(matchesAlbum).length
+              ? lastLowQualityScan.alreadyPresentAlbums.filter(matchesScanAlbum).length
               : 0;
             const ignoredAlbums = Array.isArray(lastLowQualityScan.ignoredAlbums)
-              ? lastLowQualityScan.ignoredAlbums.filter((item) => !matchesAlbum(item))
+              ? lastLowQualityScan.ignoredAlbums.filter((item) => !matchesScanAlbum(item))
               : [];
             ignoredAlbums.push({ artist, title });
             lastLowQualityScan = Object.assign({}, lastLowQualityScan, {
