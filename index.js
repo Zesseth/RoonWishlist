@@ -451,6 +451,12 @@ async function performAction(values) {
   const artist = (values.artist || "").trim();
   const title = (values.title || "").trim();
 
+  // Roon status messages are ephemeral, so settings actions leave their trace in the
+  // log file instead (#67).
+  if (action !== "none") {
+    log.info(`Roon settings action "${action}" requested${artist || title ? `: ${artist} — ${title}` : ""}`);
+  }
+
   if (action === "remove") {
     return wishlist.remove({ artist, title })
       ? `Removed: ${artist} — ${title}`
@@ -536,6 +542,7 @@ const svc_settings = new RoonApiSettings(roonApp, {
       Promise.resolve()
         .then(() => performAction(settings.values))
         .then((statusMsg) => {
+          if (action !== "none") log.info(statusMsg);
           // Push a refreshed layout with the updated wishlist and cleared transient fields.
           const cleared = Object.assign({}, mysettings, {
             action: "none",
@@ -549,6 +556,7 @@ const svc_settings = new RoonApiSettings(roonApp, {
           svc_status.set_status(statusMsg, false);
         })
         .catch((e) => {
+          log.warn(`Roon settings action "${action}" failed:`, e.message);
           svc_status.set_status("Action failed: " + e.message, false);
         });
     }
@@ -872,7 +880,9 @@ async function runClearAndRebuildLowQuality() {
   }
   clearAndRebuildInProgress = true;
   try {
-    return await runClearAndRebuildLowQualityLocked();
+    const result = await runClearAndRebuildLowQualityLocked();
+    log.info("Clear & rebuild (low-quality) finished:", summarizeClearAndRebuildResult(result));
+    return result;
   } finally {
     clearAndRebuildInProgress = false;
   }
@@ -882,6 +892,7 @@ async function runClearAndRebuildLowQualityLocked() {
   // First: clear existing low-quality albums
   const allItems = wishlist.getAll();
   const lowQualityItems = allItems.filter((a) => a.source === "low-quality");
+  log.info(`Clear & rebuild (low-quality) starting: clearing ${lowQualityItems.length} existing low-quality album(s)`);
   const clearedLowQuality = [];
   for (const item of lowQualityItems) {
     if (wishlist.remove(item)) {
@@ -898,6 +909,7 @@ async function runClearAndRebuildLowQualityLocked() {
   // failed rebuild cannot silently consume the user's Ignore decisions. Scans, Roon-tag
   // sync, nightly automation and UI refresh never touch the ignore list.
   const ignoredCleared = await lowQualityIgnore.clear();
+  log.info(`Danger Zone ignore reset: cleared ${ignoredCleared.length} ignored album(s)`);
 
   // Fourth: scan for new low-quality albums. The clean step already proved at least
   // one storage location is readable, so this no longer depends on a typed path.
@@ -1005,10 +1017,15 @@ async function runRoonTagAction(res, { verb, successStatus, action }) {
   const browseService = getBrowseService();
   syncInProgress = true;
   svc_status.set_status(`${verb} Roon tag "${ROON_WISHLIST_TAG}"…`, false);
+  // Roon status messages are ephemeral, so the log file is the only place a
+  // destructive action leaves a trace. Without this, a rebuild that wiped data
+  // was invisible at every log level (#67).
+  log.info(`${verb} Roon tag "${ROON_WISHLIST_TAG}"…`);
   try {
     const result = await action({
       browseService,
       onProgress({ current, total, album }) {
+        log.debug(`${verb} Roon tag: ${current}/${total} (${album.artist || "Unknown artist"} — ${album.title})`);
         svc_status.set_status(
           `${verb} Roon tag "${ROON_WISHLIST_TAG}"… ${current}/${total} (${album.artist || "Unknown artist"} — ${album.title})`,
           false
@@ -1017,10 +1034,12 @@ async function runRoonTagAction(res, { verb, successStatus, action }) {
     });
     try { svc_settings.update_settings(make_layout(mysettings)); } catch {}
     svc_status.set_status(successStatus(result), false);
+    log.info(successStatus(result));
     res.end(JSON.stringify(result, null, 2));
   } catch (e) {
     const statusCode = e instanceof SyncError && e.statusCode ? e.statusCode : 500;
     svc_status.set_status(`Roon tag action failed: ${e.message}`, false);
+    log.warn(`${verb} Roon tag failed:`, e.message);
     res.statusCode = statusCode;
     res.end(JSON.stringify({ error: e.message }));
   } finally {
@@ -1354,7 +1373,7 @@ const server = http.createServer(async (req, res) => {
     await runRoonTagAction(res, {
       verb: "Rebuilding from",
       successStatus(result) {
-        return `Roon tag rebuild done: replaced ${result.previousWishlistCount} with ${result.rebuilt}, links ${result.withLinks}/${result.totalTaggedAlbums}`;
+        return `Roon tag rebuild done: rebuilt ${result.rebuilt} tagged album(s), cleared ${result.cleared} no-longer-tagged one(s), kept ${result.preservedNonTagged} low-quality/manual album(s), links ${result.withLinks}/${result.totalTaggedAlbums}`;
       },
       async action({ browseService, onProgress }) {
         const result = await rebuildTaggedAlbums({

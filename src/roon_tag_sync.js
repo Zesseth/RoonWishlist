@@ -416,21 +416,44 @@ function albumKey(album) {
   ).trim().toLowerCase()}`;
 }
 
+/**
+ * Danger Zone "Clear & rebuild from Roon tag": replace the tag-sourced part of the
+ * wishlist with exactly what the Roon tag holds right now.
+ *
+ * Only entries the tag produced are in the rebuild's scope. Low-quality and
+ * hand-added entries come from other sources with their own flows (each source has
+ * its own Danger Zone reset), so wiping them here looked like data loss (#67).
+ * A preserved entry whose album is currently tagged is superseded by the roon-tag
+ * version, because Roon is the master for tagged albums.
+ */
 async function rebuildTaggedAlbums({ browseService, wishlist, searchAll, tagName, onProgress, shouldFindLinks }) {
   const prepared = await buildTaggedWishlist({ browseService, searchAll, tagName, onProgress, shouldFindLinks });
-  const previousWishlistCount = wishlist.getAll().length;
-  const rebuilt = wishlist.replaceAll(prepared.wishlistAlbums);
+  const previousWishlist = wishlist.getAll();
+  const previousWishlistCount = previousWishlist.length;
+  const preserved = previousWishlist.filter((entry) => entry.source !== "roon-tag");
+  // "Cleared" counts only tag-sourced entries the rebuild actually dropped; entries
+  // that stay tagged are replaced in place, not cleared.
+  const taggedKeys = new Set(prepared.wishlistAlbums.map(albumKey));
+  const cleared = previousWishlist
+    .filter((entry) => entry.source === "roon-tag" && !taggedKeys.has(albumKey(entry)))
+    .length;
+  // Tag-sourced entries go first, so an album that is both tagged and present from
+  // another source deduplicates to the roon-tag version.
+  const wishlistAfter = wishlist.replaceAll([...prepared.wishlistAlbums, ...preserved]);
 
   return {
     tagName: prepared.tagName,
     tagFound: prepared.tagFound,
     totalTaggedAlbums: prepared.totalTaggedAlbums,
-    rebuilt,
+    rebuilt: prepared.wishlistAlbums.length,
+    wishlistAfter,
     previousWishlistCount,
-    cleared: previousWishlistCount,
+    cleared,
+    preservedNonTagged: preserved.length,
     withLinks: prepared.withLinks,
     withoutLinks: prepared.withoutLinks,
     lookupErrors: prepared.lookupErrors,
+    skippedLinks: prepared.skippedLinks,
   };
 }
 

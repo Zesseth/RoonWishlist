@@ -263,6 +263,20 @@ describe("HTTP API: low-quality ignore and Danger Zone reset", () => {
     assert.strictEqual(data.ignored, 0);
   });
 
+  it("records the Danger Zone rebuild in the log file (#67)", async () => {
+    // The rebuild is destructive, so it must leave a trace in the log file — the
+    // Roon status message is ephemeral. Before #67 this path logged nothing at
+    // any level, and a wipe was invisible in the log.
+    const { status } = await api("POST", "/check-lossless");
+    assert.strictEqual(status, 200);
+
+    const logFile = path.join(workDir, "data", "roon-wishlist.log");
+    const logText = fs.readFileSync(logFile, "utf8");
+    assert.match(logText, /Clear & rebuild \(low-quality\) starting: clearing \d+ existing low-quality album\(s\)/);
+    assert.match(logText, /Danger Zone ignore reset: cleared \d+ ignored album\(s\)/);
+    assert.match(logText, /Clear & rebuild \(low-quality\) finished: Clear & rebuild done/);
+  });
+
   it("Ignore does not remove a tag-sourced album from the wishlist", async () => {
     // Roon is the master for tagged albums (issue #47): Ignore must not remove
     // or modify a Roon Wishlist tag, so a tag-sourced entry stays on the

@@ -172,9 +172,10 @@ you configure the **music folders** to scan; it accepts **several folders separa
 semicolon**, and each one can be excluded without deleting it.
 The Wishlist view shows the stored buy links for synced albums and, for low-quality
 finds, the current **x/y lossless tracks** count plus an **Ignore** action so that a special version is not re-added on the
-next scan — Ignored albums stay ignored until the low-quality **Danger Zone** rebuild clears the ignore list. The **Settings** view also includes a **Danger Zone** action that clears the
-whole wishlist and rebuilds it from scratch using only albums currently tagged
-`Wishlist` in Roon. The low-quality Danger Zone rebuild — in the web UI and in the
+next scan — Ignored albums stay ignored until the low-quality **Danger Zone** rebuild clears the ignore list. The **Settings** view also includes a **Danger Zone** action that
+replaces the Roon-tagged part of the wishlist, rebuilding it using only albums
+currently tagged `Wishlist` in Roon; low-quality and manually added albums are
+kept. The low-quality Danger Zone rebuild — in the web UI and in the
 Roon settings action alike — always asks for an explicit confirmation, because it is
 the only operation that resets low-quality Ignore decisions.
 
