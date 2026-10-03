@@ -160,7 +160,9 @@ After either option, on any device with Roon open:
 ### Open the Wishlist web UI
 
 The extension also serves a small **web interface** — this is the easiest way to manage
-the wishlist. The top-left menu has three views: **Wishlist** (home, current wishlist
+the wishlist. It carries the extension's own **icon** (an indigo RW lettermark,
+`public/favicon.svg` plus PNG/ICO fallbacks), so the browser tab is recognizable at
+a glance. The top-left menu has three views: **Wishlist** (home, current wishlist
 and low-quality scan section), **Add an album** (add/search), and **Settings** (library
 path + scan/clean). From the browser you can view the list, add/remove albums,
 **search Bandcamp/Qobuz for buy links**, **sync albums tagged

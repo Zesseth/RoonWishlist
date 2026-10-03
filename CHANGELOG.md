@@ -7,6 +7,14 @@ for what that means for this Roon extension).
 
 ## [Unreleased]
 
+### Added
+
+- The extension now has an icon (#64): an indigo **RW** lettermark (matching the
+  web UI's accent colors) served as `favicon.svg` with PNG/ICO fallbacks and an
+  opaque `apple-touch-icon.png`, referenced from the web UI's `<head>`. Roon's
+  extension API offers no way to register an icon for Roon's own settings list,
+  so the icon shows in the browser tab and home-screen shortcuts.
+
 ## [1.6.0] - 2026-10-03
 
 ### Changed

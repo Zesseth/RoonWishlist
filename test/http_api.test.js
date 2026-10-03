@@ -99,6 +99,40 @@ after(async () => {
   }
 });
 
+describe("HTTP API: extension icon assets (#64)", () => {
+  // The web UI must serve the favicon set referenced from every page's <head>;
+  // a missing or wrongly-typed icon shows up as a blank browser tab.
+  it("serves the SVG favicon with the right content type", async () => {
+    const resp = await fetch(`${BASE}/favicon.svg`);
+    assert.strictEqual(resp.status, 200);
+    assert.strictEqual(resp.headers.get("content-type"), "image/svg+xml");
+    const text = await resp.text();
+    assert.match(text, /<svg[\s\S]*<\/svg>/);
+  });
+
+  it("serves the ICO favicon with the right content type", async () => {
+    const resp = await fetch(`${BASE}/favicon.ico`);
+    assert.strictEqual(resp.status, 200);
+    assert.strictEqual(resp.headers.get("content-type"), "image/x-icon");
+    const buf = Buffer.from(await resp.arrayBuffer());
+    assert.ok(buf.length > 0);
+  });
+
+  it("serves the PNG fallback favicon with the right content type", async () => {
+    const resp = await fetch(`${BASE}/favicon.png`);
+    assert.strictEqual(resp.status, 200);
+    assert.strictEqual(resp.headers.get("content-type"), "image/png");
+  });
+
+  it("references the icons from the served page head", async () => {
+    const resp = await fetch(`${BASE}/`);
+    const html = await resp.text();
+    assert.match(html, /rel="icon" href="\/favicon\.svg"/);
+    assert.match(html, /rel="icon" href="\/favicon\.ico"/);
+    assert.match(html, /rel="apple-touch-icon" href="\/apple-touch-icon\.png"/);
+  });
+});
+
 describe("HTTP API: storage locations", () => {
   it("adds a folder without replacing anything", async () => {
     const first = await api("POST", "/storage-locations/add", { path: "/music-test" });
