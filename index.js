@@ -613,6 +613,11 @@ function serveStatic(res, pathname) {
       return;
     }
     res.setHeader("Content-Type", STATIC_TYPES[path.extname(filePath)] || "application/octet-stream");
+    // No validators (ETag/Last-Modified) are sent, so without this a browser's
+    // heuristic caching can keep serving a stale page or favicon after an
+    // upgrade install (#64: the new icon did not show up until the cache was
+    // cleared by hand). Re-fetching a few KB on a reload is free on a LAN.
+    res.setHeader("Cache-Control", "no-cache");
     res.end(data);
   });
 }

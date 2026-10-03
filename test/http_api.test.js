@@ -131,6 +131,17 @@ describe("HTTP API: extension icon assets (#64)", () => {
     assert.match(html, /rel="icon" href="\/favicon\.ico"/);
     assert.match(html, /rel="apple-touch-icon" href="\/apple-touch-icon\.png"/);
   });
+
+  it("serves static assets with revalidation so upgrades show up (#64)", async () => {
+    // Without cache headers a browser's heuristic caching kept serving the old
+    // (or blank) favicon after an upgrade install - the new icon "did not
+    // show up" even though the server had it.
+    for (const p of ["/", "/favicon.svg", "/favicon.ico"]) {
+      const resp = await fetch(`${BASE}${p}`);
+      assert.strictEqual(resp.status, 200);
+      assert.strictEqual(resp.headers.get("cache-control"), "no-cache");
+    }
+  });
 });
 
 describe("HTTP API: storage locations", () => {
