@@ -1,7 +1,10 @@
 "use strict";
 
 const assert = require("node:assert");
-const { describe, it } = require("node:test");
+const { describe, it, beforeEach, afterEach } = require("node:test");
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
 
 const tagSync = require("../src/roon_tag_sync");
 const reconciliation = require("../src/roon_reconciliation");
@@ -481,5 +484,110 @@ describe("probeTagWriteSupport()", () => {
 
   it("refuses to guess when browse is unavailable", async () => {
     await assert.rejects(() => tagSync.probeTagWriteSupport(null, "Wishlist"), /browse access/i);
+  });
+});
+
+/**
+ * Issue #67: the Danger Zone "Clear & rebuild from Roon tag" used to replace the
+ * entire wishlist, wiping every low-quality and manual entry even though only the
+ * tag-sourced part is in its scope. These tests run against the real wishlist module
+ * (temp data dir) so the replacement, deduplication and source-promotion semantics
+ * are the production ones.
+ */
+describe("rebuildTaggedAlbums() - only the tag-sourced part is in scope (#67)", () => {
+  let testDir;
+  let wishlist;
+
+  beforeEach(() => {
+    testDir = fs.mkdtempSync(path.join(os.tmpdir(), "roon-wishlist-rebuild-test-"));
+    process.env.ROON_WISHLIST_DATA_DIR = testDir;
+    delete require.cache[require.resolve("../src/wishlist")];
+    wishlist = require("../src/wishlist");
+  });
+
+  afterEach(() => {
+    delete process.env.ROON_WISHLIST_DATA_DIR;
+    delete require.cache[require.resolve("../src/wishlist")];
+    fs.rmSync(testDir, { recursive: true, force: true });
+  });
+
+  it("keeps low-quality and manual entries while rebuilding the tagged ones", async () => {
+    wishlist.add({ artist: "Opeth", title: "Low Quality Find", source: "low-quality" });
+    wishlist.add({ artist: "Manual", title: "Added By Hand", source: "manual" });
+    wishlist.add({ artist: "Tool", title: "Untagged Since", source: "roon-tag" });
+    wishlist.add({ artist: "Amorphis", title: "Still Tagged", source: "roon-tag" });
+
+    const result = await tagSync.rebuildTaggedAlbums({
+      browseService: browseWithTag([
+        { artist: "Amorphis", title: "Still Tagged" },
+        { artist: "Opeth", title: "Freshly Tagged" },
+      ]),
+      wishlist,
+      searchAll: noLinks,
+      tagName: "Wishlist",
+    });
+
+    const titles = wishlist.getAll().map((a) => a.title).sort();
+    assert.deepStrictEqual(titles, [
+      "Added By Hand",
+      "Freshly Tagged",
+      "Low Quality Find",
+      "Still Tagged",
+    ]);
+    // Only the stale tag-sourced entry was cleared; the others were preserved.
+    assert.strictEqual(result.cleared, 1);
+    assert.strictEqual(result.preservedNonTagged, 2);
+    assert.strictEqual(result.rebuilt, 2);
+    // The low-quality entry must still be a low-quality entry.
+    const kept = wishlist.getAll().find((a) => a.title === "Low Quality Find");
+    assert.strictEqual(kept.source, "low-quality");
+  });
+
+  it("supersedes a low-quality entry with the roon-tag version when the album is tagged", async () => {
+    // Roon is the master for tagged albums: an album the low-quality scan found that
+    // the user has since tagged must come out of the rebuild as tag-sourced.
+    wishlist.add({ artist: "Opeth", title: "Blackwater Park", source: "low-quality" });
+
+    await tagSync.rebuildTaggedAlbums({
+      browseService: browseWithTag([{ artist: "Opeth", title: "Blackwater Park" }]),
+      wishlist,
+      searchAll: noLinks,
+      tagName: "Wishlist",
+    });
+
+    const albums = wishlist.getAll();
+    assert.strictEqual(albums.length, 1);
+    assert.strictEqual(albums[0].source, "roon-tag");
+  });
+
+  it("clears every tag-sourced entry when the tag holds nothing, but keeps the others", async () => {
+    wishlist.add({ artist: "Tool", title: "Untagged Since", source: "roon-tag" });
+    wishlist.add({ artist: "Opeth", title: "Low Quality Find", source: "low-quality" });
+
+    const result = await tagSync.rebuildTaggedAlbums({
+      browseService: browseWithoutTag(),
+      wishlist,
+      searchAll: noLinks,
+      tagName: "Wishlist",
+    });
+
+    assert.strictEqual(result.tagFound, false);
+    assert.strictEqual(result.rebuilt, 0);
+    assert.strictEqual(result.cleared, 1);
+    assert.deepStrictEqual(wishlist.getAll().map((a) => a.title), ["Low Quality Find"]);
+  });
+
+  it("refuses to touch anything when browse is unavailable", async () => {
+    wishlist.add({ artist: "Opeth", title: "Low Quality Find", source: "low-quality" });
+
+    await assert.rejects(() =>
+      tagSync.rebuildTaggedAlbums({
+        browseService: null,
+        wishlist,
+        searchAll: noLinks,
+        tagName: "Wishlist",
+      }),
+    );
+    assert.strictEqual(wishlist.getAll().length, 1);
   });
 });

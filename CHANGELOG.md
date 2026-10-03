@@ -25,6 +25,17 @@ for what that means for this Roon extension).
 
 ### Fixed
 
+- The Danger Zone **"Clear & rebuild from Roon tag"** no longer wipes low-quality
+  and manually added albums: the rebuild now replaces only the Roon-tagged part
+  of the wishlist, and the confirmation and result messages say exactly that
+  (#67). Previously it emptied the entire wishlist, so every `low-quality`
+  entry disappeared even though that source has its own separate Danger Zone
+  reset.
+- The Roon tag sync/rebuild actions, the low-quality Danger Zone rebuild, and the
+  Roon settings actions now write start, per-album progress (at debug level),
+  and result lines to the log file (#67). Previously a rebuild that wiped data
+  left no trace in the log at any level, because these paths only ever updated
+  the ephemeral Roon status message.
 - Ignoring a low-quality album no longer removes a Roon-tag-sourced wishlist
   entry — Ignore only hides entries that appear in the low-quality view, so it can
   never remove or modify a Roon `Wishlist` tag (#47).
