@@ -161,4 +161,4 @@ function sameAlbum(a, b) {
   return JSON.stringify(a) === JSON.stringify(b);
 }
 
-module.exports = { add, upsert, remove, replaceAll, getAll };
+module.exports = { add, upsert, remove, replaceAll, getAll, albumKey };

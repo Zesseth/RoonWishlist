@@ -5,6 +5,7 @@ const RoonApiBrowse = require("node-roon-api-browse");
 const RoonApiSettings = require("node-roon-api-settings");
 const RoonApiStatus = require("node-roon-api-status");
 const wishlist = require("./src/wishlist");
+const { albumKey } = require("./src/wishlist");
 const { searchAll } = require("./src/search");
 const lossless = require("./src/lossless_checker");
 const lowQualityIgnore = require("./src/ignored_low_quality");
@@ -1194,7 +1195,14 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (req.method === "GET" && url.pathname === "/wishlist/low-quality") {
-    const lowQualityAlbums = wishlist.getAll().filter(isLowQualityEntry);
+    // A low-quality album the user has since tagged "Wishlist" in Roon is stored as
+    // a separate roon-tag row (source promotion, issue #47). Point the UI at it so
+    // the low-quality list can badge it without an extra browse round-trip (issue #70).
+    const taggedKeys = new Set(wishlist.getAll().filter(isTagSourced).map(albumKey));
+    const lowQualityAlbums = wishlist.getAll().filter(isLowQualityEntry).map((album) => ({
+      ...album,
+      roonTagged: taggedKeys.has(albumKey(album)),
+    }));
     res.end(JSON.stringify(lowQualityAlbums, null, 2));
     return;
   }

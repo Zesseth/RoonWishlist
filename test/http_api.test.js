@@ -358,6 +358,37 @@ describe("HTTP API: low-quality ignore and Danger Zone reset", () => {
       1,
     );
   });
+
+  it("flags low-quality albums that are also tagged in Roon with roonTagged (#70)", async () => {
+    // Same trick as the #47 test above: seed a roon-tag entry for an album the
+    // low-quality scan already found, then check the low-quality list badges it.
+    // Before the seed the album must not carry the flag; after it, it must.
+    const before = await api("GET", "/wishlist/low-quality");
+    const beforeFound = before.data.find(
+      (item) => item.artist === artist && item.title === album && item.source === "low-quality",
+    );
+    assert.ok(beforeFound, "expected the low-quality album to be on the list");
+    assert.strictEqual(beforeFound.roonTagged, false);
+
+    const wishlistFile = path.join(workDir, "data", "wishlist.json");
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    const current = JSON.parse(fs.readFileSync(wishlistFile, "utf8"));
+    current.push({
+      artist,
+      title: album,
+      source: "roon-tag",
+      buyLinks: [],
+      addedAt: new Date().toISOString(),
+    });
+    fs.writeFileSync(wishlistFile, JSON.stringify(current, null, 2));
+
+    const list = await api("GET", "/wishlist/low-quality");
+    const found = list.data.find(
+      (item) => item.artist === artist && item.title === album && item.source === "low-quality",
+    );
+    assert.ok(found);
+    assert.strictEqual(found.roonTagged, true);
+  });
 });
 
 /**

@@ -185,6 +185,7 @@
     }
     ul.list li:last-child { border-bottom: none; }
     .album-main { min-width: 0; }
+    .roon-tag-badge { display: inline-block; margin-left: 8px; padding: 1px 8px; font-size: 11px; font-weight: 600; color: var(--accent); border: 1px solid var(--accent); border-radius: 999px; vertical-align: middle; }
     .album-artist { font-weight: 600; }
     .album-title { color: var(--muted); }
     .album-meta { font-size: 12px; color: var(--muted); margin-top: 2px; }
@@ -1111,14 +1112,17 @@
         ul.innerHTML = '<li class="empty">No low-quality albums on wishlist. Use Settings → Low-quality albums tab → "Scan low-quality albums now" to add albums here.</li>';
         return;
       }
+      // The roonTagged flag comes from the API (issue #70): the album also exists
+      // as a roon-tag row, meaning it is tagged "Wishlist" in Roon right now.
+      renderWishlistItems(ul, items, true, { showRoonTagBadge: true });
       // Low-quality albums are managed with Ignore only (issue #47): a plain
       // reversible Remove would just be re-added by the next scan, which makes
       // it a no-op that competes with the real decision (Ignore).
-      renderWishlistItems(ul, items, true);
     }
 
     function renderWishlistItems(ul, items, showIgnore, options) {
       const showStores = !options || options.showStores !== false;
+      const showRoonTagBadge = !!(options && options.showRoonTagBadge);
       // Newest first.
       const sorted = items.slice().sort((a, b) => String(b.addedAt || "").localeCompare(String(a.addedAt || "")));
       for (const a of sorted) {
@@ -1131,10 +1135,15 @@
         const ignoreButton = showIgnore && hasTrackCounts(a)
           ? '<button class="danger small" data-ignore title="Removes from wishlist and never re-adds it, even if it stays low-quality">Ignore &mdash; never re-add</button>'
           : '';
+        // A low-quality album that is also tagged "Wishlist" in Roon (issue #70):
+        // a small tag-chip after the title, mirroring how Roon shows tags.
+        const roonTagBadge = showRoonTagBadge && a.roonTagged
+          ? '<span class="roon-tag-badge" title="Tagged \u201cWishlist\u201d in Roon">wishlist</span>'
+          : '';
         li.innerHTML =
           '<div class="album-main">' +
             '<div><span class="album-artist">' + esc(a.artist) + '</span> ' +
-            '<span class="album-title">&mdash; ' + esc(a.title) + '</span></div>' +
+            '<span class="album-title">&mdash; ' + esc(a.title) + '</span>' + roonTagBadge + '</div>' +
             (added ? '<div class="album-meta">added ' + esc(added) + '</div>' : '') +
             qualityMeta +
             '<div class="results" data-results></div>' +
