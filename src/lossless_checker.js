@@ -804,6 +804,59 @@ async function markOwnedTaggedAlbums(locations, wishlistModule) {
   return { owned, cleared, checked: items.length, errors, locations: roots };
 }
 
+// Edition/version marker words, stripped inside bracketed segments for the loose
+// title comparison below. Anything else in brackets is content and stays
+// significant: "(Live)" is a different album than the studio release (#70).
+const LOOSE_EDITION_WORDS =
+  /\b(?:deluxe|edition|expanded|remaster(?:ed)?|anniversary|bonus|version|mono|stereo|explicit)\b/g;
+
+/**
+ * The loose title form, for the streaming gate only. Bracketed segments keep
+ * their content once edition words are removed from inside them:
+ * "(Black Ash-Inheritance Version)" survives as "black ash inheritance" — the
+ * EP half of a combined release — while a segment that reduces to nothing or to
+ * a bare number ("(2015 Remaster)" → "2015") is a release-version qualifier and
+ * is dropped, mirroring the #70 badge join. Content without edition words, such
+ * as "(Live)", stays significant. The rest is normalized like the strict form.
+ */
+function looseTitleForm(value) {
+  const stripped = String(value || "")
+    .toLowerCase()
+    .replace(/\[[^\]]*\]|\([^)]*\)/g, (segment) => {
+      const inner = segment
+        .replace(/[\[\]()]/g, "")
+        .replace(LOOSE_EDITION_WORDS, " ")
+        .replace(/[^a-z0-9]+/g, " ")
+        .trim();
+      const compact = inner.replace(/\s+/g, "");
+      if (!compact || /^\d+$/.test(compact)) return " ";
+      return ` ${inner} `;
+    });
+  return stripped
+    .replace(LOOSE_EDITION_WORDS, " ")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+/**
+ * Loose title match for the streaming gate (issue #80). Roon titles combined
+ * reissues as "The Jester Race/Black-Ash Inheritance" while the local folder says
+ * "The Jester Race (Black Ash-Inheritance Version)" — the strict scan matching
+ * (normalizeForMatch drops the whole parenthetical) cannot bridge that, so the
+ * user's own hi-res FLAC copy went unnoticed and an owned album was flagged
+ * "gone from streaming". Loose equality (plus its space-free compact form, so
+ * punctuation gaps like "i c s" vs "ics" still match) fixes that. The strict
+ * namesMatchExactly is deliberately NOT in this path: it drops bracketed
+ * segments outright, which would let a live rip settle a studio-album entry.
+ */
+function looseTitleMatch(localValue, wantedValue) {
+  const local = looseTitleForm(localValue);
+  const wanted = looseTitleForm(wantedValue);
+  if (!local || !wanted) return false;
+  if (local === wanted) return true;
+  return local.replace(/\s+/g, "") === wanted.replace(/\s+/g, "");
+}
+
 /**
  * Which of the given wishlist items are already owned locally in full lossless.
  *
@@ -813,18 +866,47 @@ async function markOwnedTaggedAlbums(locations, wishlistModule) {
  * the wishlist precisely to get a lossless upgrade, so whether it can still be had
  * from a streaming catalogue stays significant. Partial (mixed) copies do not
  * qualify either, for the same reason the lossless scan keeps them on the wishlist.
- * Folder-name matching, with the same normalization caveats as the lossless scan.
+ *
+ * Title matching is deliberately looser here (looseTitleMatch, issue #80) than in
+ * the scan's removal path: this gate only decides whether to raise an advisory
+ * flag, while checkAndClean removes wishlist entries — an over-eager loose match
+ * here costs nothing, there it would delete wanted albums. Artist matching is the
+ * same namesMatchExactly (punctuation-tolerant since #78) the scan uses.
  *
  * @returns {Promise<Array<{artist: string, title: string}>>}
  */
 async function findLosslessLocalItems(locations, items) {
-  const wanted = (items || []).filter((item) => item && (item.artist || item.title));
+  const wanted = (items || [])
+    .filter((item) => item && (item.artist || item.title))
+    .map((item) => ({ item, key: albumKey(item.artist, item.title) }));
   if (!wanted.length) return [];
-  const { results } = await classifyWantedAlbums(locations, wanted);
-  return wanted.filter((item) => {
-    const detail = results.get(albumKey(item.artist, item.title));
-    return !!detail && detail.status === "owned-lossless";
-  });
+
+  const roots = normalizeLocations(locations);
+  const settled = new Set();
+
+  for (const root of roots) {
+    const { albums: folders } = await getArtistAlbumFolders(root);
+    for (const folder of folders) {
+      const artist = cleanArtistName(folder.artist);
+      const album = cleanAlbumTitle(folder.album, folder.artist);
+      if (!artist || !album) continue;
+
+      const hits = wanted.filter(
+        (w) => namesMatchExactly(artist, w.item.artist) && looseTitleMatch(album, w.item.title),
+      );
+      if (!hits.length) continue;
+
+      // Only a complete lossless copy settles an entry; a matching lossy or mixed
+      // folder leaves it participating in the streaming check.
+      const classification = await classifyAlbumFolder(folder.fullPath);
+      if (classification.status !== "owned-lossless") continue;
+      for (const hit of hits) settled.add(hit.key);
+    }
+  }
+
+  return wanted
+    .filter((w) => settled.has(w.key))
+    .map((w) => ({ artist: w.item.artist, title: w.item.title }));
 }
 
 module.exports = {
