@@ -389,6 +389,94 @@ describe("HTTP API: low-quality ignore and Danger Zone reset", () => {
     assert.ok(found);
     assert.strictEqual(found.roonTagged, true);
   });
+
+  it("badges a low-quality album whose Roon tag row differs only in punctuation (#70)", async () => {
+    // The scan names albums from filesystem folder names, where Roon's punctuation
+    // cannot survive (":wumpscut:" -> "Wumpscut", "Chaos A.D." -> "Chaos A.D_"),
+    // while the tag row carries Roon's metadata verbatim. The badge must still
+    // match such a pair; the exact albumKey keeps identifying everything else.
+    const scanArtist = "Punct. Band";
+    const scanTitle = "Album_ Vol. 1";
+    const albumDir = path.join(libraryDir, scanArtist, scanTitle);
+    fs.mkdirSync(albumDir, { recursive: true });
+    fs.writeFileSync(path.join(albumDir, "01.mp3"), "");
+
+    const { status, data } = await api("POST", "/scan-low-quality");
+    assert.strictEqual(status, 200);
+    assert.strictEqual(data.added, 1);
+
+    const before = await api("GET", "/wishlist/low-quality");
+    const beforeFound = before.data.find(
+      (item) => item.artist === scanArtist && item.title === scanTitle,
+    );
+    assert.ok(beforeFound, "expected the scanned low-quality album to be on the list");
+    assert.strictEqual(beforeFound.roonTagged, false);
+
+    const wishlistFile = path.join(workDir, "data", "wishlist.json");
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    const current = JSON.parse(fs.readFileSync(wishlistFile, "utf8"));
+    current.push({
+      artist: ":Punct: Band",
+      title: "Album: Vol. 1",
+      source: "roon-tag",
+      buyLinks: [],
+      addedAt: new Date().toISOString(),
+    });
+    fs.writeFileSync(wishlistFile, JSON.stringify(current, null, 2));
+
+    const list = await api("GET", "/wishlist/low-quality");
+    const found = list.data.find(
+      (item) => item.artist === scanArtist && item.title === scanTitle,
+    );
+    assert.ok(found);
+    assert.strictEqual(found.roonTagged, true);
+  });
+
+  it("badges a low-quality album whose Roon tag row carries a version qualifier, but not a content qualifier (#70)", async () => {
+    // Roon appends release versions to titles — "(2015 Remaster)" — that
+    // filesystem folder names never carry, so the badge must ignore them.
+    // Qualifiers that denote different content — "(Live)" — must stay
+    // significant: a live set is not the studio album the scan found.
+    const scanArtist = "Version Band";
+    const scanTitle = "Remaster Me";
+    const albumDir = path.join(libraryDir, scanArtist, scanTitle);
+    fs.mkdirSync(albumDir, { recursive: true });
+    fs.writeFileSync(path.join(albumDir, "01.mp3"), "");
+
+    const { status, data } = await api("POST", "/scan-low-quality");
+    assert.strictEqual(status, 200);
+    assert.strictEqual(data.added, 1);
+
+    const seedTagRow = async (title) => {
+      const wishlistFile = path.join(workDir, "data", "wishlist.json");
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      const current = JSON.parse(fs.readFileSync(wishlistFile, "utf8"));
+      current.push({
+        artist: scanArtist,
+        title,
+        source: "roon-tag",
+        buyLinks: [],
+        addedAt: new Date().toISOString(),
+      });
+      fs.writeFileSync(wishlistFile, JSON.stringify(current, null, 2));
+    };
+
+    await seedTagRow(`${scanTitle} (Live)`);
+    let list = await api("GET", "/wishlist/low-quality");
+    let found = list.data.find(
+      (item) => item.artist === scanArtist && item.title === scanTitle,
+    );
+    assert.ok(found);
+    assert.strictEqual(found.roonTagged, false, "(Live) must not badge the studio album");
+
+    await seedTagRow(`${scanTitle} (2015 Remaster; Deluxe Edition)`);
+    list = await api("GET", "/wishlist/low-quality");
+    found = list.data.find(
+      (item) => item.artist === scanArtist && item.title === scanTitle,
+    );
+    assert.ok(found);
+    assert.strictEqual(found.roonTagged, true, "a version qualifier must still badge");
+  });
 });
 
 /**
