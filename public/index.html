@@ -263,6 +263,7 @@
       border-bottom: none;
     }
     .toolbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .sort-select { font: inherit; font-size: 12px; padding: 2px 6px; margin-left: 10px; }
     .count { font-size: 13px; color: var(--muted); }
     .sync-note { margin-top: 6px; font-size: 13px; color: var(--muted); }
     .sync-note.warn { color: #d7b46a; }
@@ -347,7 +348,14 @@
           <h2 style="margin:0;">Wishlist</h2>
           <p class="hint" style="margin:2px 0 0;">Import albums tagged "Wishlist" from Roon and fetch store links.</p>
         </div>
-        <span class="count" id="count"></span>
+        <div>
+          <label class="count" for="wishlist-sort">Sort</label>
+          <select class="sort-select" id="wishlist-sort" data-sort-list="wishlist">
+            <option value="added">Added date (newest)</option>
+            <option value="name">Name (artist &mdash; album)</option>
+          </select>
+          <span class="count" id="count"></span>
+        </div>
       </div>
       <ul class="list" id="wishlist"></ul>
     </section>
@@ -370,7 +378,14 @@
           <h2 style="margin:0;">Low-quality albums</h2>
           <div class="sync-note" id="low-quality-note">Albums in your library that are not fully FLAC.</div>
         </div>
-        <span class="count" id="low-quality-count"></span>
+        <div>
+          <label class="count" for="low-quality-sort">Sort</label>
+          <select class="sort-select" id="low-quality-sort" data-sort-list="low-quality">
+            <option value="added">Added date (newest)</option>
+            <option value="name">Name (artist &mdash; album)</option>
+          </select>
+          <span class="count" id="low-quality-count"></span>
+        </div>
       </div>
       <ul class="list" id="low-quality-list"></ul>
       <div class="results low-quality-summary" id="low-quality-results"></div>
@@ -1091,6 +1106,48 @@
       }
     }
 
+    // Sort preference per list (issue #71): "added" (default, newest first) or
+    // "name". Persisted in localStorage so the choice survives reloads.
+    const SORT_KEYS = ["added", "name"];
+    const sortPrefs = {};
+    function getSortPref(listId) {
+      const v = sortPrefs[listId];
+      return SORT_KEYS.indexOf(v) >= 0 ? v : "added";
+    }
+    function setSortPref(listId, value) {
+      sortPrefs[listId] = SORT_KEYS.indexOf(value) >= 0 ? value : "added";
+      try {
+        localStorage.setItem("wishlist-sort-" + listId, sortPrefs[listId]);
+      } catch (e) { /* storage may be unavailable; the in-memory pref still applies */ }
+    }
+    function loadSortPrefs() {
+      for (const sel of document.querySelectorAll("select[data-sort-list]")) {
+        const listId = sel.getAttribute("data-sort-list");
+        let stored = null;
+        try {
+          stored = localStorage.getItem("wishlist-sort-" + listId);
+        } catch (e) { /* ignore */ }
+        sortPrefs[listId] = SORT_KEYS.indexOf(stored) >= 0 ? stored : "added";
+        sel.value = sortPrefs[listId];
+        sel.addEventListener("change", () => {
+          setSortPref(listId, sel.value);
+          if (listId === "low-quality") loadLowQualityWishlist();
+          else loadRoonTagWishlist();
+        });
+      }
+    }
+    // Stable, deterministic sort (issue #71): by name (artist, then title,
+    // locale-aware, case-insensitive) with added date as the tie-breaker, or
+    // by added date (newest first) with name as the tie-breaker.
+    function sortWishlistItems(items, pref) {
+      const byAdded = (a, b) => String(b.addedAt || "").localeCompare(String(a.addedAt || ""))
+        || String(a.artist || "").localeCompare(String(b.artist || ""), undefined, { sensitivity: "base" })
+        || String(a.title || "").localeCompare(String(b.title || ""), undefined, { sensitivity: "base" });
+      const byName = (a, b) => String(a.artist || "").localeCompare(String(b.artist || ""), undefined, { sensitivity: "base" })
+        || String(a.title || "").localeCompare(String(b.title || ""), undefined, { sensitivity: "base" })
+        || String(b.addedAt || "").localeCompare(String(a.addedAt || ""));
+      return items.slice().sort(pref === "name" ? byName : byAdded);
+    }
     function renderRoonTagWishlist(items) {
       const ul = $("wishlist");
       ul.innerHTML = "";
@@ -1099,7 +1156,7 @@
         ul.innerHTML = '<li class="empty">Wishlist is empty. Tag albums with "Wishlist" in Roon to populate it.</li>';
         return;
       }
-      renderWishlistItems(ul, items, false);
+      renderWishlistItems(ul, items, false, { listId: "wishlist" });
     }
 
     function renderLowQualityWishlist(items) {
@@ -1114,7 +1171,7 @@
       }
       // The roonTagged flag comes from the API (issue #70): the album also exists
       // as a roon-tag row, meaning it is tagged "Wishlist" in Roon right now.
-      renderWishlistItems(ul, items, true, { showRoonTagBadge: true });
+      renderWishlistItems(ul, items, true, { showRoonTagBadge: true, listId: "low-quality" });
       // Low-quality albums are managed with Ignore only (issue #47): a plain
       // reversible Remove would just be re-added by the next scan, which makes
       // it a no-op that competes with the real decision (Ignore).
@@ -1123,8 +1180,7 @@
     function renderWishlistItems(ul, items, showIgnore, options) {
       const showStores = !options || options.showStores !== false;
       const showRoonTagBadge = !!(options && options.showRoonTagBadge);
-      // Newest first.
-      const sorted = items.slice().sort((a, b) => String(b.addedAt || "").localeCompare(String(a.addedAt || "")));
+      const sorted = sortWishlistItems(items, getSortPref(options && options.listId));
       for (const a of sorted) {
         const li = document.createElement("li");
         const added = a.addedAt ? new Date(a.addedAt).toLocaleDateString() : "";
@@ -1562,6 +1618,7 @@
     loadStatus();
     loadSettings();
     loadStorageLocations();
+    loadSortPrefs();
     loadWishlist();
     setInterval(loadStatus, 10000);
     setInterval(loadWishlist, 30000);
