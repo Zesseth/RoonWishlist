@@ -368,6 +368,73 @@ async function searchQobuz(artist, title, country = DEFAULT_COUNTRY) {
   return [];
 }
 
+/**
+ * Decides catalogue availability from Qobuz album/search result items.
+ *
+ * Measured live (issue #34): the public album/search payload carries explicit
+ * `streamable` and `purchasable` flags on every album. A credible match that
+ * Qobuz itself marks `streamable: false` is a purchase-only release — in the
+ * catalogue, but not streamable anywhere — which is exactly the "buy it before
+ * it is gone everywhere" state, so it must not count as available. A payload
+ * without the flag (older builds, cached shapes) falls back to catalogue
+ * existence, the pre-measurement semantics.
+ *
+ * Exported so the decision can be tested against captured payloads without
+ * depending on Qobuz being reachable.
+ */
+function availableOnQobuz(items, artist, title) {
+  const ranked = rankResults(
+    (Array.isArray(items) ? items : [])
+      .filter((item) => item && item.title && item.artist && item.artist.name)
+      .map((item) => ({
+        store: "Qobuz",
+        title: String(item.title).trim(),
+        artist: String(item.artist.name).trim(),
+        url: "https://www.qobuz.com",
+        streamable: item.streamable,
+      })),
+    artist,
+    title,
+  );
+  return ranked.length > 0 && ranked[0].streamable !== false;
+}
+
+/**
+ * Is the album in Qobuz's streaming catalogue right now? (issue #34)
+ *
+ * Deliberately looser than searchQobuz: that function also requires `purchasable`
+ * and returns at most RESULT_LIMIT links, because its job is a credible buy link.
+ * This one asks whether the album is streamable at all, so no purchase filter and
+ * the explicit `streamable` flag decide — an album that stopped being purchasable
+ * but is still streamable must count as available, and a purchase-only release
+ * must not. The same scoring machinery (rankResults) stays in use so a different
+ * act's similarly-titled album cannot satisfy the probe on its own.
+ */
+async function isOnQobuz(artist, title, country = DEFAULT_COUNTRY) {
+  const query = buildQuery(artist, title);
+  if (!query) return null;
+  for (const appId of getQobuzAppIds()) {
+    const response = await requestJson(QOBUZ_API_URL, {
+      params: {
+        query,
+        limit: 25,
+        offset: 0,
+        app_id: appId,
+        country: normalizeCountry(country) || DEFAULT_COUNTRY,
+      },
+    });
+    if (!response.ok) continue;
+    const items =
+      response.data &&
+      response.data.albums &&
+      Array.isArray(response.data.albums.items)
+        ? response.data.albums.items
+        : [];
+    return availableOnQobuz(items, artist, title);
+  }
+  return null;
+}
+
 async function searchAll(artist, title, country = DEFAULT_COUNTRY) {
   const [bandcamp, qobuz] = await Promise.all([
     searchBandcamp(artist, title),
@@ -381,4 +448,13 @@ function localizeQobuzUrl(url, country) {
   return String(url).replace(/(https?:\/\/www\.qobuz\.com\/)[a-z]{2}-[a-z]{2}(?=\/)/i, `$1${locale}`);
 }
 
-module.exports = { searchAll, searchBandcamp, searchQobuz, localizeQobuzUrl, buildQuery, rankResults };
+module.exports = {
+  searchAll,
+  searchBandcamp,
+  searchQobuz,
+  isOnQobuz,
+  availableOnQobuz,
+  localizeQobuzUrl,
+  buildQuery,
+  rankResults,
+};

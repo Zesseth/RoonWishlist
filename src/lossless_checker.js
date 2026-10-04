@@ -795,12 +795,36 @@ async function markOwnedTaggedAlbums(locations, wishlistModule) {
   return { owned, cleared, checked: items.length, errors, locations: roots };
 }
 
+/**
+ * Which of the given wishlist items are already owned locally in full lossless.
+ *
+ * Used by the streaming-availability check (issue #34): a complete local lossless
+ * copy makes streaming irrelevant — the wishlist goal is met, so the album is never
+ * flagged "gone from streaming". A lossy-only copy does NOT qualify: the album is on
+ * the wishlist precisely to get a lossless upgrade, so whether it can still be had
+ * from a streaming catalogue stays significant. Partial (mixed) copies do not
+ * qualify either, for the same reason the lossless scan keeps them on the wishlist.
+ * Folder-name matching, with the same normalization caveats as the lossless scan.
+ *
+ * @returns {Promise<Array<{artist: string, title: string}>>}
+ */
+async function findLosslessLocalItems(locations, items) {
+  const wanted = (items || []).filter((item) => item && (item.artist || item.title));
+  if (!wanted.length) return [];
+  const { results } = await classifyWantedAlbums(locations, wanted);
+  return wanted.filter((item) => {
+    const detail = results.get(albumKey(item.artist, item.title));
+    return !!detail && detail.status === "owned-lossless";
+  });
+}
+
 module.exports = {
   LOSSLESS_EXTENSIONS,
   LOSSY_EXTENSIONS,
   checkAndClean,
   classifyAlbumFolder,
   classifyWantedAlbums,
+  findLosslessLocalItems,
   isLosslessExtension,
   markOwnedTaggedAlbums,
   mergeAlbumsAcrossLocations,

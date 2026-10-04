@@ -6,6 +6,7 @@ const {
   searchBandcamp,
   searchQobuz,
   searchAll,
+  availableOnQobuz,
   buildQuery,
   rankResults,
 } = require("../src/search");
@@ -168,5 +169,47 @@ describe("search module", () => {
       assert.ok(Array.isArray(result));
       // Result is combined array, could be empty if no results
     });
+  });
+});
+
+describe("availableOnQobuz", () => {
+  // Shape captured from the live public album/search payload (issue #34): every
+  // album item carries explicit streamable/purchasable flags.
+  const qobuzItem = (artist, title, streamable) => ({
+    title,
+    artist: { name: artist },
+    streamable,
+    purchasable: streamable !== false,
+  });
+
+  it("counts a streamable catalogue hit as available", () => {
+    assert.strictEqual(
+      availableOnQobuz([qobuzItem("Opeth", "Blackwater Park", true)], "Opeth", "Blackwater Park"),
+      true,
+    );
+  });
+
+  it("does not count a purchase-only release: in the catalogue but not streamable", () => {
+    assert.strictEqual(
+      availableOnQobuz([qobuzItem("Opeth", "Blackwater Park", false)], "Opeth", "Blackwater Park"),
+      false,
+    );
+  });
+
+  it("falls back to catalogue existence when the payload has no streamable flag", () => {
+    const item = qobuzItem("Opeth", "Blackwater Park", undefined);
+    delete item.streamable;
+    assert.strictEqual(availableOnQobuz([item], "Opeth", "Blackwater Park"), true);
+  });
+
+  it("does not let a different act's similarly-titled album satisfy the probe", () => {
+    assert.strictEqual(
+      availableOnQobuz([qobuzItem("Pink Floyd", "Wish You Were Here", true)], "Opeth", "Wish You Were Here"),
+      false,
+    );
+  });
+
+  it("returns false for an empty catalogue answer", () => {
+    assert.strictEqual(availableOnQobuz([], "Opeth", "Blackwater Park"), false);
   });
 });
