@@ -579,3 +579,29 @@ describe("findLosslessLocalItems()", () => {
     assert.deepStrictEqual(local, []);
   });
 });
+
+describe("namesMatchExactly punctuation tolerance (issue #78)", () => {
+  // Roon's metadata can say "I.C.S. Vortex" while the folder on disk says
+  // "ICS Vortex" — the same artist, so the scan must still find the local copy.
+  it("matches a dotted wanted artist to an undotted local folder", async () => {
+    makeAlbum("libD", "ICS Vortex", "Storm Seeker", ["01.flac", "02.flac"]);
+    const items = [{ artist: "I.C.S. Vortex", title: "Storm Seeker" }];
+    const local = await lossless.findLosslessLocalItems(locationPath("libD"), items);
+    assert.deepStrictEqual(local, items);
+  });
+
+  it("matches an undotted wanted artist to a dotted local folder", async () => {
+    makeAlbum("libD", "I.C.S. Vortex", "Storm Seeker", ["01.flac"]);
+    const items = [{ artist: "ICS Vortex", title: "Storm Seeker" }];
+    const local = await lossless.findLosslessLocalItems(locationPath("libD"), items);
+    assert.deepStrictEqual(local, items);
+  });
+
+  it("does not match a compactly different name", async () => {
+    makeAlbum("libD", "I.C.S. Vortex", "Storm Seeker", ["01.flac"]);
+    const local = await lossless.findLosslessLocalItems(locationPath("libD"), [
+      { artist: "Vortex", title: "Storm Seeker" },
+    ]);
+    assert.deepStrictEqual(local, []);
+  });
+});

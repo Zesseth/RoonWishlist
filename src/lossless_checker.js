@@ -160,7 +160,16 @@ function normalizeForMatch(str) {
 function namesMatchExactly(localValue, wantedValue) {
   const local = normalizeForMatch(localValue);
   const wanted = normalizeForMatch(wantedValue);
-  return !!local && !!wanted && local === wanted;
+  if (!local || !wanted) return false;
+  if (local === wanted) return true;
+  // Punctuation variants of one name are the same album-artist folder, not two:
+  // Roon's metadata can say "I.C.S. Vortex" while the folder says "ICS Vortex"
+  // (issue #78). The compact forms — spaces removed from the normalized names —
+  // are equal exactly when only punctuation/spacing differs, so this only ever
+  // *adds* matches; "j s bach" still does not match "bach".
+  const localCompact = local.replace(/\s+/g, "");
+  const wantedCompact = wanted.replace(/\s+/g, "");
+  return !!localCompact && localCompact === wantedCompact;
 }
 
 async function classifyAlbumFolder(folderPath) {

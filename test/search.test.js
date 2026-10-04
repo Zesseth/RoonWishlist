@@ -213,3 +213,59 @@ describe("availableOnQobuz", () => {
     assert.strictEqual(availableOnQobuz([], "Opeth", "Blackwater Park"), false);
   });
 });
+
+describe("artist punctuation matching (issue #78)", () => {
+  const stormSeeker = {
+    store: "Qobuz",
+    title: "Storm Seeker",
+    artist: "ICS Vortex",
+    url: "https://www.qobuz.com/album/storm-seeker-ics-vortex",
+  };
+
+  it("accepts the store's undotted artist when the wishlist artist is dotted", () => {
+    const results = rankResults([stormSeeker], "I.C.S. Vortex", "Storm Seeker");
+    assert.strictEqual(results.length, 1);
+  });
+
+  it("accepts the dotted artist when the store result is the dotted spelling", () => {
+    const results = rankResults(
+      [{ ...stormSeeker, artist: "I.C.S. Vortex" }],
+      "ICS Vortex",
+      "Storm Seeker",
+    );
+    assert.strictEqual(results.length, 1);
+  });
+
+  it("counts the album as available on Qobuz under the dotted spelling", () => {
+    // The exact shape of the live false negative: Roon's metadata said
+    // "I.C.S. Vortex", Qobuz's catalogue says "ICS Vortex", and the probe
+    // answered "not available" for an album that is streamable.
+    assert.strictEqual(
+      availableOnQobuz(
+        [
+          {
+            title: "Storm Seeker",
+            artist: { name: "ICS Vortex" },
+            streamable: true,
+            purchasable: true,
+          },
+        ],
+        "I.C.S. Vortex",
+        "Storm Seeker",
+      ),
+      true,
+    );
+  });
+});
+
+describe("searchBandcamp punctuation fallback (issue #78)", () => {
+  it("finds the album although the wishlist artist is dotted", async () => {
+    // Bandcamp's autocomplete returns nothing for "I.C.S. Vortex" at the query
+    // level; the fallback re-asks with the punctuation stripped and finds the
+    // Soulseller Records page. Live call, like the other store tests.
+    const results = await searchBandcamp("I.C.S. Vortex", "Storm Seeker");
+    assert.ok(Array.isArray(results));
+    assert.ok(results.length >= 1, "expected the fallback query to find the album");
+    assert.strictEqual(results[0].artist, "ICS Vortex");
+  });
+});
