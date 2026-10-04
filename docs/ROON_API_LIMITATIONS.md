@@ -201,3 +201,41 @@ Since #1 write-back is blocked by Roon API limitations, prioritize:
 4. **#9 Distribution** — Release process and documentation
 
 The extension is feature-complete for v1.0 with current Roon API constraints.
+
+## Streaming playability is not exposed; catalogue existence is measured instead — 2026-10-04
+
+Issue #34 asked whether wishlist albums whose tracks are unavailable in Roon can be
+flagged. Three separate facts settle how:
+
+1. **Playability is not in the Browse payload.** An `Item` carries only `title`,
+   `subtitle`, `image_key`, `item_key`, `hint` and `input_prompt` (see
+   `node-roon-api-browse/lib.js`). No field or hint value marks a track or album as
+   unavailable; the greyed-out "unavailable" state in Roon's own clients is applied
+   client-side and never offered to extensions. Roon's own UI cannot even Focus on
+   unavailable tracks, and the in-product fix (Playlist Improver) is also client-side.
+2. **There is no service-listing call either.** The SDK registers no API to ask which
+   streaming services are logged in. The browse tree root — where Roon's own UI shows
+   them — is the only carrier, so `GET /streaming/services` reads it once per pairing
+   and returns a diagnostic with every root title it saw, evidence rather than a claim.
+3. **"Is it streamable somewhere" is answerable without Roon.** The rescoped feature
+   asks the catalogues directly: `isOnQobuz()` in `src/search.js` reuses the public
+   Qobuz album search (no `purchasable` filter — an album that stopped being buyable
+   but is still streamable must count as available), and the checks are wired in
+   `src/streaming_availability.js`.
+
+**Consequence:** a wishlist entry carries a `streaming` state
+(`available: true|false|"unknown"`, `services`, `checkedAt`, `lastSeenAt`) plus a
+`streamUnavailable` flag. A flag is raised only when the album was seen streamable
+before (or is `roon-tag` sourced, i.e. in the library, so "not in any catalogue" is a
+real signal) and is now absent from every checked catalogue. Probe errors always
+count as `unknown`, never as gone — a flaky catalogue API must not trigger buy-urgency.
+
+**Known limits, accepted:**
+- Catalogue existence is not subscription-tier playability. An album can be in the
+  catalogue but not playable on the user's tier; that distinction is invisible to any
+  public route and out of scope.
+- TIDAL (or any other service) is only checked once a probe exists for it. Until then
+  the service list from Roon narrows the check to services with probes, and a missing
+  probe never silently counts as "gone".
+- The browse-root service read is version-dependent; the diagnostic in
+  `/streaming/services` says what the root actually contained.

@@ -368,6 +368,54 @@ async function searchQobuz(artist, title, country = DEFAULT_COUNTRY) {
   return [];
 }
 
+/**
+ * Is the album in Qobuz's streaming catalogue right now? (issue #34)
+ *
+ * Deliberately looser than searchQobuz: that function also requires `purchasable`
+ * and returns at most RESULT_LIMIT links, because its job is a credible buy link.
+ * This one only asks whether the catalogue holds the album at all, so a lower
+ * threshold and no purchase filter are correct — an album that stopped being
+ * purchasable but is still streamable must count as available. The same scoring
+ * machinery (rankResults) stays in use so a different act's similarly-titled
+ * album cannot satisfy the probe on its own.
+ */
+async function isOnQobuz(artist, title, country = DEFAULT_COUNTRY) {
+  const query = buildQuery(artist, title);
+  if (!query) return null;
+  for (const appId of getQobuzAppIds()) {
+    const response = await requestJson(QOBUZ_API_URL, {
+      params: {
+        query,
+        limit: 25,
+        offset: 0,
+        app_id: appId,
+        country: normalizeCountry(country) || DEFAULT_COUNTRY,
+      },
+    });
+    if (!response.ok) continue;
+    const items =
+      response.data &&
+      response.data.albums &&
+      Array.isArray(response.data.albums.items)
+        ? response.data.albums.items
+        : [];
+    const ranked = rankResults(
+      items
+        .filter((item) => item && item.title && item.artist && item.artist.name)
+        .map((item) => ({
+          store: "Qobuz",
+          title: String(item.title).trim(),
+          artist: String(item.artist.name).trim(),
+          url: "https://www.qobuz.com",
+        })),
+      artist,
+      title,
+    );
+    return ranked.length > 0;
+  }
+  return null;
+}
+
 async function searchAll(artist, title, country = DEFAULT_COUNTRY) {
   const [bandcamp, qobuz] = await Promise.all([
     searchBandcamp(artist, title),
@@ -381,4 +429,12 @@ function localizeQobuzUrl(url, country) {
   return String(url).replace(/(https?:\/\/www\.qobuz\.com\/)[a-z]{2}-[a-z]{2}(?=\/)/i, `$1${locale}`);
 }
 
-module.exports = { searchAll, searchBandcamp, searchQobuz, localizeQobuzUrl, buildQuery, rankResults };
+module.exports = {
+  searchAll,
+  searchBandcamp,
+  searchQobuz,
+  isOnQobuz,
+  localizeQobuzUrl,
+  buildQuery,
+  rankResults,
+};
