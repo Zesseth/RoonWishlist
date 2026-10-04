@@ -539,26 +539,43 @@ describe("scanLowQualityAlbums()", () => {
   });
 });
 
-describe("findLocalItems()", () => {
-  it("returns only the wanted items that exist as local files", async () => {
+describe("findLosslessLocalItems()", () => {
+  it("returns only the wanted items that are owned locally in full lossless", async () => {
     const items = [
       { artist: "Opeth", title: "Blackwater Park" },
       { artist: "Nobody", title: "Nothing" },
     ];
-    const local = await lossless.findLocalItems(locationPath("libA"), items);
+    const local = await lossless.findLosslessLocalItems(locationPath("libA"), items);
     assert.deepStrictEqual(local, [{ artist: "Opeth", title: "Blackwater Park" }]);
   });
 
-  it("matches an album regardless of the format of its local files", async () => {
-    // Dummy is lossy in libA — still a local album for the streaming check,
-    // which asks "was this ever a streaming album", not "is it lossless".
+  it("does not qualify a lossy-only copy: the album still needs its upgrade", async () => {
+    // "Local wins, but only in lossless" (issue #34): Dummy is mp3 in libA, so it
+    // must not be reported — its streaming availability stays significant.
     const items = [{ artist: "Portishead", title: "Dummy" }];
-    const local = await lossless.findLocalItems(locationPath("libA"), items);
+    const local = await lossless.findLosslessLocalItems(locationPath("libA"), items);
+    assert.deepStrictEqual(local, []);
+  });
+
+  it("prefers the lossless copy when one location has lossless and another lossy", async () => {
+    const items = [{ artist: "Portishead", title: "Dummy" }];
+    const local = await lossless.findLosslessLocalItems(
+      [locationPath("libA"), locationPath("libB")],
+      items,
+    );
     assert.deepStrictEqual(local, items);
   });
 
+  it("does not qualify a mixed copy: partly lossless is not settled", async () => {
+    // Tool's Lateralus is one flac + one mp3 — kept on the wishlist by the lossless
+    // scan for exactly that reason, so the streaming watch keeps watching it.
+    const items = [{ artist: "Tool", title: "Lateralus" }];
+    const local = await lossless.findLosslessLocalItems(locationPath("libA"), items);
+    assert.deepStrictEqual(local, []);
+  });
+
   it("returns nothing for an empty item list without touching the disk", async () => {
-    const local = await lossless.findLocalItems(locationPath("does-not-exist"), []);
+    const local = await lossless.findLosslessLocalItems(locationPath("does-not-exist"), []);
     assert.deepStrictEqual(local, []);
   });
 });

@@ -123,18 +123,18 @@ describe("streaming availability", () => {
       assert.equal(wishlist.getAll()[0].streamUnavailable, false);
     });
 
-    it("does not flag a local rip that was never a streaming album", async () => {
-      // Measured live (issue #34): 57 of 160 roon-tag entries are local rips, and
-      // e.g. Barathrum "Hailstorm" is local and not in the Qobuz catalogue. A
-      // first-ever catalogue miss for such an album is a non-event, not a disappearance.
+    it("does not flag an album already owned locally in full lossless", async () => {
+      // "Local wins, but only in lossless" (user decision, issue #34): a complete
+      // local lossless copy meets the wishlist goal, so streaming is moot. Measured
+      // live: a large share of roon-tag entries have local copies.
       wishlist.replaceAll([
-        { artist: "Barathrum", title: "Hailstorm", source: "roon-tag" },
+        { artist: "Opeth", title: "Blackwater Park", source: "roon-tag" },
       ]);
       const result = await streaming.checkStreamingAvailability({
         wishlist,
         probes: { qobuz: async () => false },
         services: ["qobuz"],
-        localAlbums: [{ artist: "Barathrum", title: "Hailstorm" }],
+        localAlbums: [{ artist: "Opeth", title: "Blackwater Park" }],
       });
       assert.equal(result.flagged.length, 0);
       const entry = wishlist.getAll()[0];
@@ -142,12 +142,13 @@ describe("streaming availability", () => {
       assert.equal(entry.streaming.available, false);
     });
 
-    it("still flags a local album that was seen streamable and then disappeared", async () => {
-      // A disappearance is a true signal from any album, local or not.
+    it("does not flag a lossless-owned album even after a real disappearance", async () => {
+      // Owning the album in lossless removes the buy urgency entirely, so no
+      // flag is raised even when the album was streamable before and is gone now.
       wishlist.replaceAll([
         {
-          artist: "Barathrum",
-          title: "Hailstorm",
+          artist: "Opeth",
+          title: "Blackwater Park",
           source: "roon-tag",
           streaming: { available: true, services: ["qobuz"], checkedAt: "2025-01-01T00:00:00.000Z", lastSeenAt: "2025-01-01T00:00:00.000Z" },
         },
@@ -156,14 +157,18 @@ describe("streaming availability", () => {
         wishlist,
         probes: { qobuz: async () => false },
         services: ["qobuz"],
-        localAlbums: [{ artist: "Barathrum", title: "Hailstorm" }],
+        localAlbums: [{ artist: "Opeth", title: "Blackwater Park" }],
         checkedAt: "2026-01-01T00:00:00.000Z",
       });
-      assert.equal(result.flagged.length, 1);
-      assert.equal(wishlist.getAll()[0].streamUnavailable, true);
+      assert.equal(result.flagged.length, 0);
+      assert.equal(wishlist.getAll()[0].streamUnavailable, false);
     });
 
-    it("matches the local album list case-insensitively", async () => {
+    it("still checks a lossy-only local rip: streaming matters for it", async () => {
+      // A lossy copy is not in localAlbums (findLosslessLocalItems only returns
+      // full-lossless copies), so the entry participates like any other: it is on
+      // the wishlist to be upgraded, and whether it can still be streamed is
+      // significant.
       wishlist.replaceAll([
         { artist: "Barathrum", title: "Hailstorm", source: "roon-tag" },
       ]);
@@ -171,7 +176,21 @@ describe("streaming availability", () => {
         wishlist,
         probes: { qobuz: async () => false },
         services: ["qobuz"],
-        localAlbums: [{ artist: "barathrum", title: "hailstorm" }],
+        localAlbums: [{ artist: "Opeth", title: "Blackwater Park" }],
+      });
+      assert.equal(result.flagged.length, 1);
+      assert.equal(wishlist.getAll()[0].streamUnavailable, true);
+    });
+
+    it("matches the local album list case-insensitively", async () => {
+      wishlist.replaceAll([
+        { artist: "Opeth", title: "Blackwater Park", source: "roon-tag" },
+      ]);
+      const result = await streaming.checkStreamingAvailability({
+        wishlist,
+        probes: { qobuz: async () => false },
+        services: ["qobuz"],
+        localAlbums: [{ artist: "opeth", title: "blackwater park" }],
       });
       assert.equal(result.flagged.length, 0);
     });

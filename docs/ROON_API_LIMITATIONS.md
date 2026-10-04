@@ -226,11 +226,11 @@ flagged. Three separate facts settle how:
 **Consequence:** a wishlist entry carries a `streaming` state
 (`available: true|false|"unknown"`, `services`, `checkedAt`, `lastSeenAt`) plus a
 `streamUnavailable` flag. A flag is raised only when the album was seen streamable
-before, or is `roon-tag` sourced *and not a local rip* (measured: about a third of
-tagged entries are local albums, which were never streaming albums — see the live
-measurements below), and is now absent from every checked catalogue. Probe errors
-always count as `unknown`, never as gone — a flaky catalogue API must not trigger
-buy-urgency.
+before, or is `roon-tag` sourced *and not already owned locally in full lossless*
+("local wins, but only in lossless" — a lossy rip is on the wishlist to be upgraded,
+so streaming stays significant for it), and is now absent from every checked catalogue.
+Probe errors always count as `unknown`, never as gone — a flaky catalogue API must
+not trigger buy-urgency.
 
 **Known limits, accepted:**
 - Catalogue existence is not subscription-tier playability. An album can be in the
@@ -277,11 +277,15 @@ does not mark `streamable: false`" — a purchase-only release (in the catalogue
 streamable anywhere) is exactly the buy-it-now state, not an available one. A
 payload without the flag falls back to catalogue existence.
 
-**Tagged wishlist albums are not all streaming albums.** On this library, 57 of the
-160 roon-tag entries match local folders under `/music` (e.g. Barathrum
-"Hailstorm": local lossy rip, and measured not in the Qobuz catalogue). Flagging
-those "gone from streaming" on their first catalogue miss would be a false alarm
-for an album that was never streamed. The first-miss rule is therefore gated on
-locality: entries with local files (`lossless_checker.findLocalItems`, the same
-folder matching the lossless scan uses) are only flagged on a real disappearance —
-seen streamable before, gone now — which is a true signal from any album.
+**Tagged wishlist albums are not all streaming albums — but "local wins" only in
+lossless.** On this library, 57 of the 160 roon-tag entries match local folders under
+`/music`. Flagging every one of those "gone from streaming" on its first catalogue
+miss would cry wolf for albums that are already settled — so entries already owned
+locally in **full lossless** (`lossless_checker.findLosslessLocalItems`, the same
+folder matching the lossless scan uses) are never flagged: the wishlist goal is met
+and streaming is moot. A **lossy-only** local rip does not qualify: the album is on
+the wishlist precisely to be upgraded to lossless, so whether it can still be had
+from a streaming catalogue stays significant, and such entries participate in the
+check like any other (measured example: Barathrum "Hailstorm" — local lossy rip, not
+in the Qobuz catalogue, correctly flagged as a first miss). Mixed copies do not
+qualify either, for the same reason the lossless scan keeps them on the wishlist.
