@@ -369,15 +369,46 @@ async function searchQobuz(artist, title, country = DEFAULT_COUNTRY) {
 }
 
 /**
+ * Decides catalogue availability from Qobuz album/search result items.
+ *
+ * Measured live (issue #34): the public album/search payload carries explicit
+ * `streamable` and `purchasable` flags on every album. A credible match that
+ * Qobuz itself marks `streamable: false` is a purchase-only release — in the
+ * catalogue, but not streamable anywhere — which is exactly the "buy it before
+ * it is gone everywhere" state, so it must not count as available. A payload
+ * without the flag (older builds, cached shapes) falls back to catalogue
+ * existence, the pre-measurement semantics.
+ *
+ * Exported so the decision can be tested against captured payloads without
+ * depending on Qobuz being reachable.
+ */
+function availableOnQobuz(items, artist, title) {
+  const ranked = rankResults(
+    (Array.isArray(items) ? items : [])
+      .filter((item) => item && item.title && item.artist && item.artist.name)
+      .map((item) => ({
+        store: "Qobuz",
+        title: String(item.title).trim(),
+        artist: String(item.artist.name).trim(),
+        url: "https://www.qobuz.com",
+        streamable: item.streamable,
+      })),
+    artist,
+    title,
+  );
+  return ranked.length > 0 && ranked[0].streamable !== false;
+}
+
+/**
  * Is the album in Qobuz's streaming catalogue right now? (issue #34)
  *
  * Deliberately looser than searchQobuz: that function also requires `purchasable`
  * and returns at most RESULT_LIMIT links, because its job is a credible buy link.
- * This one only asks whether the catalogue holds the album at all, so a lower
- * threshold and no purchase filter are correct — an album that stopped being
- * purchasable but is still streamable must count as available. The same scoring
- * machinery (rankResults) stays in use so a different act's similarly-titled
- * album cannot satisfy the probe on its own.
+ * This one asks whether the album is streamable at all, so no purchase filter and
+ * the explicit `streamable` flag decide — an album that stopped being purchasable
+ * but is still streamable must count as available, and a purchase-only release
+ * must not. The same scoring machinery (rankResults) stays in use so a different
+ * act's similarly-titled album cannot satisfy the probe on its own.
  */
 async function isOnQobuz(artist, title, country = DEFAULT_COUNTRY) {
   const query = buildQuery(artist, title);
@@ -399,19 +430,7 @@ async function isOnQobuz(artist, title, country = DEFAULT_COUNTRY) {
       Array.isArray(response.data.albums.items)
         ? response.data.albums.items
         : [];
-    const ranked = rankResults(
-      items
-        .filter((item) => item && item.title && item.artist && item.artist.name)
-        .map((item) => ({
-          store: "Qobuz",
-          title: String(item.title).trim(),
-          artist: String(item.artist.name).trim(),
-          url: "https://www.qobuz.com",
-        })),
-      artist,
-      title,
-    );
-    return ranked.length > 0;
+    return availableOnQobuz(items, artist, title);
   }
   return null;
 }
@@ -434,6 +453,7 @@ module.exports = {
   searchBandcamp,
   searchQobuz,
   isOnQobuz,
+  availableOnQobuz,
   localizeQobuzUrl,
   buildQuery,
   rankResults,

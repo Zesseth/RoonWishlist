@@ -777,6 +777,26 @@ function availableStreamingProbes() {
 }
 
 /**
+ * Wishlist albums that exist as local files, so the streaming check can tell
+ * "was never a streaming album" (a local rip) apart from "disappeared from
+ * streaming". Measured on the paired core (issue #34): about a third of tagged
+ * wishlist albums are local rips, and flagging those "gone from streaming" on
+ * their first catalogue miss would be a false alarm. No resolved locations means
+ * no locality knowledge — the check then keeps its previous, stricter behaviour
+ * rather than silently changing meaning.
+ */
+async function collectLocalWishlistAlbums() {
+  const locations = resolvedScanLocations.active || [];
+  if (!locations.length) return [];
+  try {
+    return await lossless.findLocalItems(locations, wishlist.getAll());
+  } catch (err) {
+    log.warn("Could not classify local albums for the streaming check:", err.message);
+    return [];
+  }
+}
+
+/**
  * Runs the streaming-catalogue check over the wishlist (issue #34): for every
  * entry, asks each active service whether the album is in its catalogue, stores
  * the state on the entry, and flags entries that disappeared from all of them.
@@ -797,6 +817,7 @@ async function runStreamingAvailabilityCheck() {
       wishlist,
       probes: availableStreamingProbes(),
       services,
+      localAlbums: await collectLocalWishlistAlbums(),
     });
     lastStreamingCheck = { timestamp: new Date().toISOString(), result };
     log.info("Streaming availability check finished:", {

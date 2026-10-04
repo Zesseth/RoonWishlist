@@ -56,6 +56,24 @@ describe("streaming availability", () => {
       assert.equal(diagnostic.outcome, "ok");
     });
 
+    it("does not report measured navigation entries as unrecognized", async () => {
+      // Root captured from a live Roon 2.73 core (issue #34): the saved
+      // live-radio stations show up as "My Live Radio" next to the services.
+      const browse = fakeBrowse({
+        root: [
+          { item_key: "lib", title: "Library" },
+          { item_key: "pl", title: "Playlists" },
+          { item_key: "radio", title: "My Live Radio" },
+          { item_key: "gen", title: "Genres" },
+          { item_key: "qob", title: "Qobuz" },
+          { item_key: "set", title: "Settings" },
+        ],
+      });
+      const { services, diagnostic } = await streaming.listStreamingServicesDetailed(browse);
+      assert.deepEqual(services, ["qobuz"]);
+      assert.deepEqual(diagnostic.unrecognized, []);
+    });
+
     it("reports none-found with the root titles as evidence", async () => {
       const browse = fakeBrowse({
         root: [{ item_key: "lib", title: "Library" }],
@@ -103,6 +121,59 @@ describe("streaming availability", () => {
       });
       assert.equal(result.flagged.length, 0);
       assert.equal(wishlist.getAll()[0].streamUnavailable, false);
+    });
+
+    it("does not flag a local rip that was never a streaming album", async () => {
+      // Measured live (issue #34): 57 of 160 roon-tag entries are local rips, and
+      // e.g. Barathrum "Hailstorm" is local and not in the Qobuz catalogue. A
+      // first-ever catalogue miss for such an album is a non-event, not a disappearance.
+      wishlist.replaceAll([
+        { artist: "Barathrum", title: "Hailstorm", source: "roon-tag" },
+      ]);
+      const result = await streaming.checkStreamingAvailability({
+        wishlist,
+        probes: { qobuz: async () => false },
+        services: ["qobuz"],
+        localAlbums: [{ artist: "Barathrum", title: "Hailstorm" }],
+      });
+      assert.equal(result.flagged.length, 0);
+      const entry = wishlist.getAll()[0];
+      assert.equal(entry.streamUnavailable, false);
+      assert.equal(entry.streaming.available, false);
+    });
+
+    it("still flags a local album that was seen streamable and then disappeared", async () => {
+      // A disappearance is a true signal from any album, local or not.
+      wishlist.replaceAll([
+        {
+          artist: "Barathrum",
+          title: "Hailstorm",
+          source: "roon-tag",
+          streaming: { available: true, services: ["qobuz"], checkedAt: "2025-01-01T00:00:00.000Z", lastSeenAt: "2025-01-01T00:00:00.000Z" },
+        },
+      ]);
+      const result = await streaming.checkStreamingAvailability({
+        wishlist,
+        probes: { qobuz: async () => false },
+        services: ["qobuz"],
+        localAlbums: [{ artist: "Barathrum", title: "Hailstorm" }],
+        checkedAt: "2026-01-01T00:00:00.000Z",
+      });
+      assert.equal(result.flagged.length, 1);
+      assert.equal(wishlist.getAll()[0].streamUnavailable, true);
+    });
+
+    it("matches the local album list case-insensitively", async () => {
+      wishlist.replaceAll([
+        { artist: "Barathrum", title: "Hailstorm", source: "roon-tag" },
+      ]);
+      const result = await streaming.checkStreamingAvailability({
+        wishlist,
+        probes: { qobuz: async () => false },
+        services: ["qobuz"],
+        localAlbums: [{ artist: "barathrum", title: "hailstorm" }],
+      });
+      assert.equal(result.flagged.length, 0);
     });
 
     it("flags a disappearance: previously streamable, now gone", async () => {

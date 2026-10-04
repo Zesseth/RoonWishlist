@@ -65,10 +65,18 @@ const NON_SERVICE_ROOT_TITLES = new Set([
   "focus",
   "browse",
   "help",
+  // Measured on a live Roon 2.73 core (issue #34): the root shows "My Live Radio"
+  // for the user's saved live-radio stations, next to the services.
+  "my live radio",
+  "my radio",
 ]);
 
 function normalizeTitle(value) {
   return String(value || "").trim().toLowerCase();
+}
+
+function localAlbumKey(artist, title) {
+  return `${String(artist || "").toLowerCase().trim()}||${String(title || "").toLowerCase().trim()}`;
 }
 
 function browseAsync(browseService, opts) {
@@ -224,19 +232,31 @@ function nextStreamingState(previous, { available, services, checkedAt, error })
  * `previousStates` maps the album key (`artist||title`, lowercased) to the entry's
  * stored streaming state, so an album that has never been seen streamable is not
  * flagged on its first failed check — a wishlist album may legitimately have
- * been added by hand and never streamed. Only a disappearance (seen before, gone
- * now) or a missing-from-all with no buy links gets flagged.
+ * never been streamable, and `localAlbums` is what makes that measurable: it lists
+ * the entries that exist as local files (built by the lossless scan), and a local
+ * rip was never a streaming album, so its first-ever "not in any catalogue" is a
+ * non-event, not a disappearance. Measured on the live library this matters:
+ * roughly a third of roon-tag entries are local rips. Only a disappearance (seen
+ * streamable before, gone now) is flagged regardless of locality — that is a real
+ * signal from any album.
  */
 async function checkStreamingAvailability({
   wishlist,
   probes,
   services,
+  localAlbums,
   checkedAt = new Date().toISOString(),
 }) {
   const probeEntries = Object.entries(probes || {}).filter(([name, fn]) => typeof fn === "function");
   if (!probeEntries.length) {
     return { status: "no-probes", checked: 0, flagged: [], unknown: 0 };
   }
+
+  const localKeys = new Set(
+    (Array.isArray(localAlbums) ? localAlbums : [])
+      .filter((album) => album && album.artist && album.title)
+      .map((album) => localAlbumKey(album.artist, album.title)),
+  );
 
   const activeServices = (services && services.length ? services : probeEntries.map(([name]) => name)).filter(
     (name) => probeEntries.some(([probeName]) => probeName === name),
@@ -284,14 +304,18 @@ async function checkStreamingAvailability({
     // A probe that could not answer must never be read as "the album is gone",
     // so "unknown" clears nothing and flags nothing.
     //
-    // A first-ever "not found" is flagged only for roon-tag entries: an album tagged
-    // in Roon is in the library, so "not in any catalogue" is a real signal there.
-    // A hand-added or low-quality entry may simply never have been streamable, and
-    // flaging those on first sight would cry wolf. A disappearance (seen streamable
-    // before, gone now) is flagged regardless of source.
+    // A first-ever "not found" is flagged only for roon-tag entries that are not
+    // local: an album tagged in Roon and streamed from a service is expected to be
+    // in that service's catalogue, so "not in any catalogue" is a real signal there.
+    // A local rip (localAlbums, from the lossless scan) was never a streaming album,
+    // so flagging it would cry wolf — measured on the live library, about a third of
+    // tagged entries are local. A disappearance (seen streamable before, gone now) is
+    // flagged regardless of source and locality.
     const seenStreamableBefore = entry.streaming && entry.streaming.available === true;
     const flaggedNow =
-      available === false && (seenStreamableBefore || entry.source === "roon-tag");
+      available === false &&
+      (seenStreamableBefore ||
+        (entry.source === "roon-tag" && !localKeys.has(localAlbumKey(entry.artist, entry.title))));
     if (flaggedNow) {
       const since = entry.streamUnavailableSince || checkedAt;
       wishlist.upsert({

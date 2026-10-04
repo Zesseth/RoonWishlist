@@ -538,3 +538,27 @@ describe("scanLowQualityAlbums()", () => {
     });
   });
 });
+
+describe("findLocalItems()", () => {
+  it("returns only the wanted items that exist as local files", async () => {
+    const items = [
+      { artist: "Opeth", title: "Blackwater Park" },
+      { artist: "Nobody", title: "Nothing" },
+    ];
+    const local = await lossless.findLocalItems(locationPath("libA"), items);
+    assert.deepStrictEqual(local, [{ artist: "Opeth", title: "Blackwater Park" }]);
+  });
+
+  it("matches an album regardless of the format of its local files", async () => {
+    // Dummy is lossy in libA — still a local album for the streaming check,
+    // which asks "was this ever a streaming album", not "is it lossless".
+    const items = [{ artist: "Portishead", title: "Dummy" }];
+    const local = await lossless.findLocalItems(locationPath("libA"), items);
+    assert.deepStrictEqual(local, items);
+  });
+
+  it("returns nothing for an empty item list without touching the disk", async () => {
+    const local = await lossless.findLocalItems(locationPath("does-not-exist"), []);
+    assert.deepStrictEqual(local, []);
+  });
+});

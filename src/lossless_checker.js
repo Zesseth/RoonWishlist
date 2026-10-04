@@ -795,12 +795,30 @@ async function markOwnedTaggedAlbums(locations, wishlistModule) {
   return { owned, cleared, checked: items.length, errors, locations: roots };
 }
 
+/**
+ * Which of the given wishlist items exist as local files (lossless or lossy).
+ *
+ * Used by the streaming-availability check (issue #34): a tagged album that has
+ * local files was never necessarily a streaming album, so a first-ever
+ * "not in any catalogue" observation must not be read as a disappearance for it.
+ * Folder-name matching, with the same normalization caveats as the lossless scan.
+ *
+ * @returns {Promise<Array<{artist: string, title: string}>>}
+ */
+async function findLocalItems(locations, items) {
+  const wanted = (items || []).filter((item) => item && (item.artist || item.title));
+  if (!wanted.length) return [];
+  const { results } = await classifyWantedAlbums(locations, wanted);
+  return wanted.filter((item) => results.has(albumKey(item.artist, item.title)));
+}
+
 module.exports = {
   LOSSLESS_EXTENSIONS,
   LOSSY_EXTENSIONS,
   checkAndClean,
   classifyAlbumFolder,
   classifyWantedAlbums,
+  findLocalItems,
   isLosslessExtension,
   markOwnedTaggedAlbums,
   mergeAlbumsAcrossLocations,

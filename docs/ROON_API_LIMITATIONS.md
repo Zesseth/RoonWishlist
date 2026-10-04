@@ -226,9 +226,11 @@ flagged. Three separate facts settle how:
 **Consequence:** a wishlist entry carries a `streaming` state
 (`available: true|false|"unknown"`, `services`, `checkedAt`, `lastSeenAt`) plus a
 `streamUnavailable` flag. A flag is raised only when the album was seen streamable
-before (or is `roon-tag` sourced, i.e. in the library, so "not in any catalogue" is a
-real signal) and is now absent from every checked catalogue. Probe errors always
-count as `unknown`, never as gone — a flaky catalogue API must not trigger buy-urgency.
+before, or is `roon-tag` sourced *and not a local rip* (measured: about a third of
+tagged entries are local albums, which were never streaming albums — see the live
+measurements below), and is now absent from every checked catalogue. Probe errors
+always count as `unknown`, never as gone — a flaky catalogue API must not trigger
+buy-urgency.
 
 **Known limits, accepted:**
 - Catalogue existence is not subscription-tier playability. An album can be in the
@@ -239,3 +241,47 @@ count as `unknown`, never as gone — a flaky catalogue API must not trigger buy
   probe never silently counts as "gone".
 - The browse-root service read is version-dependent; the diagnostic in
   `/streaming/services` says what the root actually contained.
+
+## Live-core measurements for the streaming watch — Roon 2.73, 2026-10-04
+
+Measured against the paired production core (Roon 2.73, build 1696) with one Qobuz
+account logged in, with a one-shot browse probe extension. Raw evidence:
+`/streaming/services` on a paired install returns the same diagnostic the probe saw.
+
+**The browse tree root.** Six items, every one with an `item_key` and `hint: "list"`:
+
+```
+Library, Playlists, My Live Radio, Genres, Qobuz, Settings
+```
+
+- Services appear by their plain name ("Qobuz"), so title matching is the right read.
+- "My Live Radio" is a navigation entry the user's saved live-radio stations create;
+  it is version-dependent and was added to the known non-service titles so the
+  diagnostic does not report it as unrecognized noise.
+- The Qobuz subtree offers New Releases, Playlists, Taste of Qobuz, My Qobuz — and
+  **no Search entry**. Searching a service's catalogue goes through the global
+  `search` hierarchy, not through the service item, which matters if a future
+  TIDAL probe tries the browse route.
+
+**Search input is sticky without `pop_all`.** Issuing a new `input` on the same
+multi-session key without `pop_all: true` returns the *previous* search's results
+(the response's list subtitle still names the old query). Every new search must
+`pop_all: true`, or open a fresh session key. The production code already does
+this (`openTagViaSearch`); the probe initially did not, which is how it was measured.
+
+**The Qobuz public API answers more than "does it exist".** Every album item in
+`album/search` carries explicit `streamable` and `purchasable` flags (measured
+live, e.g. The Dark Side of the Moon: `purchasable: true, streamable: true`).
+`isOnQobuz()` therefore reads availability as "a credible match that Qobuz itself
+does not mark `streamable: false`" — a purchase-only release (in the catalogue, not
+streamable anywhere) is exactly the buy-it-now state, not an available one. A
+payload without the flag falls back to catalogue existence.
+
+**Tagged wishlist albums are not all streaming albums.** On this library, 57 of the
+160 roon-tag entries match local folders under `/music` (e.g. Barathrum
+"Hailstorm": local lossy rip, and measured not in the Qobuz catalogue). Flagging
+those "gone from streaming" on their first catalogue miss would be a false alarm
+for an album that was never streamed. The first-miss rule is therefore gated on
+locality: entries with local files (`lossless_checker.findLocalItems`, the same
+folder matching the lossless scan uses) are only flagged on a real disappearance —
+seen streamable before, gone now — which is a true signal from any album.
