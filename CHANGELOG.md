@@ -7,6 +7,30 @@ for what that means for this Roon extension).
 
 ## [Unreleased]
 
+## [1.9.1] - 2026-10-04
+
+### Fixed
+
+- Artist-name punctuation no longer breaks store matching (#78): a compact form
+  (lowercase, spaces and punctuation removed) earns exact artist credit when the
+  compact forms are equal — Roon's "I.C.S. Vortex" now matches the stores' and the
+  library folder's "ICS Vortex" in the buy-link search, the streaming probe, and
+  the lossless scan. Bandcamp's autocomplete finds nothing for dotted names at the
+  query level, so the search retries once with punctuation stripped.
+- Combined-release titles no longer escape the local-lossless gate (#80): Roon
+  titles a combined reissue "The Jester Race/Black-Ash Inheritance" while the local
+  folder says "The Jester Race (Black Ash-Inheritance Version)" — the streaming
+  gate and the "already owned" tag detection now compare titles in a loose form
+  (edition words stripped inside brackets, bare-number and edition-only segments
+  dropped, content segments such as "(Live)" kept), so an owned album is settled
+  instead of flagged, gets its `ownedLossless` badge, and loses its buy links.
+  The scan's removal path keeps strict matching: the loose form only advises.
+- The Qobuz streaming probe saw only the first search result (#34 fallout, found in
+  #79 review): every result now carries its own dedupe key. A shared placeholder
+  URL collapsed the whole result set before scoring, so an album that was not the
+  top result answered "not available" while streamable (live case: Machinae
+  Supremacy's self-titled album at result position 6).
+
 ## [1.9.0] - 2026-10-04
 
 ### Added
@@ -244,7 +268,8 @@ for what that means for this Roon extension).
 - Supported-country dropdown and country-specific Qobuz catalog links.
 - Store-link refresh when the Qobuz country changes.
 
-[Unreleased]: https://github.com/Zesseth/RoonWishlist/compare/v1.9.0...HEAD
+[Unreleased]: https://github.com/Zesseth/RoonWishlist/compare/v1.9.1...HEAD
+[1.9.1]: https://github.com/Zesseth/RoonWishlist/compare/v1.9.0...v1.9.1
 [1.9.0]: https://github.com/Zesseth/RoonWishlist/compare/v1.8.0...v1.9.0
 [1.8.0]: https://github.com/Zesseth/RoonWishlist/compare/v1.7.0...v1.8.0
 [1.7.0]: https://github.com/Zesseth/RoonWishlist/compare/v1.6.0...v1.7.0
