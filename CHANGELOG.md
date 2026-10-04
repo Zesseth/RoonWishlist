@@ -7,6 +7,19 @@ for what that means for this Roon extension).
 
 ## [Unreleased]
 
+## [1.8.0] - 2026-10-04
+
+### Added
+
+- The low-quality albums view shows a **wishlist** tag chip on albums that are
+  also tagged "Wishlist" in Roon (#70): `GET /wishlist/low-quality` returns a
+  `roonTagged` flag per album, and the web UI renders a small chip after the
+  album title. The join tolerates the naming differences between the scan's
+  filesystem folder names and Roon's metadata — punctuation (`Chaos A.D_` vs
+  `Chaos A.D.`, `Wumpscut` vs `:wumpscut:`) and bracketed release-version
+  qualifiers (`Powerslave` vs `Powerslave (2015 Remaster)`) — while content
+  qualifiers such as `(Live)` stay significant.
+
 ## [1.7.0] - 2026-10-03
 
 ### Added
@@ -200,6 +213,7 @@ for what that means for this Roon extension).
 - Store-link refresh when the Qobuz country changes.
 
 [Unreleased]: https://github.com/Zesseth/RoonWishlist/compare/v1.5.1...HEAD
+[1.8.0]: https://github.com/Zesseth/RoonWishlist/compare/v1.7.0...v1.8.0
 [1.7.0]: https://github.com/Zesseth/RoonWishlist/compare/v1.6.0...v1.7.0
 [1.6.0]: https://github.com/Zesseth/RoonWishlist/compare/v1.5.1...v1.6.0
 [1.5.1]: https://github.com/Zesseth/RoonWishlist/compare/v1.5.0...v1.5.1
