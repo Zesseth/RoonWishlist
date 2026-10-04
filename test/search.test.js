@@ -212,6 +212,56 @@ describe("availableOnQobuz", () => {
   it("returns false for an empty catalogue answer", () => {
     assert.strictEqual(availableOnQobuz([], "Opeth", "Blackwater Park"), false);
   });
+
+  it("finds the album when it is not the first search result", () => {
+    // Live shape from the Machinae Supremacy self-titled case: the search returns
+    // the artist's other albums first and the wanted one further down. All items
+    // must survive to the ranking stage, which needs a distinct dedupe key per
+    // result — a shared placeholder URL collapsed the set to its first item and
+    // the probe answered "not available" for a streamable album.
+    const album = (title, id) => ({
+      title,
+      artist: { name: "Machinae Supremacy" },
+      url: `https://www.qobuz.com/fi-en/album/${id}`,
+      id,
+      streamable: true,
+    });
+    assert.strictEqual(
+      availableOnQobuz(
+        [
+          album("A View From The End Of The World", "aaaa"),
+          album("Overworld", "bbbb"),
+          album("Phantom Shadow", "cccc"),
+          album("Rise Of A Digital Nation", "dddd"),
+          album("Deus Ex Machinae", "eeee"),
+          album("Machinae Supremacy", "tk9cknzw7gdyn"),
+        ],
+        "Machinae Supremacy",
+        "Machinae Supremacy",
+      ),
+      true,
+    );
+  });
+
+  it("dedupes on the album identity when the API omits urls", () => {
+    const album = (title, id) => ({
+      title,
+      artist: { name: "Machinae Supremacy" },
+      id,
+      streamable: true,
+    });
+    assert.strictEqual(
+      availableOnQobuz(
+        [
+          album("A View From The End Of The World", "aaaa"),
+          album("Machinae Supremacy", "tk9cknzw7gdyn"),
+        ],
+        "Machinae Supremacy",
+        "Machinae Supremacy",
+      ),
+      true,
+    );
+  });
 });
 
 describe("artist punctuation matching (issue #78)", () => {

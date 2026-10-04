@@ -430,7 +430,16 @@ function availableOnQobuz(items, artist, title) {
         store: "Qobuz",
         title: String(item.title).trim(),
         artist: String(item.artist.name).trim(),
-        url: "https://www.qobuz.com",
+        // Dedupe key only, never surfaced: every result must carry its own URL or
+        // the album id, because rankResults dedupes on store|url — one shared
+        // placeholder collapsed the whole result set to its first item and hid
+        // the wanted album whenever it was not the top result (measured live:
+        // Machinae Supremacy's self-titled album answered "not available" while
+        // sitting streamable at result #6).
+        url:
+          /^https?:\/\//.test(item.url || "")
+            ? item.url
+            : `https://www.qobuz.com${item.url || `/album/${item.id || ""}`}`,
         streamable: item.streamable,
       })),
     artist,
