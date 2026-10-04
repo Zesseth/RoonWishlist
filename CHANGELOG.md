@@ -7,12 +7,37 @@ for what that means for this Roon extension).
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-10-04
+
+### Added
+
+- Streaming-catalogue availability watch (#34): wishlist entries are checked
+  against the streaming catalogues in use, and an album that disappears from
+  every checked catalogue while still purchasable is flagged "gone from
+  streaming" so it can be bought before it vanishes everywhere. Logged-in
+  services are read from the Roon browse tree root once per pairing
+  (`GET /streaming/services`, with a diagnostic of what the root contained — the
+  SDK has no service-listing call). Availability is asked from the catalogues
+  themselves: the public Qobuz album search doubles as the Qobuz probe, reading
+  Qobuz's own `streamable` flag so a purchase-only release counts as not
+  available. Each entry stores a `streaming` state
+  (`available: true|false|"unknown"`, `services`, `checkedAt`, `lastSeenAt`);
+  probe errors count as `unknown`, never as gone. The check runs after the
+  nightly tag sync and on demand (`POST /streaming/check`, web-UI button). An
+  album already owned locally in full lossless is never flagged — local wins,
+  but only in lossless: a lossy rip is on the wishlist to be upgraded, so its
+  streaming availability stays significant.
+
 ### Changed
 
 - Documentation: the release process in `docs/RELEASING.md` now lands the version
   bump through a pull request like every other change, instead of pushing the
   release commit straight to `main`. The previous instructions contradicted both
   the branch protection and the accepted workflow.
+- Documentation: `docs/ROON_API_LIMITATIONS.md` gains live-core measurements
+  (Roon 2.73) behind the streaming watch — the browse root's actual contents, the
+  sticky search input without `pop_all`, the Qobuz `streamable`/`purchasable`
+  flags, and the share of tagged wishlist albums that are local rips.
 
 ## [1.8.0] - 2026-10-04
 
@@ -219,7 +244,8 @@ for what that means for this Roon extension).
 - Supported-country dropdown and country-specific Qobuz catalog links.
 - Store-link refresh when the Qobuz country changes.
 
-[Unreleased]: https://github.com/Zesseth/RoonWishlist/compare/v1.5.1...HEAD
+[Unreleased]: https://github.com/Zesseth/RoonWishlist/compare/v1.9.0...HEAD
+[1.9.0]: https://github.com/Zesseth/RoonWishlist/compare/v1.8.0...v1.9.0
 [1.8.0]: https://github.com/Zesseth/RoonWishlist/compare/v1.7.0...v1.8.0
 [1.7.0]: https://github.com/Zesseth/RoonWishlist/compare/v1.6.0...v1.7.0
 [1.6.0]: https://github.com/Zesseth/RoonWishlist/compare/v1.5.1...v1.6.0
