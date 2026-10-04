@@ -7,6 +7,13 @@ for what that means for this Roon extension).
 
 ## [Unreleased]
 
+### Changed
+
+- Documentation: the release process in `docs/RELEASING.md` now lands the version
+  bump through a pull request like every other change, instead of pushing the
+  release commit straight to `main`. The previous instructions contradicted both
+  the branch protection and the accepted workflow.
+
 ## [1.8.0] - 2026-10-04
 
 ### Added

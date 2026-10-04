@@ -40,37 +40,44 @@ under the scheme above.
 ## Release process
 
 1. **Confirm `main` is what you want to release.** All work lands on `main` through a
-   merged PR (see `AGENTS.md` — direct pushes to `main` are not allowed).
-2. **Bump the version** in `package.json` (and `package-lock.json`'s top-level
+   merged PR — **including the release commit itself** (see `AGENTS.md` — direct pushes
+   to `main` are not allowed; the branch protection is the same for a version bump as
+   for any other change).
+2. **Cut a release branch** from an up-to-date `main`, e.g.
+   `git switch -c release/v1.8.1`.
+3. **Bump the version** in `package.json` (and `package-lock.json`'s top-level
    `version`/`packages[""].version` fields, which `npm version` keeps in sync
    automatically — see below). Decide MAJOR/MINOR/PATCH using the scheme above.
-3. **Update `CHANGELOG.md`**: move the `[Unreleased]` section's contents under a new
+   Use `npm version --no-git-tag-version minor` (or `patch`/`major`) for the edit:
+   it must not commit or tag yet, because the commit belongs to the PR (step 5)
+   and the tag belongs *after* the merge (step 6).
+4. **Update `CHANGELOG.md`**: move the `[Unreleased]` section's contents under a new
    `## [x.y.z] - YYYY-MM-DD` heading, and start a fresh empty `[Unreleased]` section.
    Add the compare-link reference at the bottom (see existing entries for the format).
-4. **Commit** the version bump + changelog together, e.g.:
-   ```bash
-   npm version patch -m "Release v%s"   # or: minor / major
-   ```
-   `npm version` updates `package.json`/`package-lock.json` and creates the commit +
-   git tag (`vX.Y.Z`) in one step. If the changelog edit is not already staged, amend
-   it into the same commit before tagging, or tag manually instead:
+5. **Commit the bump and open a PR** — the release only proceeds once the PR is
+   reviewed and merged, like any other change:
    ```bash
    git commit -am "Release vX.Y.Z"
-   git tag -a vX.Y.Z -m "vX.Y.Z"
+   git push -u origin release/vX.Y.Z
+   # then open the PR into main
    ```
-5. **Push the commit and the tag**:
+6. **After the PR merges, tag the released commit on `main`** and push only the tag:
    ```bash
-   git push origin main
+   git switch main && git pull origin main
+   git tag -a vX.Y.Z -m "vX.Y.Z"
    git push origin vX.Y.Z
    ```
-6. **Create the GitHub release** from the tag, with the changelog section for this
+   The tag must point at the commit users actually get when they pull `main`, not at
+   the pre-merge branch head — this is why the tag is not created on the release
+   branch.
+7. **Create the GitHub release** from the tag, with the changelog section for this
    version as the release notes:
    ```bash
    gh release create vX.Y.Z --title "vX.Y.Z" --notes-file <(sed -n '/^## \[X.Y.Z\]/,/^## \[/p' CHANGELOG.md | sed '$d')
    ```
    (Or open the tag on GitHub's *Releases* page and paste the same section in by hand
    — simpler than the `sed` one-liner if you're not scripting it.)
-7. **Verify an install/update actually picks it up**: on a spare machine or an
+8. **Verify an install/update actually picks it up**: on a spare machine or an
    `--instance test` install (see `README.md#running-a-second-instance`), re-run
    `bootstrap.sh`/`install.sh` (or `git pull && npm ci` manually) and confirm
    `GET /status` reports the new `version` and Roon's extension list shows it too.
