@@ -579,3 +579,69 @@ describe("findLosslessLocalItems()", () => {
     assert.deepStrictEqual(local, []);
   });
 });
+
+describe("namesMatchExactly punctuation tolerance (issue #78)", () => {
+  // Roon's metadata can say "I.C.S. Vortex" while the folder on disk says
+  // "ICS Vortex" — the same artist, so the scan must still find the local copy.
+  it("matches a dotted wanted artist to an undotted local folder", async () => {
+    makeAlbum("libD", "ICS Vortex", "Storm Seeker", ["01.flac", "02.flac"]);
+    const items = [{ artist: "I.C.S. Vortex", title: "Storm Seeker" }];
+    const local = await lossless.findLosslessLocalItems(locationPath("libD"), items);
+    assert.deepStrictEqual(local, items);
+  });
+
+  it("matches an undotted wanted artist to a dotted local folder", async () => {
+    makeAlbum("libD", "I.C.S. Vortex", "Storm Seeker", ["01.flac"]);
+    const items = [{ artist: "ICS Vortex", title: "Storm Seeker" }];
+    const local = await lossless.findLosslessLocalItems(locationPath("libD"), items);
+    assert.deepStrictEqual(local, items);
+  });
+
+  it("does not match a compactly different name", async () => {
+    makeAlbum("libD", "I.C.S. Vortex", "Storm Seeker", ["01.flac"]);
+    const local = await lossless.findLosslessLocalItems(locationPath("libD"), [
+      { artist: "Vortex", title: "Storm Seeker" },
+    ]);
+    assert.deepStrictEqual(local, []);
+  });
+});
+
+describe("loose title matching for the streaming gate (issue #80)", () => {
+  // The live case: Roon titles the combined reissue with a slash, the local folder
+  // carries it as a parenthetical release-version suffix — 14 hi-res FLAC tracks
+  // that the strict scan matching could not see.
+  it("settles a combined-release entry on its version-suffixed local folder", async () => {
+    makeAlbum("libD", "In Flames", "In Flames - The Jester Race (Black Ash-Inheritance Version)", [
+      "01.flac",
+      "02.flac",
+    ]);
+    const items = [{ artist: "In Flames", title: "The Jester Race/Black-Ash Inheritance" }];
+    const local = await lossless.findLosslessLocalItems(locationPath("libD"), items);
+    assert.deepStrictEqual(local, items);
+  });
+
+  it("settles a remaster-suffixed folder against the plain album title", async () => {
+    makeAlbum("libD", "Iron Maiden", "Iron Maiden - Powerslave (2015 Remaster)", ["01.flac"]);
+    const items = [{ artist: "Iron Maiden", title: "Powerslave" }];
+    const local = await lossless.findLosslessLocalItems(locationPath("libD"), items);
+    assert.deepStrictEqual(local, items);
+  });
+
+  it("keeps a live release distinct from the studio album", async () => {
+    makeAlbum("libE", "ICS Vortex", "Storm Seeker (Live)", ["01.flac"]);
+    const local = await lossless.findLosslessLocalItems(locationPath("libE"), [
+      { artist: "ICS Vortex", title: "Storm Seeker" },
+    ]);
+    assert.deepStrictEqual(local, [], "a live rip must not settle the studio album");
+  });
+
+  it("does not settle on a lossy copy however the folder is titled", async () => {
+    makeAlbum("libF", "In Flames", "In Flames - The Jester Race (Black Ash-Inheritance Version)", [
+      "01.mp3",
+    ]);
+    const local = await lossless.findLosslessLocalItems(locationPath("libF"), [
+      { artist: "In Flames", title: "The Jester Race/Black-Ash Inheritance" },
+    ]);
+    assert.deepStrictEqual(local, []);
+  });
+});

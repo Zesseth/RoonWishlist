@@ -170,6 +170,14 @@ function scoreField(actual, expected) {
   return Math.round(tokenOverlap(actualSimple || actualExact, expectedSimple || expectedExact) * 50);
 }
 
+// The compact form — lowercase with every space and punctuation mark removed — is
+// equal exactly when two names differ only in punctuation/spacing ("I.C.S. Vortex"
+// vs the stores' "ICS Vortex", issue #78). It only ever *adds* matches and cannot
+// conflate genuinely different names ("j.s. bach" does not compact-match "bach").
+function compactForm(value) {
+  return String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+}
+
 // Artist matching is deliberately stricter than title matching. Store results may
 // name a different act that merely references the wishlist artist, e.g. Bandcamp
 // cover/tribute/stem bands whose band name embeds the original artist
@@ -181,6 +189,13 @@ function scoreArtistField(actual, expected) {
   const expectedExact = normalizeText(expected);
   if (!actualExact || !expectedExact) return 0;
   if (actualExact === expectedExact) return 100;
+
+  // Punctuation variants of one name are the same act, not a near miss: exact
+  // credit, or the dotted spelling from Roon's metadata loses to the store's
+  // undotted one on token overlap (measured: 13/100, below credibility — #78).
+  const actualCompact = compactForm(actual);
+  const expectedCompact = compactForm(expected);
+  if (expectedCompact && actualCompact === expectedCompact) return 100;
 
   const actualSimple = normalizeText(stripEditionWords(actual));
   const expectedSimple = normalizeText(stripEditionWords(expected));
@@ -268,10 +283,19 @@ function getQobuzAppIds() {
   return [...new Set([process.env.ROON_WISHLIST_QOBUZ_APP_ID, DEFAULT_QOBUZ_APP_ID, ...FALLBACK_QOBUZ_APP_IDS].filter(Boolean))];
 }
 
-async function searchBandcamp(artist, title) {
-  const query = buildQuery(artist, title);
-  if (!query) return [];
+// Punctuation can zero out Bandcamp's autocomplete at the query level: measured,
+// "I.C.S. Vortex" finds nothing while "ICS Vortex" finds the album (issue #78).
+// Periods and commas are removed outright (initials stay glued: "I.C.S." ->
+// "ICS"); anything else non-alphanumeric becomes a space.
+function stripPunctuation(value) {
+  return String(value || "")
+    .replace(/[.,]/g, "")
+    .replace(/[^a-zA-Z0-9\s]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
 
+async function bandcampRanked(query, artist, title) {
   const response = await requestJson(BANDCAMP_API_URL, {
     method: "POST",
     headers: {
@@ -305,6 +329,22 @@ async function searchBandcamp(artist, title) {
     artist,
     title,
   );
+}
+
+async function searchBandcamp(artist, title) {
+  const query = buildQuery(artist, title);
+  if (!query) return [];
+
+  let ranked = await bandcampRanked(query, artist, title);
+  if (!ranked.length) {
+    // One retry with the punctuation stripped, then give up: an empty first
+    // answer is usually either this exact failure or an album that is not there.
+    const fallbackQuery = buildQuery(stripPunctuation(artist), stripPunctuation(title));
+    if (fallbackQuery && fallbackQuery !== query) {
+      ranked = await bandcampRanked(fallbackQuery, artist, title);
+    }
+  }
+  return ranked;
 }
 
 async function searchQobuz(artist, title, country = DEFAULT_COUNTRY) {
@@ -390,7 +430,16 @@ function availableOnQobuz(items, artist, title) {
         store: "Qobuz",
         title: String(item.title).trim(),
         artist: String(item.artist.name).trim(),
-        url: "https://www.qobuz.com",
+        // Dedupe key only, never surfaced: every result must carry its own URL or
+        // the album id, because rankResults dedupes on store|url — one shared
+        // placeholder collapsed the whole result set to its first item and hid
+        // the wanted album whenever it was not the top result (measured live:
+        // Machinae Supremacy's self-titled album answered "not available" while
+        // sitting streamable at result #6).
+        url:
+          /^https?:\/\//.test(item.url || "")
+            ? item.url
+            : `https://www.qobuz.com${item.url || `/album/${item.id || ""}`}`,
         streamable: item.streamable,
       })),
     artist,

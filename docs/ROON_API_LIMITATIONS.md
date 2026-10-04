@@ -281,11 +281,15 @@ payload without the flag falls back to catalogue existence.
 lossless.** On this library, 57 of the 160 roon-tag entries match local folders under
 `/music`. Flagging every one of those "gone from streaming" on its first catalogue
 miss would cry wolf for albums that are already settled — so entries already owned
-locally in **full lossless** (`lossless_checker.findLosslessLocalItems`, the same
-folder matching the lossless scan uses) are never flagged: the wishlist goal is met
-and streaming is moot. A **lossy-only** local rip does not qualify: the album is on
-the wishlist precisely to be upgraded to lossless, so whether it can still be had
-from a streaming catalogue stays significant, and such entries participate in the
-check like any other (measured example: Barathrum "Hailstorm" — local lossy rip, not
-in the Qobuz catalogue, correctly flagged as a first miss). Mixed copies do not
-qualify either, for the same reason the lossless scan keeps them on the wishlist.
+locally in **full lossless** (`lossless_checker.findLosslessLocalItems`) are never
+flagged: the wishlist goal is met and streaming is moot. The gate's title matching is
+deliberately looser than the lossless scan's removal path (issue #80): Roon titles a
+combined reissue "The Jester Race/Black-Ash Inheritance" while the folder says
+"The Jester Race (Black Ash-Inheritance Version)", and the loose form — edition words
+stripped inside brackets, bare-number and edition-only segments dropped, content
+segments like "(Live)" kept — bridges that without letting a live rip settle a studio
+album. A **lossy-only** local rip does not qualify: the album is on the wishlist
+precisely to be upgraded to lossless, so whether it can still be had from a streaming
+catalogue stays significant, and such entries participate in the check like any other
+(first miss included). Mixed copies do not qualify either, for the same reason the
+lossless scan keeps them on the wishlist.
