@@ -750,7 +750,11 @@ async function markOwnedTaggedAlbums(locations, wishlistModule) {
     return { owned: [], cleared: [], checked: 0, errors: 0, locations: normalizeLocations(locations) };
   }
 
-  const { results, errors, locations: roots } = await classifyWantedAlbums(locations, items);
+  // Loose matching (issue #80), deliberately: the #32 badge only advises — an
+  // over-eager match costs a wrong badge, never a deletion — and Roon titles
+  // combined reissues ("The Jester Race/Black-Ash Inheritance") differently from
+  // the folders that hold them ("The Jester Race (Black Ash-Inheritance Version)").
+  const { results, errors, locations: roots } = await classifyWantedAlbumsLoose(locations, items);
 
   // Having nowhere to look is not the same as owning nothing. Concluding "not owned"
   // from an empty scan would clear every flag and put albums the user already has back
@@ -858,6 +862,65 @@ function looseTitleMatch(localValue, wantedValue) {
 }
 
 /**
+ * Loose variant of classifyWantedAlbums: same folder walk and per-folder
+ * classification, but titles compare with looseTitleMatch (issue #80), so an entry
+ * Roon titles "The Jester Race/Black-Ash Inheritance" matches the folder
+ * "The Jester Race (Black Ash-Inheritance Version)".
+ *
+ * Callers are advisory paths only — the streaming gate and the "already owned"
+ * tag detection (#32) — never the destructive removal path, which keeps the strict
+ * classifyWantedAlbums: a loose match here costs an unnecessary flag or badge at
+ * worst, in checkAndClean it would delete a wanted album.
+ */
+async function classifyWantedAlbumsLoose(locations, items) {
+  const roots = normalizeLocations(locations);
+  const wanted = (items || [])
+    .filter((item) => item && (item.artist || item.title))
+    .map((item) => ({ item, key: albumKey(item.artist, item.title) }));
+  const results = new Map();
+  let errors = 0;
+
+  if (!wanted.length || !roots.length) return { results, errors, locations: roots };
+
+  for (const root of roots) {
+    const { albums: folders, errors: rootErrors } = await getArtistAlbumFolders(root);
+    errors += rootErrors;
+
+    for (const folder of folders) {
+      const artist = cleanArtistName(folder.artist);
+      const album = cleanAlbumTitle(folder.album, folder.artist);
+      if (!artist || !album) continue;
+
+      const hits = wanted.filter(
+        (w) => namesMatchExactly(artist, w.item.artist) && looseTitleMatch(album, w.item.title),
+      );
+      if (!hits.length) continue;
+
+      const classification = await classifyAlbumFolder(folder.fullPath);
+      errors += classification.errors;
+
+      const detail = {
+        status: classification.status,
+        foundAt: folder.fullPath,
+        location: root,
+        losslessTracks: classification.losslessFiles,
+        totalTracks: classification.totalAudioFiles,
+        formats: classification.formats,
+      };
+      for (const hit of hits) {
+        const previous = results.get(hit.key);
+        // A second copy only wins if it is genuinely better than the one already found.
+        if (!previous || betterStatus(previous.status, detail.status) !== previous.status) {
+          results.set(hit.key, detail);
+        }
+      }
+    }
+  }
+
+  return { results, errors, locations: roots };
+}
+
+/**
  * Which of the given wishlist items are already owned locally in full lossless.
  *
  * Used by the streaming-availability check (issue #34): a complete local lossless
@@ -876,37 +939,13 @@ function looseTitleMatch(localValue, wantedValue) {
  * @returns {Promise<Array<{artist: string, title: string}>>}
  */
 async function findLosslessLocalItems(locations, items) {
-  const wanted = (items || [])
-    .filter((item) => item && (item.artist || item.title))
-    .map((item) => ({ item, key: albumKey(item.artist, item.title) }));
+  const wanted = (items || []).filter((item) => item && (item.artist || item.title));
   if (!wanted.length) return [];
-
-  const roots = normalizeLocations(locations);
-  const settled = new Set();
-
-  for (const root of roots) {
-    const { albums: folders } = await getArtistAlbumFolders(root);
-    for (const folder of folders) {
-      const artist = cleanArtistName(folder.artist);
-      const album = cleanAlbumTitle(folder.album, folder.artist);
-      if (!artist || !album) continue;
-
-      const hits = wanted.filter(
-        (w) => namesMatchExactly(artist, w.item.artist) && looseTitleMatch(album, w.item.title),
-      );
-      if (!hits.length) continue;
-
-      // Only a complete lossless copy settles an entry; a matching lossy or mixed
-      // folder leaves it participating in the streaming check.
-      const classification = await classifyAlbumFolder(folder.fullPath);
-      if (classification.status !== "owned-lossless") continue;
-      for (const hit of hits) settled.add(hit.key);
-    }
-  }
-
-  return wanted
-    .filter((w) => settled.has(w.key))
-    .map((w) => ({ artist: w.item.artist, title: w.item.title }));
+  const { results } = await classifyWantedAlbumsLoose(locations, wanted);
+  return wanted.filter((item) => {
+    const detail = results.get(albumKey(item.artist, item.title));
+    return !!detail && detail.status === "owned-lossless";
+  });
 }
 
 module.exports = {
@@ -915,6 +954,7 @@ module.exports = {
   checkAndClean,
   classifyAlbumFolder,
   classifyWantedAlbums,
+  classifyWantedAlbumsLoose,
   findLosslessLocalItems,
   isLosslessExtension,
   markOwnedTaggedAlbums,

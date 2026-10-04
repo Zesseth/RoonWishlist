@@ -223,3 +223,35 @@ describe("already-owned Roon-tagged albums (#32)", () => {
     });
   });
 });
+
+describe("owned detection with loose title matching (issue #80)", () => {
+  it("flags a combined-release entry whose folder carries a version suffix", async () => {
+    makeAlbum("lib", "In Flames", "In Flames - The Jester Race (Black Ash-Inheritance Version)", [
+      "01.flac",
+      "02.flac",
+    ]);
+    const stub = makeWishlistStub([
+      {
+        artist: "In Flames",
+        title: "The Jester Race/Black-Ash Inheritance",
+        source: "roon-tag",
+        buyLinks: [{ store: "Bandcamp", title: "The Jester Race (Black Ash-Inheritance Version)", artist: "In Flames", url: "https://inflamesofficial.bandcamp.com/album/the-jester-race-black-ash-inheritance-version" }],
+      },
+    ]);
+    const result = await lossless.markOwnedTaggedAlbums(path.join(root, "lib"), stub);
+    assert.strictEqual(result.owned.length, 1);
+    assert.strictEqual(result.owned[0].title, "The Jester Race/Black-Ash Inheritance");
+    assert.strictEqual(stub._state[0].ownedLossless, true);
+    assert.deepStrictEqual(stub._state[0].buyLinks, [], "an owned album needs no shop links");
+  });
+
+  it("still keeps a live release distinct from the studio album", async () => {
+    makeAlbum("lib", "ICS Vortex", "Storm Seeker (Live)", ["01.flac"]);
+    const stub = makeWishlistStub([
+      { artist: "ICS Vortex", title: "Storm Seeker", source: "roon-tag" },
+    ]);
+    const result = await lossless.markOwnedTaggedAlbums(path.join(root, "lib"), stub);
+    assert.strictEqual(result.owned.length, 0);
+    assert.notStrictEqual(stub._state[0].ownedLossless, true);
+  });
+});
