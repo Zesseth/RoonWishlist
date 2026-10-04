@@ -833,6 +833,25 @@ function isLowQualityEntry(album) {
     || (album.qualityFlacTracks !== undefined && album.qualityTotalTracks !== undefined);
 }
 
+// The low-quality scan names albums from filesystem folder names, where Roon's
+// punctuation cannot survive (":wumpscut:" -> "Wumpscut", "Chaos A.D." ->
+// "Chaos A.D_"), while tag rows carry Roon's metadata verbatim. Badge matching
+// (issue #70) therefore compares punctuation-insensitively; the exact albumKey
+// stays the identity for every other wishlist operation.
+// Roon also appends release-version qualifiers to titles — "(2015 Remaster)",
+// "(Remastered)", "(Deluxe Edition)" — that folder names never carry. Those
+// describe the same release, so they are dropped too. Content qualifiers such
+// as "(Live)" are kept: they denote a different album.
+const BADGE_VERSION_QUALIFIER = /[([{][^)\]}]*(?:remaster|deluxe|edition|expanded|reissue|bonus|anniversary|version)[^)\]}]*[)\]}]/gi;
+
+function badgeMatchKey(album) {
+  const norm = (value) => String(value || "")
+    .replace(BADGE_VERSION_QUALIFIER, " ")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "");
+  return `${norm(album.artist)}||${norm(album.title)}`;
+}
+
 function summarizeCleanResult(result) {
   const keptByReason = new Map();
   for (const entry of result.kept) {
@@ -1194,7 +1213,14 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (req.method === "GET" && url.pathname === "/wishlist/low-quality") {
-    const lowQualityAlbums = wishlist.getAll().filter(isLowQualityEntry);
+    // A low-quality album the user has since tagged "Wishlist" in Roon is stored as
+    // a separate roon-tag row (source promotion, issue #47). Point the UI at it so
+    // the low-quality list can badge it without an extra browse round-trip (issue #70).
+    const taggedKeys = new Set(wishlist.getAll().filter(isTagSourced).map(badgeMatchKey));
+    const lowQualityAlbums = wishlist.getAll().filter(isLowQualityEntry).map((album) => ({
+      ...album,
+      roonTagged: taggedKeys.has(badgeMatchKey(album)),
+    }));
     res.end(JSON.stringify(lowQualityAlbums, null, 2));
     return;
   }
