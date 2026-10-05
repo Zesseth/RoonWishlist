@@ -264,6 +264,7 @@
       border-bottom: none;
     }
     .toolbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .sort-select { font: inherit; font-size: 12px; padding: 2px 6px; margin-left: 10px; }
     .count { font-size: 13px; color: var(--muted); }
     .sync-note { margin-top: 6px; font-size: 13px; color: var(--muted); }
     .sync-note.warn { color: #d7b46a; }
@@ -348,7 +349,19 @@
           <h2 style="margin:0;">Wishlist</h2>
           <p class="hint" style="margin:2px 0 0;">Import albums tagged "Wishlist" from Roon and fetch store links.</p>
         </div>
-        <span class="count" id="count"></span>
+        <div>
+          <label class="count" for="wishlist-filter">Show</label>
+          <select class="sort-select" id="wishlist-filter" data-filter-list="wishlist" data-filter-kind="streaming">
+            <option value="all">All albums</option>
+            <option value="gone">Gone from streaming</option>
+          </select>
+          <label class="count" for="wishlist-sort">Sort</label>
+          <select class="sort-select" id="wishlist-sort" data-sort-list="wishlist">
+            <option value="added">Added date (newest)</option>
+            <option value="name">Name (artist &mdash; album)</option>
+          </select>
+          <span class="count" id="count"></span>
+        </div>
       </div>
       <ul class="list" id="wishlist"></ul>
     </section>
@@ -371,7 +384,19 @@
           <h2 style="margin:0;">Low-quality albums</h2>
           <div class="sync-note" id="low-quality-note">Albums in your library that are not fully FLAC.</div>
         </div>
-        <span class="count" id="low-quality-count"></span>
+        <div>
+          <label class="count" for="low-quality-filter">Show</label>
+          <select class="sort-select" id="low-quality-filter" data-filter-list="low-quality" data-filter-kind="roon-tag">
+            <option value="all">All albums</option>
+            <option value="tagged">Tagged Wishlist in Roon</option>
+          </select>
+          <label class="count" for="low-quality-sort">Sort</label>
+          <select class="sort-select" id="low-quality-sort" data-sort-list="low-quality">
+            <option value="added">Added date (newest)</option>
+            <option value="name">Name (artist &mdash; album)</option>
+          </select>
+          <span class="count" id="low-quality-count"></span>
+        </div>
       </div>
       <ul class="list" id="low-quality-list"></ul>
       <div class="results low-quality-summary" id="low-quality-results"></div>
@@ -1069,10 +1094,16 @@
       if (!section || !ul) return;
       section.hidden = !items.length;
       ul.innerHTML = "";
-      $("owned-count").textContent = items.length + (items.length === 1 ? " album" : " albums");
-      if (!items.length) return;
+      const filteredOwned = filterWishlistItems(items, getFilterPref("wishlist"));
+      $("owned-count").textContent = countLabel(filteredOwned.length, items.length);
+      if (!filteredOwned.length) {
+        if (items.length) {
+          ul.innerHTML = '<li class="empty">No albums match the current filter.</li>';
+        }
+        return;
+      }
       // No store search here: you already own these, so buy links would be noise.
-      renderWishlistItems(ul, items, false, { showStores: false });
+      renderWishlistItems(ul, filteredOwned, false, { showStores: false, listId: "wishlist" });
       showUntagSupport();
     }
 
@@ -1094,30 +1125,132 @@
       }
     }
 
+    // Sort preference per list (issue #71): "added" (default, newest first) or
+    // "name". Persisted in localStorage so the choice survives reloads.
+    const SORT_KEYS = ["added", "name"];
+    const sortPrefs = {};
+    function getSortPref(listId) {
+      const v = sortPrefs[listId];
+      return SORT_KEYS.indexOf(v) >= 0 ? v : "added";
+    }
+    function setSortPref(listId, value) {
+      sortPrefs[listId] = SORT_KEYS.indexOf(value) >= 0 ? value : "added";
+      try {
+        localStorage.setItem("wishlist-sort-" + listId, sortPrefs[listId]);
+      } catch (e) { /* storage may be unavailable; the in-memory pref still applies */ }
+    }
+    function loadSortPrefs() {
+      for (const sel of document.querySelectorAll("select[data-sort-list]")) {
+        const listId = sel.getAttribute("data-sort-list");
+        let stored = null;
+        try {
+          stored = localStorage.getItem("wishlist-sort-" + listId);
+        } catch (e) { /* ignore */ }
+        sortPrefs[listId] = SORT_KEYS.indexOf(stored) >= 0 ? stored : "added";
+        sel.value = sortPrefs[listId];
+        sel.addEventListener("change", () => {
+          setSortPref(listId, sel.value);
+          if (listId === "low-quality") loadLowQualityWishlist();
+          else loadRoonTagWishlist();
+        });
+      }
+    }
+    // Filter preference per list (issue #83): "all" (default) or a badge-driven
+    // condition. Persisted in localStorage so the choice survives reloads.
+    const filterPrefs = {};
+    function getFilterPref(listId) {
+      const v = filterPrefs[listId];
+      return v || "all";
+    }
+    function setFilterPref(listId, value) {
+      filterPrefs[listId] = value;
+      try {
+        localStorage.setItem("wishlist-filter-" + listId, filterPrefs[listId]);
+      } catch (e) { /* storage may be unavailable; the in-memory pref still applies */ }
+    }
+    function loadFilterPrefs() {
+      for (const sel of document.querySelectorAll("select[data-filter-list]")) {
+        const listId = sel.getAttribute("data-filter-list");
+        let stored = null;
+        try {
+          stored = localStorage.getItem("wishlist-filter-" + listId);
+        } catch (e) { /* ignore */ }
+        const valid = stored && Array.from(sel.options).some((o) => o.value === stored);
+        filterPrefs[listId] = valid ? stored : "all";
+        sel.value = filterPrefs[listId];
+        sel.addEventListener("change", () => {
+          setFilterPref(listId, sel.value);
+          if (listId === "low-quality") loadLowQualityWishlist();
+          else loadRoonTagWishlist();
+        });
+      }
+    }
+    // Streaming-availability filter (issue #83): the streaming check flags
+    // entries that disappeared from every checked catalogue (issue #34), so
+    // "gone" keeps only those. Owned-lossless entries are never flagged, so
+    // they simply disappear from the filtered view.
+    function filterWishlistItems(items, pref) {
+      if (pref !== "gone") return items;
+      return items.filter((a) => a.streamUnavailable === true);
+    }
+    // Roon-tag filter (issue #83): the low-quality API marks rows that also
+    // exist as a roon-tag entry (issue #70), i.e. tagged "Wishlist" in Roon
+    // right now.
+    function filterLowQualityItems(items, pref) {
+      if (pref !== "tagged") return items;
+      return items.filter((a) => a.roonTagged === true);
+    }
+    function countLabel(shown, total) {
+      return shown === total
+        ? total + (total === 1 ? " album" : " albums")
+        : shown + " / " + total + " albums";
+    }
+    // Stable, deterministic sort (issue #71): by name (artist, then title,
+    // locale-aware, case-insensitive) with added date as the tie-breaker, or
+    // by added date (newest first) with name as the tie-breaker.
+    function sortWishlistItems(items, pref) {
+      const byAdded = (a, b) => String(b.addedAt || "").localeCompare(String(a.addedAt || ""))
+        || String(a.artist || "").localeCompare(String(b.artist || ""), undefined, { sensitivity: "base" })
+        || String(a.title || "").localeCompare(String(b.title || ""), undefined, { sensitivity: "base" });
+      const byName = (a, b) => String(a.artist || "").localeCompare(String(b.artist || ""), undefined, { sensitivity: "base" })
+        || String(a.title || "").localeCompare(String(b.title || ""), undefined, { sensitivity: "base" })
+        || String(b.addedAt || "").localeCompare(String(a.addedAt || ""));
+      return items.slice().sort(pref === "name" ? byName : byAdded);
+    }
     function renderRoonTagWishlist(items) {
       const ul = $("wishlist");
+      const filtered = filterWishlistItems(items, getFilterPref("wishlist"));
       ul.innerHTML = "";
-      $("count").textContent = items.length + (items.length === 1 ? " album" : " albums");
+      $("count").textContent = countLabel(filtered.length, items.length);
       if (!items.length) {
         ul.innerHTML = '<li class="empty">Wishlist is empty. Tag albums with "Wishlist" in Roon to populate it.</li>';
         return;
       }
-      renderWishlistItems(ul, items, false);
+      if (!filtered.length) {
+        ul.innerHTML = '<li class="empty">No albums match the current filter.</li>';
+        return;
+      }
+      renderWishlistItems(ul, filtered, false, { listId: "wishlist" });
     }
 
     function renderLowQualityWishlist(items) {
       const ul = $("low-quality-list");
       if (!ul) return;
+      const filteredLq = filterLowQualityItems(items, getFilterPref("low-quality"));
       const countEl = $("low-quality-count");
-      if (countEl) countEl.textContent = items.length + (items.length === 1 ? " album" : " albums");
+      if (countEl) countEl.textContent = countLabel(filteredLq.length, items.length);
       ul.innerHTML = "";
       if (!items.length) {
         ul.innerHTML = '<li class="empty">No low-quality albums on wishlist. Use Settings → Low-quality albums tab → "Scan low-quality albums now" to add albums here.</li>';
         return;
       }
+      if (!filteredLq.length) {
+        ul.innerHTML = '<li class="empty">No albums match the current filter.</li>';
+        return;
+      }
       // The roonTagged flag comes from the API (issue #70): the album also exists
       // as a roon-tag row, meaning it is tagged "Wishlist" in Roon right now.
-      renderWishlistItems(ul, items, true, { showRoonTagBadge: true });
+      renderWishlistItems(ul, filteredLq, true, { showRoonTagBadge: true, listId: "low-quality" });
       // Low-quality albums are managed with Ignore only (issue #47): a plain
       // reversible Remove would just be re-added by the next scan, which makes
       // it a no-op that competes with the real decision (Ignore).
@@ -1126,8 +1259,7 @@
     function renderWishlistItems(ul, items, showIgnore, options) {
       const showStores = !options || options.showStores !== false;
       const showRoonTagBadge = !!(options && options.showRoonTagBadge);
-      // Newest first.
-      const sorted = items.slice().sort((a, b) => String(b.addedAt || "").localeCompare(String(a.addedAt || "")));
+      const sorted = sortWishlistItems(items, getSortPref(options && options.listId));
       for (const a of sorted) {
         const li = document.createElement("li");
         const added = a.addedAt ? new Date(a.addedAt).toLocaleDateString() : "";
@@ -1598,6 +1730,8 @@
     loadStatus();
     loadSettings();
     loadStorageLocations();
+    loadSortPrefs();
+    loadFilterPrefs();
     loadWishlist();
     setInterval(loadStatus, 10000);
     setInterval(loadWishlist, 30000);
