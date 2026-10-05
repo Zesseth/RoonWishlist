@@ -1087,7 +1087,7 @@
       $("owned-count").textContent = items.length + (items.length === 1 ? " album" : " albums");
       if (!items.length) return;
       // No store search here: you already own these, so buy links would be noise.
-      renderWishlistItems(ul, items, false, { showStores: false });
+      renderWishlistItems(ul, items, false, { showStores: false, listId: "wishlist" });
       showUntagSupport();
     }
 
