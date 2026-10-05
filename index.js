@@ -21,6 +21,8 @@ const scanLocations = require("./src/scan_locations");
 const { createScheduler, isValidTime: isValidNightlyTime } = require("./src/nightly_scheduler");
 const loggerModule = require("./src/logger");
 const qobuzLocation = require("./src/qobuz_location");
+const { isOnQobuz } = require("./src/search");
+const streaming = require("./src/streaming_availability");
 const log = loggerModule.defaultLogger;
 
 let roon, mysettings, svc_status;
@@ -51,6 +53,14 @@ let roonStorageDiagnostic = {
 // Last resolved view of where scans will run, cached so the settings screen can show
 // it without re-querying Roon on every render.
 let resolvedScanLocations = { locations: [], active: [], excluded: [], manualOnly: false };
+
+// Streaming services the paired Roon core shows in its browse root (issue #34).
+// Read once per pairing and on demand: the tree root is version-dependent, so the
+// cached view is only ever refreshed by an explicit ask or a re-pair.
+let streamingServices = [];
+let streamingServicesDiagnostic = { outcome: "not-checked", detail: "Roon has not been asked yet." };
+let streamingCheckInProgress = false;
+let lastStreamingCheck = null;
 
 // Roon identifies an extension by `extension_id`. Two processes sharing one id fight
 // over the pairing, so a test build must announce itself as a different extension.
@@ -83,6 +93,12 @@ const roonApp = new RoonApi({
     // would notice. Everyday scans do not ask again — the answer does not change.
     resolveActiveScanLocations({ refresh: true }).catch((err) => {
       log.warn("Could not resolve scan locations after pairing:", err.message);
+    });
+    // Same pattern for logged-in streaming services (issue #34): one read per
+    // pairing, because the browse tree root only changes when the user logs a
+    // service in or out (or reboots the core).
+    refreshStreamingServices().catch((err) => {
+      log.warn("Could not read streaming services after pairing:", err.message);
     });
   },
 
@@ -246,6 +262,13 @@ function summarizeNightlyRun(run) {
       { added: lq.added, alreadyPresent: lq.alreadyPresent, ignored: lq.ignored, upgraded: lq.upgraded }),
     roonTagSync: rt && (rt.error ? { error: rt.error } : rt.skipped ? { skipped: true, reason: rt.reason } :
       { added: rt.added, updated: rt.updated, unchanged: rt.unchanged, removed: rt.removed, ownedCheck: summarizeOwnedCheck(rt.ownedCheck) }),
+    streamingCheck: (() => {
+      const sc = run.tasks && run.tasks.streamingCheck;
+      if (!sc) return undefined;
+      if (sc.error) return { error: sc.error };
+      if (sc.skipped) return { skipped: true, reason: sc.reason };
+      return { checked: sc.checked, flagged: Array.isArray(sc.flagged) ? sc.flagged.length : sc.flagged, unknown: sc.unknown, errors: sc.errors };
+    })(),
   };
 }
 
@@ -706,6 +729,113 @@ async function triggerReconciliation() {
   }
 }
 
+/**
+ * Reads which streaming services the paired core shows (issue #34).
+ *
+ * The browse tree root is the only carrier the SDK offers — there is no
+ * service-listing call — and its contents are version-dependent, so the outcome
+ * is cached with a diagnostic rather than re-queried on every render. When Roon
+ * shows no recognized service, the configured default (Qobuz) is what gets
+ * checked instead; the diagnostic makes that visible instead of silent.
+ */
+async function refreshStreamingServices() {
+  const browseService = getBrowseService();
+  if (!browseService) {
+    streamingServicesDiagnostic = {
+      outcome: "not-paired",
+      detail: "Not paired with Roon, so logged-in streaming services cannot be read yet.",
+    };
+    streamingServices = [];
+    return streamingServices;
+  }
+  const { services, diagnostic } = await streaming.listStreamingServicesDetailed(browseService);
+  streamingServices = services;
+  streamingServicesDiagnostic = diagnostic;
+  if (services.length) log.info(`Streaming services in Roon: ${services.join(", ")}`);
+  return services;
+}
+
+/**
+ * Which services the availability check actually asks. Roon's list when it gave
+ * one; otherwise the configured fallback, which is Qobuz today because that is
+ * the one catalogue probe implemented (issue #34 discussion: default to Qobuz
+ * rather than guess). A service Roon reports but that has no probe (e.g. TIDAL)
+ * is kept in the list only when a probe exists for it — an unanswered question
+ * must not be reported as a check.
+ */
+function activeStreamingServices() {
+  const probes = availableStreamingProbes();
+  const names = Object.keys(probes);
+  const fromRoon = streamingServices.filter((service) => names.includes(service));
+  return fromRoon.length ? fromRoon : names;
+}
+
+function availableStreamingProbes() {
+  const probes = {};
+  probes.qobuz = (artist, title) => isOnQobuz(artist, title, mysettings.qobuz_country);
+  return probes;
+}
+
+/**
+ * Wishlist albums already owned locally in full lossless, so the streaming check
+ * can leave them alone: a complete local lossless copy makes streaming moot — the
+ * wishlist goal is met, so "gone from streaming" would be noise. A lossy-only local
+ * copy does not qualify (the album is on the wishlist to be upgraded, so streaming
+ * availability stays significant), and mixed copies do not either, for the same
+ * reason the lossless scan keeps them. Measured on the paired core (issue #34):
+ * a large share of tagged wishlist albums are local; without this gate the check
+ * would cry wolf on albums that are already settled. No resolved locations means no
+ * locality knowledge — the check then keeps its previous, stricter behaviour
+ * rather than silently changing meaning.
+ */
+async function collectLocalWishlistAlbums() {
+  const locations = resolvedScanLocations.active || [];
+  if (!locations.length) return [];
+  try {
+    return await lossless.findLosslessLocalItems(locations, wishlist.getAll());
+  } catch (err) {
+    log.warn("Could not classify local albums for the streaming check:", err.message);
+    return [];
+  }
+}
+
+/**
+ * Runs the streaming-catalogue check over the wishlist (issue #34): for every
+ * entry, asks each active service whether the album is in its catalogue, stores
+ * the state on the entry, and flags entries that disappeared from all of them.
+ * Probe failures count as "unknown", never as "gone", so a flaky catalogue API
+ * cannot trigger buy-urgency flags.
+ */
+async function runStreamingAvailabilityCheck() {
+  if (streamingCheckInProgress) {
+    throw makeHttpError(409, "A streaming availability check is already running");
+  }
+  const services = activeStreamingServices();
+  if (!services.length) {
+    throw makeHttpError(503, "No streaming catalogue probe is available.");
+  }
+  streamingCheckInProgress = true;
+  try {
+    const result = await streaming.checkStreamingAvailability({
+      wishlist,
+      probes: availableStreamingProbes(),
+      services,
+      localAlbums: await collectLocalWishlistAlbums(),
+    });
+    lastStreamingCheck = { timestamp: new Date().toISOString(), result };
+    log.info("Streaming availability check finished:", {
+      status: result.status,
+      checked: result.checked,
+      flagged: result.flagged.length,
+      unknown: result.unknown,
+      errors: result.errors,
+    });
+    return result;
+  } finally {
+    streamingCheckInProgress = false;
+  }
+}
+
 async function getStorageLocationsFromRoon() {
   const browseService = getBrowseService();
   if (!browseService) {
@@ -1142,6 +1272,20 @@ async function runNightlyAutomation() {
   } catch (e) {
     tasks.roonTagSync = { error: e.message };
   }
+  // Streaming-catalogue watch (issue #34) runs after the tag sync so entries added
+  // by the sync are covered the same night. A probe-less or empty-wishlist outcome
+  // is a skip, not a failure - reported, never thrown.
+  try {
+    await refreshStreamingServices().catch(() => {});
+    const services = activeStreamingServices();
+    if (services.length && wishlist.getAll().length) {
+      tasks.streamingCheck = await runStreamingAvailabilityCheck();
+    } else {
+      tasks.streamingCheck = { skipped: true, reason: services.length ? "Wishlist is empty" : "No streaming catalogue probe available" };
+    }
+  } catch (e) {
+    tasks.streamingCheck = { error: e.message };
+  }
 
   lastNightlyRun = { startedAt, finishedAt: new Date().toISOString(), tasks };
   // Summary only — `tasks.lowQuality`/`tasks.roonTagSync` can each carry per-album
@@ -1174,6 +1318,7 @@ const server = http.createServer(async (req, res) => {
     "/ignore-low-quality",
     "/sync-roon-tag",
     "/roon-tag/write-support",
+    "/streaming/services",
     "/rebuild-from-roon-tag",
     "/settings",
     "/status",
@@ -1343,6 +1488,34 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // Which streaming services the paired core shows, with the evidence of what the
+  // browse root contained (issue #34). Cheap: one browse call, cached.
+  if (req.method === "GET" && url.pathname === "/streaming/services") {
+    if (streamingServicesDiagnostic.outcome === "not-checked" && getBrowseService()) {
+      await refreshStreamingServices().catch((err) => {
+        log.warn("Could not read streaming services:", err.message);
+      });
+    }
+    res.end(JSON.stringify({
+      services: streamingServices,
+      diagnostic: streamingServicesDiagnostic,
+      checkedServices: activeStreamingServices(),
+    }));
+    return;
+  }
+
+  // Run the streaming-catalogue availability check over the wishlist now.
+  if (req.method === "POST" && url.pathname === "/streaming/check") {
+    if (!getBrowseService() && !wishlist.getAll().length) {
+      res.statusCode = 503;
+      res.end(JSON.stringify({ error: "No browse service and an empty wishlist — nothing to check." }));
+      return;
+    }
+    const result = await runStreamingAvailabilityCheck();
+    res.end(JSON.stringify(result, null, 2));
+    return;
+  }
+
   if (req.method === "GET" && url.pathname === "/roon-tag/write-support") {
     if (!pairedCore) {
       res.statusCode = 503;
@@ -1440,6 +1613,10 @@ const server = http.createServer(async (req, res) => {
       scanLocations: resolvedScanLocations.locations,
       activeScanLocations: resolvedScanLocations.active,
       excludedScanLocations: resolvedScanLocations.excluded,
+      streamingServices,
+      streamingDiagnostic: streamingServicesDiagnostic,
+      streamingCheckInProgress,
+      lastStreamingCheck,
       count: wishlist.getAll().length,
       version: APP_VERSION,
       extensionId: EXTENSION_ID,

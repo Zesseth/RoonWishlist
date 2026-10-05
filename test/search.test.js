@@ -6,6 +6,7 @@ const {
   searchBandcamp,
   searchQobuz,
   searchAll,
+  availableOnQobuz,
   buildQuery,
   rankResults,
 } = require("../src/search");
@@ -168,5 +169,153 @@ describe("search module", () => {
       assert.ok(Array.isArray(result));
       // Result is combined array, could be empty if no results
     });
+  });
+});
+
+describe("availableOnQobuz", () => {
+  // Shape captured from the live public album/search payload (issue #34): every
+  // album item carries explicit streamable/purchasable flags.
+  const qobuzItem = (artist, title, streamable) => ({
+    title,
+    artist: { name: artist },
+    streamable,
+    purchasable: streamable !== false,
+  });
+
+  it("counts a streamable catalogue hit as available", () => {
+    assert.strictEqual(
+      availableOnQobuz([qobuzItem("Opeth", "Blackwater Park", true)], "Opeth", "Blackwater Park"),
+      true,
+    );
+  });
+
+  it("does not count a purchase-only release: in the catalogue but not streamable", () => {
+    assert.strictEqual(
+      availableOnQobuz([qobuzItem("Opeth", "Blackwater Park", false)], "Opeth", "Blackwater Park"),
+      false,
+    );
+  });
+
+  it("falls back to catalogue existence when the payload has no streamable flag", () => {
+    const item = qobuzItem("Opeth", "Blackwater Park", undefined);
+    delete item.streamable;
+    assert.strictEqual(availableOnQobuz([item], "Opeth", "Blackwater Park"), true);
+  });
+
+  it("does not let a different act's similarly-titled album satisfy the probe", () => {
+    assert.strictEqual(
+      availableOnQobuz([qobuzItem("Pink Floyd", "Wish You Were Here", true)], "Opeth", "Wish You Were Here"),
+      false,
+    );
+  });
+
+  it("returns false for an empty catalogue answer", () => {
+    assert.strictEqual(availableOnQobuz([], "Opeth", "Blackwater Park"), false);
+  });
+
+  it("finds the album when it is not the first search result", () => {
+    // Live shape from the Machinae Supremacy self-titled case: the search returns
+    // the artist's other albums first and the wanted one further down. All items
+    // must survive to the ranking stage, which needs a distinct dedupe key per
+    // result — a shared placeholder URL collapsed the set to its first item and
+    // the probe answered "not available" for a streamable album.
+    const album = (title, id) => ({
+      title,
+      artist: { name: "Machinae Supremacy" },
+      url: `https://www.qobuz.com/fi-en/album/${id}`,
+      id,
+      streamable: true,
+    });
+    assert.strictEqual(
+      availableOnQobuz(
+        [
+          album("A View From The End Of The World", "aaaa"),
+          album("Overworld", "bbbb"),
+          album("Phantom Shadow", "cccc"),
+          album("Rise Of A Digital Nation", "dddd"),
+          album("Deus Ex Machinae", "eeee"),
+          album("Machinae Supremacy", "tk9cknzw7gdyn"),
+        ],
+        "Machinae Supremacy",
+        "Machinae Supremacy",
+      ),
+      true,
+    );
+  });
+
+  it("dedupes on the album identity when the API omits urls", () => {
+    const album = (title, id) => ({
+      title,
+      artist: { name: "Machinae Supremacy" },
+      id,
+      streamable: true,
+    });
+    assert.strictEqual(
+      availableOnQobuz(
+        [
+          album("A View From The End Of The World", "aaaa"),
+          album("Machinae Supremacy", "tk9cknzw7gdyn"),
+        ],
+        "Machinae Supremacy",
+        "Machinae Supremacy",
+      ),
+      true,
+    );
+  });
+});
+
+describe("artist punctuation matching (issue #78)", () => {
+  const stormSeeker = {
+    store: "Qobuz",
+    title: "Storm Seeker",
+    artist: "ICS Vortex",
+    url: "https://www.qobuz.com/album/storm-seeker-ics-vortex",
+  };
+
+  it("accepts the store's undotted artist when the wishlist artist is dotted", () => {
+    const results = rankResults([stormSeeker], "I.C.S. Vortex", "Storm Seeker");
+    assert.strictEqual(results.length, 1);
+  });
+
+  it("accepts the dotted artist when the store result is the dotted spelling", () => {
+    const results = rankResults(
+      [{ ...stormSeeker, artist: "I.C.S. Vortex" }],
+      "ICS Vortex",
+      "Storm Seeker",
+    );
+    assert.strictEqual(results.length, 1);
+  });
+
+  it("counts the album as available on Qobuz under the dotted spelling", () => {
+    // The exact shape of the live false negative: Roon's metadata said
+    // "I.C.S. Vortex", Qobuz's catalogue says "ICS Vortex", and the probe
+    // answered "not available" for an album that is streamable.
+    assert.strictEqual(
+      availableOnQobuz(
+        [
+          {
+            title: "Storm Seeker",
+            artist: { name: "ICS Vortex" },
+            streamable: true,
+            purchasable: true,
+          },
+        ],
+        "I.C.S. Vortex",
+        "Storm Seeker",
+      ),
+      true,
+    );
+  });
+});
+
+describe("searchBandcamp punctuation fallback (issue #78)", () => {
+  it("finds the album although the wishlist artist is dotted", async () => {
+    // Bandcamp's autocomplete returns nothing for "I.C.S. Vortex" at the query
+    // level; the fallback re-asks with the punctuation stripped and finds the
+    // Soulseller Records page. Live call, like the other store tests.
+    const results = await searchBandcamp("I.C.S. Vortex", "Storm Seeker");
+    assert.ok(Array.isArray(results));
+    assert.ok(results.length >= 1, "expected the fallback query to find the album");
+    assert.strictEqual(results[0].artist, "ICS Vortex");
   });
 });

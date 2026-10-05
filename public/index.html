@@ -186,6 +186,7 @@
     ul.list li:last-child { border-bottom: none; }
     .album-main { min-width: 0; }
     .roon-tag-badge { display: inline-block; margin-left: 8px; padding: 1px 8px; font-size: 11px; font-weight: 600; color: var(--accent); border: 1px solid var(--accent); border-radius: 999px; vertical-align: middle; }
+    .stream-unavailable-badge { display: inline-block; margin-left: 8px; padding: 1px 8px; font-size: 11px; font-weight: 700; color: var(--danger); border: 1px solid var(--danger); border-radius: 999px; vertical-align: middle; background: rgba(220,60,60,0.08); }
     .album-artist { font-weight: 600; }
     .album-title { color: var(--muted); }
     .album-meta { font-size: 12px; color: var(--muted); margin-top: 2px; }
@@ -464,7 +465,9 @@
         <div class="sync-note" id="sync-note">Albums tagged Wishlist in Roon. To take one off the list, remove the Wishlist tag in Roon and sync.</div>
         <div class="row" style="gap:8px;margin-top:8px;">
           <button class="secondary small" id="sync-roon-btn">Sync and refresh</button>
+          <button class="secondary small" id="streaming-check-btn">Check streaming availability</button>
         </div>
+        <div class="sync-note" id="streaming-note"></div>
         <p class="hint" style="margin-top:8px;">One action: reads albums tagged "Wishlist" from Roon, updates the list and store links, and refreshes the view. The page also refreshes on its own every 30 seconds.</p>
         <div class="danger-zone">
           <h3>Danger Zone</h3>
@@ -1196,10 +1199,13 @@
         const roonTagBadge = showRoonTagBadge && a.roonTagged
           ? '<span class="roon-tag-badge" title="Tagged \u201cWishlist\u201d in Roon">wishlist</span>'
           : '';
+        const streamBadge = a.streamUnavailable
+          ? '<span class="stream-unavailable-badge" title="Not found in any checked streaming catalogue \u2014 if it is still buyable, consider buying it now">gone from streaming</span>'
+          : '';
         li.innerHTML =
           '<div class="album-main">' +
             '<div><span class="album-artist">' + esc(a.artist) + '</span> ' +
-            '<span class="album-title">&mdash; ' + esc(a.title) + '</span>' + roonTagBadge + '</div>' +
+            '<span class="album-title">&mdash; ' + esc(a.title) + '</span>' + roonTagBadge + streamBadge + '</div>' +
             (added ? '<div class="album-meta">added ' + esc(added) + '</div>' : '') +
             qualityMeta +
             '<div class="results" data-results></div>' +
@@ -1433,6 +1439,36 @@
         btn.disabled = false;
         btn.textContent = original;
       } finally {
+        await loadStatus();
+      }
+    });
+
+    // Streaming-catalogue availability check (issue #34): asks each configured
+    // service whether the album is in its catalogue right now, and flags entries
+    // that disappeared from all of them.
+    $("streaming-check-btn").addEventListener("click", async () => {
+      const btn = $("streaming-check-btn");
+      if (!latestStatus.online) {
+        toast("Streaming check unavailable: the extension is offline.", "err");
+        return;
+      }
+      const original = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = "Checking…";
+      try {
+        const r = await api("/streaming/check", { method: "POST" });
+        const parts = [
+          "Checked " + r.checked + " album(s) against " + (r.services || []).join(", "),
+          "flagged " + (r.flagged ? r.flagged.length : 0) + " gone from streaming",
+        ];
+        if (r.unknown) parts.push(r.unknown + " unknown (probe errors)");
+        toast(parts.join(" — "), "ok");
+        await loadWishlist();
+      } catch (e) {
+        toast("Streaming check failed: " + e.message, "err");
+      } finally {
+        btn.disabled = false;
+        btn.textContent = original;
         await loadStatus();
       }
     });

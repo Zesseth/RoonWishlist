@@ -201,3 +201,95 @@ Since #1 write-back is blocked by Roon API limitations, prioritize:
 4. **#9 Distribution** — Release process and documentation
 
 The extension is feature-complete for v1.0 with current Roon API constraints.
+
+## Streaming playability is not exposed; catalogue existence is measured instead — 2026-10-04
+
+Issue #34 asked whether wishlist albums whose tracks are unavailable in Roon can be
+flagged. Three separate facts settle how:
+
+1. **Playability is not in the Browse payload.** An `Item` carries only `title`,
+   `subtitle`, `image_key`, `item_key`, `hint` and `input_prompt` (see
+   `node-roon-api-browse/lib.js`). No field or hint value marks a track or album as
+   unavailable; the greyed-out "unavailable" state in Roon's own clients is applied
+   client-side and never offered to extensions. Roon's own UI cannot even Focus on
+   unavailable tracks, and the in-product fix (Playlist Improver) is also client-side.
+2. **There is no service-listing call either.** The SDK registers no API to ask which
+   streaming services are logged in. The browse tree root — where Roon's own UI shows
+   them — is the only carrier, so `GET /streaming/services` reads it once per pairing
+   and returns a diagnostic with every root title it saw, evidence rather than a claim.
+3. **"Is it streamable somewhere" is answerable without Roon.** The rescoped feature
+   asks the catalogues directly: `isOnQobuz()` in `src/search.js` reuses the public
+   Qobuz album search (no `purchasable` filter — an album that stopped being buyable
+   but is still streamable must count as available), and the checks are wired in
+   `src/streaming_availability.js`.
+
+**Consequence:** a wishlist entry carries a `streaming` state
+(`available: true|false|"unknown"`, `services`, `checkedAt`, `lastSeenAt`) plus a
+`streamUnavailable` flag. A flag is raised only when the album was seen streamable
+before, or is `roon-tag` sourced *and not already owned locally in full lossless*
+("local wins, but only in lossless" — a lossy rip is on the wishlist to be upgraded,
+so streaming stays significant for it), and is now absent from every checked catalogue.
+Probe errors always count as `unknown`, never as gone — a flaky catalogue API must
+not trigger buy-urgency.
+
+**Known limits, accepted:**
+- Catalogue existence is not subscription-tier playability. An album can be in the
+  catalogue but not playable on the user's tier; that distinction is invisible to any
+  public route and out of scope.
+- TIDAL (or any other service) is only checked once a probe exists for it. Until then
+  the service list from Roon narrows the check to services with probes, and a missing
+  probe never silently counts as "gone".
+- The browse-root service read is version-dependent; the diagnostic in
+  `/streaming/services` says what the root actually contained.
+
+## Live-core measurements for the streaming watch — Roon 2.73, 2026-10-04
+
+Measured against the paired production core (Roon 2.73, build 1696) with one Qobuz
+account logged in, with a one-shot browse probe extension. Raw evidence:
+`/streaming/services` on a paired install returns the same diagnostic the probe saw.
+
+**The browse tree root.** Six items, every one with an `item_key` and `hint: "list"`:
+
+```
+Library, Playlists, My Live Radio, Genres, Qobuz, Settings
+```
+
+- Services appear by their plain name ("Qobuz"), so title matching is the right read.
+- "My Live Radio" is a navigation entry the user's saved live-radio stations create;
+  it is version-dependent and was added to the known non-service titles so the
+  diagnostic does not report it as unrecognized noise.
+- The Qobuz subtree offers New Releases, Playlists, Taste of Qobuz, My Qobuz — and
+  **no Search entry**. Searching a service's catalogue goes through the global
+  `search` hierarchy, not through the service item, which matters if a future
+  TIDAL probe tries the browse route.
+
+**Search input is sticky without `pop_all`.** Issuing a new `input` on the same
+multi-session key without `pop_all: true` returns the *previous* search's results
+(the response's list subtitle still names the old query). Every new search must
+`pop_all: true`, or open a fresh session key. The production code already does
+this (`openTagViaSearch`); the probe initially did not, which is how it was measured.
+
+**The Qobuz public API answers more than "does it exist".** Every album item in
+`album/search` carries explicit `streamable` and `purchasable` flags (measured
+live, e.g. The Dark Side of the Moon: `purchasable: true, streamable: true`).
+`isOnQobuz()` therefore reads availability as "a credible match that Qobuz itself
+does not mark `streamable: false`" — a purchase-only release (in the catalogue, not
+streamable anywhere) is exactly the buy-it-now state, not an available one. A
+payload without the flag falls back to catalogue existence.
+
+**Tagged wishlist albums are not all streaming albums — but "local wins" only in
+lossless.** On this library, 57 of the 160 roon-tag entries match local folders under
+`/music`. Flagging every one of those "gone from streaming" on its first catalogue
+miss would cry wolf for albums that are already settled — so entries already owned
+locally in **full lossless** (`lossless_checker.findLosslessLocalItems`) are never
+flagged: the wishlist goal is met and streaming is moot. The gate's title matching is
+deliberately looser than the lossless scan's removal path (issue #80): Roon titles a
+combined reissue "The Jester Race/Black-Ash Inheritance" while the folder says
+"The Jester Race (Black Ash-Inheritance Version)", and the loose form — edition words
+stripped inside brackets, bare-number and edition-only segments dropped, content
+segments like "(Live)" kept — bridges that without letting a live rip settle a studio
+album. A **lossy-only** local rip does not qualify: the album is on the wishlist
+precisely to be upgraded to lossless, so whether it can still be had from a streaming
+catalogue stays significant, and such entries participate in the check like any other
+(first miss included). Mixed copies do not qualify either, for the same reason the
+lossless scan keeps them on the wishlist.
