@@ -148,12 +148,27 @@ function promoteSource(existingSource, incomingSource) {
 function normalizeBuyLinks(links) {
   if (!Array.isArray(links)) return undefined;
   return links
-    .map((link) => ({
-      store: String(link && link.store ? link.store : "").trim(),
-      title: String(link && link.title ? link.title : "").trim(),
-      artist: String(link && link.artist ? link.artist : "").trim(),
-      url: String(link && link.url ? link.url : "").trim(),
-    }))
+    .map((link) => {
+      const normalized = {
+        store: String(link && link.store ? link.store : "").trim(),
+        title: String(link && link.title ? link.title : "").trim(),
+        artist: String(link && link.artist ? link.artist : "").trim(),
+        url: String(link && link.url ? link.url : "").trim(),
+      };
+      // A link keeps a price only when the store's own payload carried a numeric
+      // one — never an estimate. Currency is the ISO 4217 code; displayPrice is
+      // the store's formatted string (e.g. "13,99 €"); quality labels the tier
+      // the price refers to (e.g. "24-bit/96 kHz" on Qobuz).
+      const price = Number(link && link.price);
+      if (Number.isFinite(price) && price >= 0) normalized.price = price;
+      const currency = String(link && link.currency ? link.currency : "").trim().toUpperCase();
+      if (/^[A-Z]{3}$/.test(currency)) normalized.currency = currency;
+      const displayPrice = String(link && link.displayPrice ? link.displayPrice : "").trim();
+      if (displayPrice) normalized.displayPrice = displayPrice.slice(0, 40);
+      const quality = String(link && link.quality ? link.quality : "").trim();
+      if (quality) normalized.quality = quality.slice(0, 60);
+      return normalized;
+    })
     .filter((link) => link.store && link.url);
 }
 

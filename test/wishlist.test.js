@@ -120,6 +120,41 @@ describe("wishlist module", () => {
       assert.strictEqual(items[0].buyLinks.length, 1);
       assert.strictEqual(items[0].buyLinks[0].store, "Valid");
     });
+
+    it("should keep store-provided price fields on buy links", () => {
+      const buyLinks = [
+        {
+          store: "Qobuz",
+          url: "https://www.qobuz.com/fi-en/album/x/123",
+          title: "Test Album",
+          artist: "Test Artist",
+          price: 13.99,
+          currency: "eur",
+          displayPrice: "13,99 €",
+          quality: "24-bit/96 kHz",
+        },
+      ];
+      wishlist.add({ artist: "Test Artist", title: "Test Album", buyLinks });
+      const link = wishlist.getAll()[0].buyLinks[0];
+      assert.strictEqual(link.price, 13.99);
+      assert.strictEqual(link.currency, "EUR");
+      assert.strictEqual(link.displayPrice, "13,99 €");
+      assert.strictEqual(link.quality, "24-bit/96 kHz");
+    });
+
+    it("should drop a missing or invalid price instead of storing a guess", () => {
+      const buyLinks = [
+        { store: "Bandcamp", url: "https://x.bandcamp.com/album/y", price: "not-a-number" },
+        { store: "Bandcamp", url: "https://x.bandcamp.com/album/z", price: -5 },
+        { store: "Bandcamp", url: "https://x.bandcamp.com/album/w" },
+      ];
+      wishlist.add({ artist: "Test Artist", title: "Test Album", buyLinks });
+      const links = wishlist.getAll()[0].buyLinks;
+      assert.strictEqual(links.length, 3);
+      assert.strictEqual(links[0].price, undefined);
+      assert.strictEqual(links[1].price, undefined);
+      assert.strictEqual(links[2].price, undefined);
+    });
   });
 
   describe("remove()", () => {

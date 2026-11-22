@@ -9,7 +9,19 @@ const HTTP_HEADERS = {
     "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
 };
 
+// Storefront HTML pages answer a plain API client with 403; with document-ish
+// headers they are served server-rendered (measured live: 200 with the embedded
+// price data, 403 without).
+const PAGE_HEADERS = {
+  Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+  "Accept-Language": "en-US,en;q=0.9",
+  "sec-fetch-dest": "document",
+  "sec-fetch-mode": "navigate",
+  "sec-fetch-site": "none",
+};
+
 const BANDCAMP_API_URL = "https://bandcamp.com/api/bcsearch_public_api/1/autocomplete_elastic";
+const BANDCAMP_MOBILE_API_URL = "https://bandcamp.com/api/mobile/24/tralbum_details";
 const QOBUZ_API_URL = "https://www.qobuz.com/api.json/0.2/album/search";
 const DEFAULT_QOBUZ_APP_ID = "712109809";
 const FALLBACK_QOBUZ_APP_IDS = ["231339556", "546568742"];
@@ -56,14 +68,14 @@ function setCached(key, value) {
   });
 }
 
-async function requestJson(url, options = {}) {
+async function requestText(url, options = {}) {
   const method = options.method || "GET";
   const finalUrl = buildUrl(url, options.params);
   const body = typeof options.body === "string" ? options.body : null;
   const cacheKey = `${method} ${finalUrl} ${body || ""}`;
   const cached = getCached(cacheKey);
   if (cached) {
-    return { ok: true, data: cached, status: 200, cached: true };
+    return { ok: true, text: cached, status: 200, cached: true };
   }
 
   let lastResult = { ok: false, status: null, error: null };
@@ -81,9 +93,9 @@ async function requestJson(url, options = {}) {
       });
 
       if (resp.ok) {
-        const data = await resp.json();
-        setCached(cacheKey, data);
-        return { ok: true, data, status: resp.status, cached: false };
+        const text = await resp.text();
+        setCached(cacheKey, text);
+        return { ok: true, text, status: resp.status, cached: false };
       }
 
       lastResult = {
@@ -107,6 +119,16 @@ async function requestJson(url, options = {}) {
   }
 
   return lastResult;
+}
+
+async function requestJson(url, options = {}) {
+  const result = await requestText(url, options);
+  if (!result.ok) return result;
+  try {
+    return { ok: true, data: JSON.parse(result.text), status: result.status, cached: result.cached };
+  } catch (error) {
+    return { ok: false, status: result.status, error };
+  }
 }
 
 function normalizeText(value) {
@@ -283,6 +305,222 @@ function getQobuzAppIds() {
   return [...new Set([process.env.ROON_WISHLIST_QOBUZ_APP_ID, DEFAULT_QOBUZ_APP_ID, ...FALLBACK_QOBUZ_APP_IDS].filter(Boolean))];
 }
 
+function unescapeHtmlAttribute(value) {
+  return String(value)
+    .replace(/&quot;/g, '"')
+    .replace(/&#0?39;|&apos;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&");
+}
+
+// The schema.org JSON-LD blocks carry the offer's currency (priceCurrency) when
+// data-tralbum does not spell it out.
+function parseBandcampLdJsonCurrency(html) {
+  const blocks = String(html || "").match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g) || [];
+  for (const block of blocks) {
+    const inner = block
+      .replace(/^<script type="application\/ld\+json">/, "")
+      .replace(/<\/script>$/, "");
+    let data;
+    try {
+      data = JSON.parse(inner);
+    } catch {
+      continue;
+    }
+    const entries = Array.isArray(data) ? data : [data];
+    for (const entry of entries) {
+      const offers = entry && entry.offers;
+      const list = Array.isArray(offers) ? offers : offers ? [offers] : [];
+      for (const offer of list) {
+        if (offer && typeof offer.priceCurrency === "string" && offer.priceCurrency) {
+          return offer.priceCurrency;
+        }
+      }
+    }
+  }
+  return null;
+}
+
+// The tralbum payload (embedded in the album page's data-tralbum attribute, or
+// returned by the mobile tralbum_details API) holds the digital album's price in
+// `current`: set_price when the artist set a fixed price (is_set_price),
+// otherwise minimum_price — the floor of a name-your-price release, still the
+// store's own number. packages[] are physical editions (vinyl/CD), not the
+// digital download this wishlist buys. Only store-provided values are returned.
+function bandcampPriceFromTralbumData(data) {
+  const current = data && data.current;
+  if (!current || typeof current !== "object") return null;
+
+  let price = null;
+  if (typeof current.price === "number") price = current.price;
+  else if (current.is_set_price && typeof current.set_price === "number") price = current.set_price;
+  else if (typeof current.minimum_price === "number") price = current.minimum_price;
+  else if (typeof current.set_price === "number") price = current.set_price;
+
+  return {
+    price: Number.isFinite(price) ? price : null,
+    currency: typeof current.currency === "string" && current.currency ? current.currency : null,
+  };
+}
+
+// Same payload, read out of the album page HTML (attribute value is HTML-escaped).
+function parseBandcampTralbum(html) {
+  const match = String(html || "").match(/data-tralbum="([^"]*)"/);
+  if (!match) return null;
+  let data;
+  try {
+    data = JSON.parse(unescapeHtmlAttribute(match[1]));
+  } catch {
+    return null;
+  }
+  const parsed = bandcampPriceFromTralbumData(data);
+  if (!parsed) return null;
+  if (!parsed.currency) parsed.currency = parseBandcampLdJsonCurrency(html);
+  return parsed;
+}
+
+// The album page is the primary source; when Bandcamp answers with its bot
+// challenge page instead (no data-tralbum), fall back to the mobile JSON API
+// keyed by the album/band ids the autocomplete result already carried. Either
+// way the price is the store's own value; any failure just means no price.
+async function attachBandcampPrice(result) {
+  if (!result || !result.url) return result;
+  const next = { ...result };
+
+  const resp = await requestText(result.url, { headers: PAGE_HEADERS });
+  if (resp.ok) {
+    const parsed = parseBandcampTralbum(resp.text);
+    if (parsed && parsed.price !== null) {
+      next.price = parsed.price;
+      if (parsed.currency) next.currency = parsed.currency;
+      return next;
+    }
+  }
+
+  if (result._albumId && result._bandId) {
+    const api = await requestJson(BANDCAMP_MOBILE_API_URL, {
+      params: { band_id: result._bandId, album_id: result._albumId },
+    });
+    if (api.ok) {
+      const parsed = bandcampPriceFromTralbumData(api.data);
+      if (parsed && parsed.price !== null) {
+        next.price = parsed.price;
+        if (parsed.currency && !next.currency) next.currency = parsed.currency;
+      }
+    }
+  }
+  return next;
+}
+
+function qobuzQualityLabel(bitDepth, samplingRate) {
+  if (Number.isFinite(bitDepth) && Number.isFinite(samplingRate) && bitDepth > 0 && samplingRate > 0) {
+    return `${bitDepth}-bit/${samplingRate} kHz`;
+  }
+  return null;
+}
+
+// Price straight from a Qobuz album object (an album/search item or an album/get
+// response), in the storefront of the requested country. Only store-provided
+// values are ever returned. When the payload offers several tiers — a per-format
+// `formats` list, or a separate `hires_price` — the Hi-Res tier wins, because
+// that is the edition this wishlist exists to buy; otherwise the album's single
+// `price` is used. No price in the payload -> null (never an estimate).
+function qobuzPriceFromAlbum(album) {
+  if (!album || typeof album !== "object") return null;
+
+  let price = null;
+  let currency = typeof album.currency === "string" && album.currency ? album.currency : null;
+  let displayPrice = typeof album.display_price === "string" && album.display_price ? album.display_price : null;
+  let quality = null;
+
+  if (Array.isArray(album.formats) && album.formats.length) {
+    const offers = album.formats.filter((f) => f && Number.isFinite(f.price));
+    if (offers.length) {
+      offers.sort(
+        (a, b) =>
+          (b.maximum_bit_depth || 0) - (a.maximum_bit_depth || 0) ||
+          (b.maximum_sampling_rate || 0) - (a.maximum_sampling_rate || 0),
+      );
+      const best = offers[0];
+      price = best.price;
+      quality = qobuzQualityLabel(best.maximum_bit_depth, best.maximum_sampling_rate);
+      if (typeof best.currency === "string" && best.currency) currency = best.currency;
+      if (typeof best.display_price === "string" && best.display_price) displayPrice = best.display_price;
+    }
+  }
+  if (price === null && album.hires === true && Number.isFinite(album.hires_price)) {
+    price = album.hires_price;
+    quality = qobuzQualityLabel(album.maximum_bit_depth, album.maximum_sampling_rate);
+  }
+  if (price === null && Number.isFinite(album.price)) {
+    price = album.price;
+    quality = qobuzQualityLabel(album.maximum_bit_depth, album.maximum_sampling_rate);
+  }
+  if (price === null) return null;
+  return { price, currency, displayPrice, quality };
+}
+
+// The public api.json payloads carry no price (measured live: neither album/search
+// items nor album/get have price fields), but the localized storefront page embeds
+// the album's listed price as schema.org JSON-LD: a Product/MusicAlbum entry whose
+// offers carry price (number) and priceCurrency — in the currency of the storefront
+// in the URL's locale, i.e. the configured country (fi-en -> EUR). When several
+// offers are present, the highest numeric price wins: that is the Hi-Res tier,
+// which costs more than CD quality and is the edition this wishlist buys.
+function parseQobuzPagePrice(html) {
+  const blocks = String(html || "").match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g) || [];
+  let price = null;
+  let currency = null;
+  for (const block of blocks) {
+    const inner = block
+      .replace(/^<script type="application\/ld\+json">/, "")
+      .replace(/<\/script>$/, "");
+    let data;
+    try {
+      data = JSON.parse(inner);
+    } catch {
+      continue;
+    }
+    const entries = Array.isArray(data) ? data : [data];
+    for (const entry of entries) {
+      if (!entry || !/^(Product|MusicAlbum)$/i.test(String(entry["@type"] || ""))) continue;
+      const offers = entry.offers;
+      const list = Array.isArray(offers) ? offers : offers ? [offers] : [];
+      for (const offer of list) {
+        const value = Number(offer && offer.price);
+        if (!Number.isFinite(value)) continue;
+        if (price === null || value > price) price = value;
+        if (!currency && typeof offer.priceCurrency === "string" && offer.priceCurrency) {
+          currency = offer.priceCurrency;
+        }
+      }
+    }
+  }
+  return price === null ? null : { price, currency };
+}
+
+// A result without a price from the search item gets one fetch of its own
+// localized store page (cached). Failure just means no price, never a guess.
+async function attachQobuzPrice(result) {
+  if (!result || !result.url) return result;
+  const next = { ...result };
+  if (next.price === undefined) {
+    const resp = await requestText(result.url, { headers: PAGE_HEADERS });
+    if (resp.ok) {
+      const parsed = parseQobuzPagePrice(resp.text);
+      if (parsed) {
+        next.price = parsed.price;
+        if (parsed.currency) next.currency = parsed.currency;
+      }
+    }
+  }
+  if (next.price !== undefined && !next.quality) {
+    next.quality = qobuzQualityLabel(result._bit, result._sr);
+  }
+  return next;
+}
+
 // Punctuation can zero out Bandcamp's autocomplete at the query level: measured,
 // "I.C.S. Vortex" finds nothing while "ICS Vortex" finds the album (issue #78).
 // Periods and commas are removed outright (initials stay glued: "I.C.S." ->
@@ -325,6 +563,9 @@ async function bandcampRanked(query, artist, title) {
         title: item.name.trim(),
         artist: item.band_name.trim(),
         url: toBandcampUrl(item),
+        // Helper ids for the mobile-API price fallback; stripped before returning.
+        _albumId: item.id,
+        _bandId: item.band_id,
       })),
     artist,
     title,
@@ -344,7 +585,10 @@ async function searchBandcamp(artist, title) {
       ranked = await bandcampRanked(fallbackQuery, artist, title);
     }
   }
-  return ranked;
+  // The autocomplete response carries no price, so each found link gets its own
+  // price lookup (album page, mobile-API fallback; both cached).
+  const withPrices = await Promise.all(ranked.map((result) => attachBandcampPrice(result)));
+  return withPrices.map(({ _albumId, _bandId, ...result }) => result);
 }
 
 async function searchQobuz(artist, title, country = DEFAULT_COUNTRY) {
@@ -376,18 +620,18 @@ async function searchQobuz(artist, title, country = DEFAULT_COUNTRY) {
         ? response.data.albums.items
         : [];
 
-    return rankResults(
-      items
-        .filter(
-          (item) =>
-            item &&
-            item.title &&
-            item.artist &&
-            item.artist.name &&
-            item.url &&
-            item.purchasable !== false,
-        )
-        .map((item) => ({
+    const mapped = items
+      .filter(
+        (item) =>
+          item &&
+          item.title &&
+          item.artist &&
+          item.artist.name &&
+          item.url &&
+          item.purchasable !== false,
+      )
+      .map((item) => {
+        const result = {
           store: "Qobuz",
           title: String(item.title).trim(),
           artist: String(item.artist.name).trim(),
@@ -395,10 +639,37 @@ async function searchQobuz(artist, title, country = DEFAULT_COUNTRY) {
             /^https?:\/\//.test(item.url) ? item.url : `https://www.qobuz.com${item.url}`,
             country,
           ),
-        })),
-      artist,
-      title,
+        };
+        // Price straight from the search item when the payload carries one;
+        // attachQobuzPrice below reads it off the store page otherwise.
+        const info = qobuzPriceFromAlbum(item);
+        if (info) Object.assign(result, info);
+        // Helper fields for edition/price selection; stripped before returning.
+        result._hires = item.hires === true;
+        result._bit = item.maximum_bit_depth;
+        result._sr = item.maximum_sampling_rate;
+        return result;
+      });
+
+    const ranked = rankResults(mapped, artist, title);
+    if (!ranked.length) return [];
+
+    // Qobuz lists each quality as its own purchasable album entry. When several
+    // editions match, the Hi-Res one wins — both for the link and the price —
+    // because that is the download this wishlist exists to buy (issue #48).
+    const credible = mapped.filter((result) => {
+      const score = scoreResult(result, artist, title);
+      return score.titleScore > 0 && score.artistScore > 0 && score.totalScore >= MIN_MATCH_SCORE;
+    });
+    const hiresOffers = credible.filter((result) => result._hires);
+    hiresOffers.sort(
+      (a, b) => (b._bit || 0) - (a._bit || 0) || (b._sr || 0) - (a._sr || 0),
     );
+    const chosen = hiresOffers.length ? hiresOffers[0] : ranked[0];
+
+    const withPrice = await attachQobuzPrice(chosen);
+    const { _hires, _bit, _sr, ...clean } = withPrice;
+    return [clean];
   }
 
   if (hadFailures) {
@@ -506,4 +777,8 @@ module.exports = {
   localizeQobuzUrl,
   buildQuery,
   rankResults,
+  parseBandcampTralbum,
+  bandcampPriceFromTralbumData,
+  parseQobuzPagePrice,
+  qobuzPriceFromAlbum,
 };

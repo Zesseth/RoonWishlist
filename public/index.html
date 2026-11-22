@@ -205,6 +205,7 @@
       margin-right: 8px;
       color: var(--muted);
     }
+    .results .store-price { margin-left: 8px; font-size: 12px; color: var(--muted); }
     .results a { color: var(--accent); text-decoration: none; word-break: break-all; }
     .results a:hover { text-decoration: underline; }
     .results li { padding: 8px 4px; border-bottom: 1px solid var(--border); }
@@ -1173,6 +1174,17 @@
       }
     }
 
+    function formatPrice(price, currency) {
+      if (currency) {
+        try {
+          return new Intl.NumberFormat(undefined, { style: "currency", currency: currency }).format(price);
+        } catch {
+          // Unknown currency code: fall through to the plain number.
+        }
+      }
+      return price.toFixed(2);
+    }
+
     function renderStoreResults(box, results, fallbackArtist, fallbackTitle) {
       const list = document.createElement("ul");
       list.className = "list";
@@ -1180,10 +1192,19 @@
         const item = document.createElement("li");
         const left = document.createElement("div");
         left.style.minWidth = "0";
+        // Store-provided price only: the store's own formatted string when we
+        // have it, otherwise the numeric price in its currency. No price field,
+        // no price shown — never an estimate.
+        const priceText = typeof r.price === "number"
+          ? (r.displayPrice || formatPrice(r.price, r.currency))
+          : "";
         left.innerHTML =
           '<span class="store">' + esc(r.store) + '</span>' +
           '<a href="' + esc(r.url) + '" target="_blank" rel="noopener">' +
-          esc(r.artist || fallbackArtist) + ' &mdash; ' + esc(r.title || fallbackTitle) + '</a>';
+          esc(r.artist || fallbackArtist) + ' &mdash; ' + esc(r.title || fallbackTitle) + '</a>' +
+          (priceText
+            ? '<span class="store-price">' + esc(priceText) + (r.quality ? ' &middot; ' + esc(r.quality) : '') + '</span>'
+            : '');
         item.appendChild(left);
         list.appendChild(item);
       }

@@ -7,7 +7,8 @@ A Roon Extension — a wishlist for albums you don't yet own in lossless quality
 - **Wishlist**: Add albums to a buy-list
 - **Web UI**: A simple browser interface to view, add, remove and search albums
 - **Roon tag sync**: Import albums tagged `Wishlist` from Roon into the app wishlist
-- **Search**: Looks up the album on Bandcamp and Qobuz
+- **Search**: Looks up the album on Bandcamp and Qobuz, including the store-provided
+  price (in the configured Qobuz country's storefront) when available
 - **Low-quality scan**: Finds local albums that are not fully lossless and adds them
   to the wishlist. It also takes an album back off that list once you have bought it
   in lossless.
@@ -402,7 +403,7 @@ use can go through the native Roon settings menu described above.
 | GET | `/wishlist/owned-lossless` | Tagged albums already owned in full lossless |
 | GET | `/wishlist/low-quality` | Albums the library scan found in less than lossless |
 | POST | `/wishlist/remove` | Remove an album `{"artist":"...","title":"..."}` |
-| GET | `/search?artist=&title=` | Get buy links from Bandcamp/Qobuz |
+| GET | `/search?artist=&title=` | Get buy links from Bandcamp/Qobuz, with the store-provided price when available |
 | POST | `/check-lossless` | Check the library and clean up the wishlist |
 | GET | `/roon-tag/write-support` | Ask Roon, read-only, whether it offers any tag-editing action |
 
