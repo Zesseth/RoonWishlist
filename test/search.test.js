@@ -9,6 +9,9 @@ const {
   availableOnQobuz,
   buildQuery,
   rankResults,
+  parseBandcampTralbum,
+  parseQobuzPagePrice,
+  qobuzPriceFromAlbum,
 } = require("../src/search");
 
 describe("buildQuery", () => {
@@ -317,5 +320,354 @@ describe("searchBandcamp punctuation fallback (issue #78)", () => {
     assert.ok(Array.isArray(results));
     assert.ok(results.length >= 1, "expected the fallback query to find the album");
     assert.strictEqual(results[0].artist, "ICS Vortex");
+  });
+});
+
+describe("price extraction (issue #48)", () => {
+  // Bandcamp embeds the sale data HTML-escaped in the data-tralbum attribute.
+  const tralbumHtml = (tralbum) => {
+    const encoded = JSON.stringify(tralbum).replace(/&/g, "&amp;").replace(/"/g, "&quot;");
+    return `<div class="tralbum" data-tralbum="${encoded}"></div>`;
+  };
+
+  describe("parseBandcampTralbum", () => {
+    it("reads a fixed price and currency from data-tralbum", () => {
+      const parsed = parseBandcampTralbum(
+        tralbumHtml({ current: { type: "album", is_set_price: true, set_price: 9, minimum_price: 9, currency: "EUR" } }),
+      );
+      assert.deepStrictEqual(parsed, { price: 9, currency: "EUR" });
+    });
+
+    it("uses the store-stated minimum for a name-your-price release", () => {
+      const parsed = parseBandcampTralbum(
+        tralbumHtml({ current: { type: "album", is_set_price: null, set_price: 7, minimum_price: 7, currency: "EUR" } }),
+      );
+      assert.strictEqual(parsed.price, 7);
+      assert.strictEqual(parsed.currency, "EUR");
+    });
+
+    it("keeps a zero price for a free release instead of dropping it", () => {
+      const parsed = parseBandcampTralbum(
+        tralbumHtml({ current: { type: "album", is_set_price: null, minimum_price: 0, currency: "EUR" } }),
+      );
+      assert.strictEqual(parsed.price, 0);
+    });
+
+    it("falls back to the ld+json priceCurrency when data-tralbum has none", () => {
+      const html =
+        tralbumHtml({ current: { type: "album", is_set_price: true, set_price: 8 } }) +
+        '<script type="application/ld+json">{"@type":"MusicAlbum","offers":{"@type":"Offer","price":8,"priceCurrency":"USD"}}</script>';
+      const parsed = parseBandcampTralbum(html);
+      assert.strictEqual(parsed.price, 8);
+      assert.strictEqual(parsed.currency, "USD");
+    });
+
+    it("returns null price when the page carries no price data at all", () => {
+      assert.strictEqual(parseBandcampTralbum("<html><body>client challenge</body></html>"), null);
+      const parsed = parseBandcampTralbum(tralbumHtml({ current: { type: "album" } }));
+      assert.deepStrictEqual(parsed, { price: null, currency: null });
+    });
+  });
+
+  describe("qobuzPriceFromAlbum", () => {
+    it("prefers the hi-res price field on a hires album", () => {
+      const info = qobuzPriceFromAlbum({
+        price: 9.99,
+        hires: true,
+        hires_price: 13.99,
+        maximum_bit_depth: 24,
+        maximum_sampling_rate: 96,
+        currency: "EUR",
+        display_price: "13,99 €",
+      });
+      assert.strictEqual(info.price, 13.99);
+      assert.strictEqual(info.quality, "24-bit/96 kHz");
+      assert.strictEqual(info.currency, "EUR");
+      assert.strictEqual(info.displayPrice, "13,99 €");
+    });
+
+    it("picks the highest-quality entry when the payload carries per-format offers", () => {
+      const info = qobuzPriceFromAlbum({
+        formats: [
+          { price: 9.99, maximum_bit_depth: 16, maximum_sampling_rate: 44.1 },
+          { price: 17.99, maximum_bit_depth: 24, maximum_sampling_rate: 192 },
+        ],
+      });
+      assert.strictEqual(info.price, 17.99);
+      assert.strictEqual(info.quality, "24-bit/192 kHz");
+    });
+
+    it("falls back to the single album price when no tier-specific field exists", () => {
+      const info = qobuzPriceFromAlbum({ price: 8.99, hires: false, maximum_bit_depth: 16, maximum_sampling_rate: 44.1 });
+      assert.strictEqual(info.price, 8.99);
+      assert.strictEqual(info.quality, "16-bit/44.1 kHz");
+    });
+
+    it("returns null when the payload carries no price at all", () => {
+      assert.strictEqual(qobuzPriceFromAlbum({ title: "X", hires: true }), null);
+      assert.strictEqual(qobuzPriceFromAlbum(null), null);
+    });
+  });
+
+  describe("parseQobuzPagePrice", () => {
+    const pageWithLdJson = (ldjson) =>
+      `<html><head><script type="application/ld+json">${JSON.stringify(ldjson)}</script></head><body></body></html>`;
+
+    it("reads offers.price and priceCurrency from the Product JSON-LD (measured live shape)", () => {
+      const html = pageWithLdJson({
+        "@context": "https://schema.org/",
+        "@type": "Product",
+        name: "OK Computer OKNOTOK 1997 2017",
+        offers: { "@type": "Offer", priceCurrency: "EUR", price: 20.49 },
+      });
+      assert.deepStrictEqual(parseQobuzPagePrice(html), { price: 20.49, currency: "EUR" });
+    });
+
+    it("takes the highest price when several offers are listed (the Hi-Res tier costs more)", () => {
+      const html = pageWithLdJson({
+        "@type": "Product",
+        offers: [
+          { "@type": "Offer", priceCurrency: "EUR", price: 9.99 },
+          { "@type": "Offer", priceCurrency: "EUR", price: 17.99 },
+        ],
+      });
+      assert.deepStrictEqual(parseQobuzPagePrice(html), { price: 17.99, currency: "EUR" });
+    });
+
+    it("ignores non-product JSON-LD and analytics blobs, returns null without any offer", () => {
+      const html =
+        pageWithLdJson({ "@type": "MusicAlbum", name: "X" }) +
+        '<script type="application/ld+json">{"items":[{"price":2.49}]}</script>';
+      assert.strictEqual(parseQobuzPagePrice(html), null);
+      assert.strictEqual(parseQobuzPagePrice("<html>no data</html>"), null);
+    });
+  });
+
+  describe("search wiring with a stubbed fetch", () => {
+    const jsonResponse = (data) => ({
+      ok: true,
+      status: 200,
+      json: async () => data,
+      text: async () => JSON.stringify(data),
+    });
+    const textResponse = (text) => ({
+      ok: true,
+      status: 200,
+      text: async () => text,
+      json: async () => JSON.parse(text),
+    });
+
+    function stubFetch(handler) {
+      const original = globalThis.fetch;
+      globalThis.fetch = async (url, options) => handler(String(url), options || {});
+      return () => {
+        globalThis.fetch = original;
+      };
+    }
+
+    it("searchBandcamp attaches the price read from the album page", async () => {
+      const restore = stubFetch((url) => {
+        if (url.includes("autocomplete_elastic")) {
+          return jsonResponse({
+            auto: {
+              results: [
+                { type: "a", name: "Price Album", band_name: "Price Band", item_url_path: "https://priceband.bandcamp.com/album/price-album" },
+              ],
+            },
+          });
+        }
+        return textResponse(tralbumHtml({ current: { type: "album", is_set_price: true, set_price: 7.5, currency: "EUR" } }));
+      });
+      try {
+        const results = await searchBandcamp("Price Band", "Price Album");
+        assert.strictEqual(results.length, 1);
+        assert.strictEqual(results[0].price, 7.5);
+        assert.strictEqual(results[0].currency, "EUR");
+      } finally {
+        restore();
+      }
+    });
+
+    it("searchBandcamp leaves the link without a price when the page has none", async () => {
+      const restore = stubFetch((url) => {
+        if (url.includes("autocomplete_elastic")) {
+          return jsonResponse({
+            auto: {
+              results: [
+                { type: "a", name: "No Price Album", band_name: "Price Band", item_url_path: "https://priceband.bandcamp.com/album/no-price-album" },
+              ],
+            },
+          });
+        }
+        return textResponse("<html><body>client challenge</body></html>");
+      });
+      try {
+        const results = await searchBandcamp("Price Band", "No Price Album");
+        assert.strictEqual(results.length, 1);
+        assert.strictEqual(results[0].price, undefined);
+      } finally {
+        restore();
+      }
+    });
+
+    it("searchBandcamp falls back to the mobile tralbum API when the page is a bot challenge", async () => {
+      const seen = [];
+      const restore = stubFetch((url) => {
+        seen.push(url);
+        if (url.includes("autocomplete_elastic")) {
+          return jsonResponse({
+            auto: {
+              results: [
+                { type: "a", name: "Api Album", band_name: "Price Band", item_url_path: "https://priceband.bandcamp.com/album/api-album", id: 555, band_id: 777 },
+              ],
+            },
+          });
+        }
+        if (url.includes("api/mobile/")) {
+          return jsonResponse({ current: { type: "album", is_set_price: true, set_price: 6.5, currency: "EUR" } });
+        }
+        return textResponse("<html><body>client challenge</body></html>");
+      });
+      try {
+        const results = await searchBandcamp("Price Band", "Api Album");
+        assert.strictEqual(results.length, 1);
+        assert.strictEqual(results[0].price, 6.5);
+        assert.strictEqual(results[0].currency, "EUR");
+        assert.strictEqual(results[0]._albumId, undefined, "helper id fields must be stripped from results");
+        assert.ok(
+          seen.some((u) => u.includes("api/mobile/24/tralbum_details") && u.includes("album_id=555") && u.includes("band_id=777")),
+          "the mobile API must be called with the autocomplete item's ids",
+        );
+      } finally {
+        restore();
+      }
+    });
+
+    it("searchQobuz attaches the hi-res price from the search item and keeps the country-scoped URL", async () => {
+      const seen = [];
+      const restore = stubFetch((url) => {
+        seen.push(url);
+        return jsonResponse({
+          albums: {
+            items: [
+              {
+                title: "Price Album",
+                artist: { name: "Price Band" },
+                url: "/fi-en/album/price-album/123456",
+                purchasable: true,
+                price: 13.99,
+                currency: "EUR",
+                display_price: "13,99 €",
+                hires: true,
+                hires_price: 17.99,
+                maximum_bit_depth: 24,
+                maximum_sampling_rate: 96,
+              },
+            ],
+          },
+        });
+      });
+      try {
+        const results = await searchQobuz("Price Band", "Price Album", "FI");
+        assert.strictEqual(results.length, 1);
+        assert.strictEqual(results[0].price, 17.99);
+        assert.strictEqual(results[0].quality, "24-bit/96 kHz");
+        assert.strictEqual(results[0].currency, "EUR");
+        assert.ok(results[0].url.includes("/fi-en/"));
+        assert.ok(seen.every((u) => u.includes("country=FI")), "every Qobuz call must carry the configured country");
+      } finally {
+        restore();
+      }
+    });
+
+    it("searchQobuz reads the price from the localized store page when the item has none", async () => {
+      const seen = [];
+      const restore = stubFetch((url) => {
+        seen.push(url);
+        if (url.includes("api.json")) {
+          return jsonResponse({
+            albums: {
+              items: [
+                {
+                  title: "Page Album",
+                  artist: { name: "Price Band" },
+                  url: "/fi-en/album/page-album/123456",
+                  purchasable: true,
+                  hires: true,
+                  maximum_bit_depth: 24,
+                  maximum_sampling_rate: 96,
+                },
+              ],
+            },
+          });
+        }
+        // The storefront page (any /album/... URL) embeds the price in JSON-LD.
+        return textResponse(
+          '<script type="application/ld+json">{"@type":"Product","offers":{"@type":"Offer","priceCurrency":"EUR","price":20.49}}</script>',
+        );
+      });
+      try {
+        const results = await searchQobuz("Price Band", "Page Album", "FI");
+        assert.strictEqual(results.length, 1);
+        assert.strictEqual(results[0].price, 20.49);
+        assert.strictEqual(results[0].currency, "EUR");
+        assert.strictEqual(results[0].quality, "24-bit/96 kHz");
+        assert.ok(seen.some((u) => u.includes("country=FI")), "the search call must carry the configured country");
+        assert.ok(
+          seen.some((u) => u.includes("/fi-en/album/")),
+          "the price must be read from the country-localized page URL",
+        );
+      } finally {
+        restore();
+      }
+    });
+
+    it("searchQobuz prefers the Hi-Res edition (link and price) when several purchasable editions match", async () => {
+      const restore = stubFetch((url) => {
+        if (url.includes("api.json")) {
+          return jsonResponse({
+            albums: {
+              items: [
+                {
+                  title: "Edition Album",
+                  artist: { name: "Price Band" },
+                  url: "/fi-en/album/edition-album/111",
+                  purchasable: true,
+                  hires: false,
+                  maximum_bit_depth: 16,
+                  maximum_sampling_rate: 44.1,
+                },
+                {
+                  title: "Edition Album (2017 Remaster)",
+                  artist: { name: "Price Band" },
+                  url: "/fi-en/album/edition-album-2017-remaster/222",
+                  purchasable: true,
+                  hires: true,
+                  maximum_bit_depth: 24,
+                  maximum_sampling_rate: 192,
+                },
+              ],
+            },
+          });
+        }
+        if (url.includes("222")) {
+          return textResponse(
+            '<script type="application/ld+json">{"@type":"Product","offers":{"priceCurrency":"EUR","price":24.99}}</script>',
+          );
+        }
+        return textResponse(
+          '<script type="application/ld+json">{"@type":"Product","offers":{"priceCurrency":"EUR","price":9.99}}</script>',
+        );
+      });
+      try {
+        const results = await searchQobuz("Price Band", "Edition Album (2017 Remaster)", "FI");
+        assert.strictEqual(results.length, 1);
+        assert.ok(results[0].url.includes("222"), "the Hi-Res edition's link should win");
+        assert.strictEqual(results[0].price, 24.99, "the price must be the Hi-Res one");
+        assert.strictEqual(results[0].quality, "24-bit/192 kHz");
+      } finally {
+        restore();
+      }
+    });
   });
 });

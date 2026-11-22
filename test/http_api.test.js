@@ -516,3 +516,48 @@ describe("HTTP API: clear & rebuild guards", () => {
     assert.ok([200, 409].includes(scan.status));
   });
 });
+
+describe("HTTP API: buy-link prices (issue #48)", () => {
+  it("persists store-provided price fields via POST /wishlist/links and returns them on GET /wishlist", async () => {
+    const { status } = await api("POST", "/wishlist/links", {
+      artist: "Price Band",
+      title: "Price Album",
+      buyLinks: [
+        {
+          store: "Qobuz",
+          title: "Price Album",
+          artist: "Price Band",
+          url: "https://www.qobuz.com/fi-en/album/price-album/123456",
+          price: 13.99,
+          currency: "EUR",
+          displayPrice: "13,99 €",
+          quality: "24-bit/96 kHz",
+        },
+      ],
+    });
+    assert.strictEqual(status, 200);
+
+    const { data } = await api("GET", "/wishlist");
+    const entry = data.find((a) => a.artist === "Price Band" && a.title === "Price Album");
+    assert.ok(entry, "entry should exist after POST /wishlist/links");
+    assert.strictEqual(entry.buyLinks[0].price, 13.99);
+    assert.strictEqual(entry.buyLinks[0].currency, "EUR");
+    assert.strictEqual(entry.buyLinks[0].displayPrice, "13,99 €");
+    assert.strictEqual(entry.buyLinks[0].quality, "24-bit/96 kHz");
+  });
+
+  it("drops a non-numeric price on POST /wishlist/links instead of storing a guess", async () => {
+    const { status } = await api("POST", "/wishlist/links", {
+      artist: "Guess Band",
+      title: "Guess Album",
+      buyLinks: [{ store: "Bandcamp", url: "https://guessband.bandcamp.com/album/guess", price: "free-ish" }],
+    });
+    assert.strictEqual(status, 200);
+
+    const { data } = await api("GET", "/wishlist");
+    const entry = data.find((a) => a.artist === "Guess Band");
+    assert.ok(entry);
+    assert.strictEqual(entry.buyLinks[0].price, undefined);
+    assert.strictEqual(entry.buyLinks[0].url, "https://guessband.bandcamp.com/album/guess");
+  });
+});
